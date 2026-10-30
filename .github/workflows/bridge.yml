@@ -1,0 +1,52 @@
+name: bridge
+
+on:
+  push:
+    branches: [main]
+    paths: ['bridge/**', '.github/workflows/bridge.yml']
+    tags: ['bridge-v*']
+  pull_request:
+    paths: ['bridge/**', '.github/workflows/bridge.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bridge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bridge/go.mod
+          cache-dependency-path: bridge/go.sum
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/bridge-v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: bridge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bridge/go.mod
+          cache-dependency-path: bridge/go.sum
+      - name: Build all targets
+        run: scripts/build.sh "${GITHUB_REF_NAME#bridge-v}"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "cloute-bridge ${GITHUB_REF_NAME#bridge-v}" \
+            --notes "Binaries for macOS, Linux and Windows. Verify with SHA256SUMS."

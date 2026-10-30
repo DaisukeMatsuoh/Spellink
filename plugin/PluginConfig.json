@@ -1,0 +1,16 @@
+{
+  "name": "Cloute",
+  "desc": "Lasso your handwriting to ask Claude; the answer is written back in handwriting.",
+  "iconPath": "assets/icon.png",
+  "versionName": "0.0.1",
+  "versionCode": "1",
+  "pluginID": "4ti4vfje1m7qvn3f",
+  "pluginKey": "Cloute",
+  "jsMainPath": "index",
+  "author": "Daisuke Matsuoh",
+  "uses-permissions": [
+    "plugin.permission.FILE:READ",
+    "plugin.permission.FILE:WRITE",
+    "plugin.permission.INTERNET"
+  ]
+}

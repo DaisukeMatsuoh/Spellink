@@ -41,8 +41,8 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
    - `fetch('file://…')` で MyStyle の設定ファイルを読めるか
    - 日本語 OCR の精度
 2. 結果を受けて: ADR 0002/0003/0007/0009 を確定、暗号化（Noise）、ペアリング UX。
-3. 名前（Cloute → Clote?）の決定: `docs/notes/research/2026-10-31-naming.md`
-4. 知財: 配布前に弁理士へ FTO 依頼（ローカルのメモ `docs/notes/ip/private/`、ルールは `docs/notes/ip/README.md`）。
+3. 名前の決定（ユーザー検討中）: `docs/notes/research/2026-10-31-naming.md`
+4. 知財: 弁理士への相談は当面しない方針。情報はローカルの `docs/notes/ip/private/`、ルールは `docs/notes/ip/README.md`。
 5. 配布準備: CI でリリース、macOS の公証、CONTRIBUTING・SECURITY.md。
 
 ## 既知の制約・メモ
@@ -52,8 +52,15 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
 - Go ツールチェーンは `~/.local/go`（PATH に入っていないので `export PATH=$HOME/.local/go/bin:$PATH`）。
 - `plugin/PluginConfig.json` の `pluginID` は変更禁止。生成物 `plugin/build/`・`bridge/dist/` は git 管理外。
 
+## 未解決の質問・ユーザーの方針
+- 外出先: VPN は前提にしない（ユーザー合意済み）。利用者側の工夫で対応。第一候補はトンネル（ブリッジ設定 `extraUrls`）、Supernote への NetBird サイドロードは要実機確認。`docs/notes/research/2026-10-31-remote-access.md`
+- 名前: ユーザーが検討中。Claude 以外にも対応する前提（候補: Inkantation / Spellink など）。`docs/notes/research/2026-10-31-naming.md`
+- 弁理士: すぐには相談しない（情報として保持）。
+- push: ユーザーの指示があるまでしない（まだ公開しない）。
+
 ## 作業ログ
 - 2026-10-30: 公式ドキュメント全 154 ページ、sn-plugin-lib 0.2.3 / テンプレート 1.0.13 のソース、先行プラグイン（sn-copilot, sn-dictionary, supernote-plugin-research）を調査。docs 一式を作成。
+- 2026-10-31: 名前の候補出し、外出先アクセスの整理、ブリッジ設定 `extraUrls` を追加。
 - 2026-10-31: ブリッジを Go に移植（ADR 0008）。長い回答の字数指示と次ページへの続き書き（ADR 0009）。特許調査（ローカルのみ）、名前と大きな紙の検討ノート。
 - 2026-10-31: スパイク実装（bridge + plugin + 診断画面）。ARM 機でのプラグインビルド、実 Claude Code での E2E、接続レース処理を確認。ADR 0003/0007 に追記。
 - 2026-10-30: ブリッジを Mac/Linux/Windows 対応・複数台のペアリング制に拡張（ADR 0005 追記）。通信は WebSocket + Noise に（ADR 0007）。Codex 等への差し替え余地を残す。

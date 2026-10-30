@@ -148,7 +148,7 @@ func serve() error {
 
 	dir, _ := config.Dir()
 	logger.Printf("cloute-bridge %s %q listening on port %d (config: %s)", version, cfg.Name, cfg.Port, dir)
-	for _, u := range candidateURLs(cfg.Port) {
+	for _, u := range pairURLs(cfg) {
 		logger.Printf("  %s", u)
 	}
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
@@ -182,6 +182,11 @@ func candidateURLs(port int) []string {
 	return urls
 }
 
+// pairURLs is what the plugin tries in parallel: LAN addresses first, then configured extras.
+func pairURLs(cfg *config.Config) []string {
+	return append(candidateURLs(cfg.Port), cfg.ExtraURLs...)
+}
+
 // pair prints or writes the connection file the plugin reads (MyStyle/Cloute/bridges.json).
 func pair(out string) error {
 	cfg, err := config.Load()
@@ -189,7 +194,7 @@ func pair(out string) error {
 		return err
 	}
 	b, _ := json.MarshalIndent(map[string]any{
-		"bridges": []any{map[string]any{"name": cfg.Name, "token": cfg.Token, "urls": candidateURLs(cfg.Port)}},
+		"bridges": []any{map[string]any{"name": cfg.Name, "token": cfg.Token, "urls": pairURLs(cfg)}},
 	}, "", "  ")
 	if out == "" {
 		fmt.Println(string(b))

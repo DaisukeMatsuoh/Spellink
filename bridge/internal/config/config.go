@@ -22,6 +22,9 @@ type Config struct {
 	ClaudeExecutable string `json:"claudeExecutable"`
 	// Model is passed to `claude --model` (e.g. "haiku"); empty uses Claude Code's default.
 	Model string `json:"model,omitempty"`
+	// ExtraURLs are additional addresses the plugin may try, such as a tunnel that reaches
+	// this bridge from outside the LAN (e.g. "wss://bridge.example.com/v1").
+	ExtraURLs []string `json:"extraUrls,omitempty"`
 }
 
 // Dir is where config.json, glyphs.bin and reports.jsonl live.

@@ -4,8 +4,8 @@ export interface BridgeEndpoint {
   urls: string[];
 }
 
-/** Written by `cloute-bridge pair` and copied to the device. */
-export const CONFIG_PATH = '/storage/emulated/0/MyStyle/Cloute/bridges.json';
+/** Written by `spellink-bridge pair` and copied to the device. */
+export const CONFIG_PATH = '/storage/emulated/0/MyStyle/Spellink/bridges.json';
 
 // Fallback baked in at build time (plugin/src/bridges.local.json, git-ignored).
 

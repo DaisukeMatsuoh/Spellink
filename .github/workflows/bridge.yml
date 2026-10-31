@@ -48,5 +48,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "cloute-bridge ${GITHUB_REF_NAME#bridge-v}" \
+            --title "spellink-bridge ${GITHUB_REF_NAME#bridge-v}" \
             --notes "Binaries for macOS, Linux and Windows. Verify with SHA256SUMS."

@@ -1,11 +1,11 @@
-# Cloute plugin (Supernote)
+# Spellink plugin (Supernote)
 
 React Native plugin built from the official template (`@supernote-plugin/sn-plugin-template`, RN 0.79.2, `sn-plugin-lib`).
 
 ```bash
 npm install
-cloute-bridge pair src/bridges.local.json   # optional: bake a bridge connection into the build (git-ignored)
-npm run build                               # → build/outputs/Cloute.snplg
+spellink-bridge pair src/bridges.local.json   # optional: bake a bridge connection into the build (git-ignored)
+npm run build                               # → build/outputs/Spellink.snplg
 npm run typecheck && npx eslint index.js App.tsx src
 ```
 

@@ -161,7 +161,7 @@ export async function textBoxTest(log: Log): Promise<void> {
       call(
         'insertText',
         PluginNoteAPI.insertText({
-          textContentFull: 'Cloute text box test / テキストボックスのテスト',
+          textContentFull: 'Spellink text box test / テキストボックスのテスト',
           textRect: {
             left: width * 0.1,
             top: height * 0.6,

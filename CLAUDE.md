@@ -1,4 +1,4 @@
-# Cloute
+# Spellink
 
 Supernote（e-ink 手帳）用プラグイン。手書きをラッソで囲むと Claude に質問し、回答を筆跡としてページに書き戻す。
 

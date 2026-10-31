@@ -1,7 +1,7 @@
 import type {BridgeEndpoint} from './bridgeConfig';
 import type {BridgeMessage, ClientMessage} from './protocol';
 
-const CLIENT = 'cloute-plugin/0.1.0';
+const CLIENT = 'spellink-plugin/0.1.0';
 
 export class BridgeConnection {
   onMessage: (m: BridgeMessage) => void = () => {};

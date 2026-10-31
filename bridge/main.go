@@ -1,4 +1,4 @@
-// Command cloute-bridge relays questions from the Cloute Supernote plugin to the locally
+// Command spellink-bridge relays questions from the Spellink Supernote plugin to the locally
 // installed Claude Code CLI and returns the answers as handwriting strokes.
 package main
 
@@ -31,11 +31,11 @@ import (
 var version = "dev"
 
 const usage = `usage:
-  cloute-bridge serve                 run the bridge (builds glyph data on first run)
-  cloute-bridge pair [out.json]       print the connection file for the plugin
-  cloute-bridge build-glyphs          (re)download KanjiVG/Hershey and build glyph data
-  cloute-bridge preview TEXT OUT.png [charSize] [maxPages]
-  cloute-bridge version`
+  spellink-bridge serve                 run the bridge (builds glyph data on first run)
+  spellink-bridge pair [out.json]       print the connection file for the plugin
+  spellink-bridge build-glyphs          (re)download KanjiVG/Hershey and build glyph data
+  spellink-bridge preview TEXT OUT.png [charSize] [maxPages]
+  spellink-bridge version`
 
 func main() {
 	args := os.Args[1:]
@@ -147,7 +147,7 @@ func serve() error {
 	}()
 
 	dir, _ := config.Dir()
-	logger.Printf("cloute-bridge %s %q listening on port %d (config: %s)", version, cfg.Name, cfg.Port, dir)
+	logger.Printf("spellink-bridge %s %q listening on port %d (config: %s)", version, cfg.Name, cfg.Port, dir)
 	for _, u := range pairURLs(cfg) {
 		logger.Printf("  %s", u)
 	}
@@ -187,7 +187,7 @@ func pairURLs(cfg *config.Config) []string {
 	return append(candidateURLs(cfg.Port), cfg.ExtraURLs...)
 }
 
-// pair prints or writes the connection file the plugin reads (MyStyle/Cloute/bridges.json).
+// pair prints or writes the connection file the plugin reads (MyStyle/Spellink/bridges.json).
 func pair(out string) error {
 	cfg, err := config.Load()
 	if err != nil {

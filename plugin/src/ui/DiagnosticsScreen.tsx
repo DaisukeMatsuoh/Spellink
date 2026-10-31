@@ -28,7 +28,7 @@ export function DiagnosticsScreen() {
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.title}>Cloute diagnostics</Text>
+      <Text style={styles.title}>Spellink diagnostics</Text>
       <View style={styles.row}>
         <Button
           disabled={busy}

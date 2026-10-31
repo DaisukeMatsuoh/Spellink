@@ -1,13 +1,13 @@
 # systemd user service. Install:
-#   cp cloute-bridge.service ~/.config/systemd/user/
-#   systemctl --user daemon-reload && systemctl --user enable --now cloute-bridge
+#   cp spellink-bridge.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now spellink-bridge
 #   loginctl enable-linger $USER   # keep it running while logged out
 [Unit]
-Description=Cloute bridge (Supernote ↔ Claude Code)
+Description=Spellink bridge (Supernote ↔ Claude Code)
 After=network-online.target
 
 [Service]
-ExecStart=%h/.local/bin/cloute-bridge serve
+ExecStart=%h/.local/bin/spellink-bridge serve
 Restart=on-failure
 # Claude Code is usually installed in ~/.local/bin; make sure it is on PATH.
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin

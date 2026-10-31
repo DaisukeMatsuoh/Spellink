@@ -13,10 +13,10 @@ mkdir -p dist
 for t in "${targets[@]}"; do
   os="${t%/*}" arch="${t#*/}" ext=""
   [ "$os" = windows ] && ext=".exe"
-  out="dist/cloute-bridge-${os}-${arch}${ext}"
+  out="dist/spellink-bridge-${os}-${arch}${ext}"
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
     go build -trimpath -ldflags "-s -w -X main.version=${version}" -o "$out" .
   echo "built $out"
 done
 # sha256sum on Linux, shasum on macOS.
-(cd dist && { sha256sum cloute-bridge-* 2>/dev/null || shasum -a 256 cloute-bridge-*; } > SHA256SUMS)
+(cd dist && { sha256sum spellink-bridge-* 2>/dev/null || shasum -a 256 spellink-bridge-*; } > SHA256SUMS)

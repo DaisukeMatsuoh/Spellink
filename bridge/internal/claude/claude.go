@@ -22,7 +22,7 @@ type Runner struct {
 // NewRunner prepares an empty working directory so Claude Code never picks up a project's
 // CLAUDE.md or files.
 func NewRunner(executable, model string) (*Runner, error) {
-	dir, err := os.MkdirTemp("", "cloute-bridge-")
+	dir, err := os.MkdirTemp("", "spellink-bridge-")
 	if err != nil {
 		return nil, err
 	}

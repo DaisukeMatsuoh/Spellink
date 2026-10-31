@@ -1,24 +1,24 @@
 # 実機テスト手順（Nomad / Manta）
 
-スパイク版（v0.0.1）の確認手順。結果はブリッジ側の `~/.config/cloute-bridge/reports.jsonl`（macOS は `~/Library/Application Support/cloute-bridge/`）に送れるので、
+スパイク版（v0.0.1）の確認手順。結果はブリッジ側の `~/.config/spellink-bridge/reports.jsonl`（macOS は `~/Library/Application Support/spellink-bridge/`）に送れるので、
 エージェントはそれを読んで次の判断をする。
 
 ## 0. ブリッジを起動（PC 側）
 ```bash
-cloute-bridge serve    # ポート 8765。初回だけ KanjiVG / Hershey をダウンロードして glyphs.bin を作る（数秒）
+spellink-bridge serve    # ポート 8765。初回だけ KanjiVG / Hershey をダウンロードして glyphs.bin を作る（数秒）
 # バイナリの作り方: cd bridge && scripts/build.sh 0.1.0 linux/arm64   （Go 1.24 以上）
-# 開発機（ROCK 5B+）では ~/.local/bin/cloute-bridge に入っている
+# 開発機（ROCK 5B+）では ~/.local/bin/spellink-bridge に入っている
 ```
 - Claude Code にログイン済みであること（`claude` が普段どおり動く状態）。
-- 設定: `~/.config/cloute-bridge/config.json`（`model` に `"haiku"` などを書くと速いモデルを使う）
+- 設定: `~/.config/spellink-bridge/config.json`（`model` に `"haiku"` などを書くと速いモデルを使う）
 
 ## 1. プラグインを入れる
-- `plugin/build/outputs/Cloute.snplg` を Nomad の `MyStyle/` にコピー（USB / Browse & Access / クラウド）。
-- 設定 > アプリ > プラグイン > プラグインを追加 → Cloute をインストール。
+- `plugin/build/outputs/Spellink.snplg` を Nomad の `MyStyle/` にコピー（USB / Browse & Access / クラウド）。
+- 設定 > アプリ > プラグイン > プラグインを追加 → Spellink をインストール。
 - 開発中はブリッジの接続先（IP とトークン）をビルド時に埋め込んでいる（`plugin/src/bridges.local.json`、git 管理外）。
-  配布版では `MyStyle/Cloute/bridges.json`（`cloute-bridge pair <出力先>` で作れる）を読む予定。
+  配布版では `MyStyle/Spellink/bridges.json`（`spellink-bridge pair <出力先>` で作れる）を読む予定。
 
-## 2. 診断画面（ノートを開いてサイドバーの「Cloute 診断」）
+## 2. 診断画面（ノートを開いてサイドバーの「Spellink 診断」）
 上から順に押す。
 1. **Environment** — 機種、ページサイズ、ペン情報、権限状態
 2. **Permissions** — 権限ダイアログ。「常に許可」を選ぶ

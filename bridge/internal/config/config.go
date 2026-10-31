@@ -1,5 +1,5 @@
 // Package config stores the bridge settings and diagnostic reports in the user's config directory
-// (~/.config/cloute-bridge on Linux, ~/Library/Application Support/cloute-bridge on macOS).
+// (~/.config/spellink-bridge on Linux, ~/Library/Application Support/spellink-bridge on macOS).
 package config
 
 import (
@@ -33,7 +33,7 @@ func Dir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "cloute-bridge"), nil
+	return filepath.Join(base, "spellink-bridge"), nil
 }
 
 func path(name string) (string, error) {

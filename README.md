@@ -1,4 +1,4 @@
-# Cloute
+# Spellink
 
 Ask Claude about your handwriting on a Supernote, and get the answer written back onto the page **as handwriting**.
 
@@ -11,7 +11,7 @@ Ask Claude about your handwriting on a Supernote, and get the answer written bac
 ## How it works
 
 ```
-Supernote (plugin)  ──LAN──▶  cloute-bridge (your Mac / Linux / Windows PC)
+Supernote (plugin)  ──LAN──▶  spellink-bridge (your Mac / Linux / Windows PC)
   lasso → on-device OCR          └─ runs the official Claude Code CLI, signed in with your own account
   ◀── answer as pen strokes ───  └─ turns the answer into handwriting strokes
 ```
@@ -27,8 +27,8 @@ installed and signed in.
 
 ```bash
 cd bridge && scripts/build.sh dev linux/arm64   # or darwin/arm64 …; needs Go 1.24+
-./dist/cloute-bridge-linux-arm64 serve           # first run downloads the glyph data
-./dist/cloute-bridge-linux-arm64 pair            # prints the connection file for the plugin
+./dist/spellink-bridge-linux-arm64 serve           # first run downloads the glyph data
+./dist/spellink-bridge-linux-arm64 pair            # prints the connection file for the plugin
 ```
 
 Release binaries will be published by CI (`bridge-v*` tags).

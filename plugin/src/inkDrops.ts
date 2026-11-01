@@ -3,7 +3,8 @@
 // runs until the first answer line is ready, then everything it drew is removed.
 //
 // Safety: a stroke is deleted only if it is provably ours — it sits after the elements that were
-// on the page when we started, AND its first point and point count match a piece we drew.
+// on the page when we started, AND it carries our random marker in Element.userData or (if the
+// device does not keep the marker) its first point and point count match a piece we drew.
 // Anything else (the user's writing) is never touched, even if element numbers are not what
 // we expect.
 import {PluginCommAPI, PluginFileAPI, type Element} from 'sn-plugin-lib';
@@ -53,6 +54,10 @@ export class InkDrops {
   /** Strokes drawn / removed, for the debug panel. */
   drawn = 0;
   removed = 0;
+  /** Random per animation, so strokes of an earlier run can never be mistaken for these. */
+  private readonly marker = `spellink-wave:${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
 
   constructor(
     private readonly filePath: string,
@@ -105,7 +110,7 @@ export class InkDrops {
       this.pass,
     );
     this.sigs.push({x: piece.p[0], y: piece.p[1], n: piece.p.length / 2});
-    await writeStrokes([piece], this.page, this.pen);
+    await writeStrokes([piece], this.page, this.pen, undefined, this.marker);
     this.drawn++;
     this.cursor = next;
   }
@@ -151,6 +156,12 @@ export class InkDrops {
           !e.stroke?.points ||
           e.numInPage <= this.baseCount
         ) {
+          continue;
+        }
+        // Our marker is proof enough and costs no point reads. Without it (the device may not
+        // keep userData), fall back to matching the stroke's first point and point count.
+        if (e.userData === this.marker) {
+          nums.push(e.numInPage);
           continue;
         }
         const n = await e.stroke.points.size();

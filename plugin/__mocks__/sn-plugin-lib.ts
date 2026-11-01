@@ -30,6 +30,7 @@ export class Element {
   numInPage = 0;
   pageNum = 0;
   thickness = 0;
+  userData = '';
   stroke: {
     penType: number;
     penColor: number;
@@ -47,6 +48,8 @@ export const fakeNote = {
   inserted: [] as number[],
   /** Simulate a delete that reports success but removes nothing. */
   ignoreNextDelete: false,
+  /** Simulate a device that does not keep Element.userData. */
+  dropUserData: false,
   reset() {
     this.pages = new Map();
     this.deleted = [];
@@ -95,6 +98,9 @@ export const PluginCommAPI = {
   async insertPageElements(elements: Element[], page: number) {
     const list = fakeNote.pages.get(page) ?? [];
     for (const e of elements) {
+      if (fakeNote.dropUserData) {
+        e.userData = '';
+      }
       e.numInPage = list.length + 1;
       list.push(e);
     }

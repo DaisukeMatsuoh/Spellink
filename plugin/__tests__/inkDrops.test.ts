@@ -112,4 +112,57 @@ describe('InkDrops', () => {
     await d.stop();
     expect(fakeNote.strokes(0)).toHaveLength(0);
   });
+
+  describe('marker in Element.userData', () => {
+    const marked = () =>
+      fakeNote.strokes(0).filter(e => e.userData.startsWith('spellink-wave:'));
+
+    it('tags every stroke it draws', async () => {
+      const d = make(0);
+      await tick(d);
+      await tick(d);
+      expect(marked()).toHaveLength(2);
+      expect(new Set(marked().map(e => e.userData)).size).toBe(1); // one marker per animation
+      await d.stop();
+    });
+
+    it('finds its strokes by the marker without reading any points', async () => {
+      const d = make(0);
+      for (let i = 0; i < 3; i++) {
+        await tick(d);
+      }
+      const reads = jest.spyOn(fakeNote.strokes(0)[0].stroke!.points, 'size');
+      await d.stop();
+      expect(fakeNote.strokes(0)).toHaveLength(0);
+      expect(reads).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the point signature when the device does not keep userData', async () => {
+      fakeNote.dropUserData = true;
+      const user = fakeNote.addUserStroke(0, userPoints(150, 80));
+      const d = make(1);
+      for (let i = 0; i < 3; i++) {
+        await tick(d);
+      }
+      expect(marked()).toHaveLength(0);
+      await d.stop();
+      expect(fakeNote.strokes(0)).toEqual([user]);
+    });
+
+    it("ignores another animation's strokes and anything the user tagged themselves", async () => {
+      const other = make(0);
+      await tick(other); // a different run, different marker
+      const mine = make(0);
+      const theirs = fakeNote.addUserStroke(0, [
+        {x: 5, y: 5},
+        {x: 6, y: 6},
+      ]);
+      theirs.userData = 'user-note';
+      const before = fakeNote.strokes(0).length;
+      await mine.stop(); // nothing drawn → nothing to remove
+      expect(fakeNote.strokes(0)).toHaveLength(before);
+      await other.stop();
+      expect(fakeNote.strokes(0)).toEqual([theirs]);
+    });
+  });
 });

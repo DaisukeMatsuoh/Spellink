@@ -1,6 +1,12 @@
 // Device checks for the questions the docs leave open (see docs/notes/progress/README.md).
 // Every result is shown on screen and also sent to the bridge's report log when one is reachable.
-import {PluginCommAPI, PluginManager, PluginNoteAPI} from 'sn-plugin-lib';
+import {
+  PluginCommAPI,
+  PluginFileAPI,
+  PluginManager,
+  PluginNoteAPI,
+  type Element,
+} from 'sn-plugin-lib';
 import {answerLayout, AskFlow} from './askFlow';
 import {connectFirst, type ConnectAttempt} from './bridgeClient';
 import {loadBridges} from './bridgeConfig';
@@ -215,6 +221,64 @@ export async function newPageTest(log: Log): Promise<void> {
     );
   } catch (e) {
     log(`new page: ERROR ${(e as Error).message}`);
+  }
+}
+
+/**
+ * Does the device keep Element.userData? Writes one marked stroke, reads it back and deletes it
+ * (only if the marker came back, or by its position otherwise). Reports what it found.
+ */
+export async function markerTest(log: Log): Promise<void> {
+  try {
+    const ctx = await noteContext();
+    const pen = await currentPen();
+    const marker = `spellink-test:${Math.random().toString(36).slice(2, 8)}`;
+    const before = await call<number[] | null>(
+      'getElementNumList',
+      PluginFileAPI.getElementNumList(ctx.filePath, ctx.page),
+    );
+    const base = before ? before.length : 0;
+    const x = Math.round(ctx.size.width * 0.2);
+    const y = Math.round(ctx.size.height * 0.5);
+    const points = Array.from({length: 7}, (_, i) => ({x: x + i * 6, y}));
+    await writeStrokes(
+      [{p: points.flatMap(p => [p.x, p.y]), w: points.map(() => 2500)}],
+      ctx.page,
+      pen,
+      undefined,
+      marker,
+    );
+    const els =
+      (await call<Element[] | null>(
+        'getElements',
+        PluginFileAPI.getElements(ctx.page, ctx.filePath),
+      )) ?? [];
+    const ours = els.filter(e => e.numInPage > base && e.type === 0);
+    log(`elements after the base (${base}): ${ours.length}`);
+    for (const e of ours) {
+      log(
+        `  #${e.numInPage} userData=${JSON.stringify(e.userData)} (${
+          e.userData === marker ? 'MARKER KEPT' : 'marker lost'
+        })`,
+      );
+    }
+    const nums = ours.filter(e => e.userData === marker).map(e => e.numInPage);
+    for (const e of els) {
+      PluginCommAPI.recycleElement(e.uuid);
+    }
+    if (nums.length > 0) {
+      await call(
+        'deletePageElements',
+        PluginCommAPI.deletePageElements(nums, ctx.page),
+      );
+      log(`removed ${nums.length} test stroke(s) by marker`);
+    } else {
+      log(
+        '→ the test stroke stays on the page (marker not kept): erase it by hand; signatures will be used instead',
+      );
+    }
+  } catch (e) {
+    log(`marker test: ERROR ${(e as Error).message}`);
   }
 }
 

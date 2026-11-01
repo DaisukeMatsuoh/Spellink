@@ -72,6 +72,11 @@ export function DiagnosticsScreen() {
         />
         <Button
           disabled={busy}
+          label="9. Marker (userData)"
+          onPress={run('marker', diag.markerTest)}
+        />
+        <Button
+          disabled={busy}
           label="Reload file"
           onPress={run('reload', diag.reloadFile)}
         />

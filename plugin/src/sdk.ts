@@ -199,6 +199,8 @@ export async function writeStrokes(
   page: number,
   pen: PenStyle,
   timing?: WriteTiming,
+  /** Stored on every created stroke (Element.userData); lets us recognise our own strokes later. */
+  userData?: string,
 ): Promise<string[]> {
   const mode = await probeFillMode();
   const elements: Element[] = [];
@@ -212,6 +214,9 @@ export async function writeStrokes(
       elements.push(el);
       el.pageNum = page;
       el.thickness = pen.width;
+      if (userData) {
+        el.userData = userData;
+      }
       const stroke = el.stroke!;
       stroke.penType = pen.type;
       stroke.penColor = pen.color;

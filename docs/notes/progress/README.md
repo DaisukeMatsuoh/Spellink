@@ -100,6 +100,10 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
   対策: 削除は番号の降順、削除後に読み直して残りがあれば繰り返す（最大 4 回）、周回ごとに位相を変えて署名を別物に。
   偽 SDK を「順次削除（ずれる）」の厳しい仕様に変えて再現・修正（テスト 48 件）。実機で原因が上記かは未確認。
 
+- 2026-11-01 追加: 波線の各ストロークに `Element.userData = "spellink-wave:<ランダム>"` の印を付け、削除時はまず印で特定（点の読み取り不要）、
+  印が保存されない端末では署名照合に自動で戻る。診断「9. Marker (userData)」で端末が userData を保持するか確認できる（結果を `Send log to bridge`）。
+  ネイティブ側に `userData` キーはあるが、保存・読み戻しの可否は実機未確認。
+
 ## 未解決の質問・ユーザーの方針
 - 外出先: 利用者には何も求めない。**Spellink の中継サーバ（ADR 0010）を実装済み**。Go で運用する方針（ユーザー決定）。ホスティングはフェーズ 1 = この機械＋Cloudflare Tunnel を推奨（`docs/notes/research/2026-11-01-relay-hosting.md`）。ユーザーの Cloudflare 設定（ドメイン、`cloudflared tunnel login`）待ち。
 - 名前: **Spellink に決定**（2026-10-31）。リポジトリ内は置換済み。GitHub リポジトリ名と Go モジュールパス（`github.com/DaisukeMatsuoh/Spellink/bridge`）はユーザーが GitHub で改名した後に変更。開発機の設定は `~/.config/spellink-bridge/`、バイナリは `~/.local/bin/spellink-bridge`。

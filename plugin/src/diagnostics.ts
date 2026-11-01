@@ -9,6 +9,7 @@ import type {InkStroke} from './protocol';
 import {
   call,
   currentPen,
+  ensurePermissions,
   insertPageAfter,
   jumpToPage,
   noteContext,
@@ -66,7 +67,20 @@ export async function requestPermissions(log: Log): Promise<void> {
 }
 
 /** Cleartext HTTP and WebSocket reachability of every paired bridge URL. */
+/**
+ * The plugin may not touch the network (or read the note) until the user grants it; without
+ * this, connections fail on the device before ever reaching the bridge.
+ */
+async function withPermissions(log: Log): Promise<boolean> {
+  const missing = await ensurePermissions();
+  if (missing.length > 0) {
+    log(`permissions missing: ${missing.join(', ')}`);
+  }
+  return missing.length === 0;
+}
+
 export async function network(log: Log): Promise<void> {
+  await withPermissions(log);
   const loaded = await loadBridges();
   log(
     `bridges: ${
@@ -168,10 +182,10 @@ export async function textBoxTest(log: Log): Promise<void> {
         PluginNoteAPI.insertText({
           textContentFull: 'Spellink text box test / テキストボックスのテスト',
           textRect: {
-            left: width * 0.1,
-            top: height * 0.6,
-            right: width * 0.9,
-            bottom: height * 0.6 + 80,
+            left: Math.round(width * 0.1),
+            top: Math.round(height * 0.6),
+            right: Math.round(width * 0.9),
+            bottom: Math.round(height * 0.6) + 80,
           },
           fontSize: 32,
         }),
@@ -210,6 +224,7 @@ export async function reloadFile(log: Log): Promise<void> {
 
 /** Full pipeline minus OCR: a fixed question answered into the middle of the page. */
 export async function askWithoutLasso(log: Log): Promise<void> {
+  await withPermissions(log);
   const ctx = await noteContext().catch(() => null);
   if (!ctx) {
     return log('ask: no note open');
@@ -230,6 +245,7 @@ export async function askWithoutLasso(log: Log): Promise<void> {
 
 /** Sends the collected log to the bridge (reports.jsonl on the computer). */
 export async function sendReport(lines: string[], log: Log): Promise<void> {
+  await withPermissions(log);
   try {
     const conn = await connectFirst((await loadBridges()).endpoints);
     conn.send({type: 'report', data: {log: lines}});

@@ -30,6 +30,10 @@ export interface AskState {
 type Report = (s: AskState) => void;
 
 const LASSO_REMOVE = 2;
+/** Answers are inserted this many strokes at a time (about two or three characters). */
+const STROKES_PER_STEP = 10;
+const STEP_PAUSE_MS = 60;
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 /** Long answers continue on up to this many freshly inserted pages after the current one. */
 const MAX_EXTRA_PAGES = 2;
 
@@ -54,7 +58,7 @@ export function answerLayout(
   }
   return {
     x,
-    y: Math.round(rect.bottom + charSize * 0.6),
+    y: Math.min(size.height, Math.round(rect.bottom + charSize * 0.6)),
     width: size.width - margin - x,
     pageHeight: size.height,
     bottomMargin: margin,
@@ -148,9 +152,6 @@ export class AskFlow {
     ctx: NoteContext,
     update: (patch: Partial<AskState>) => void,
   ): Promise<void> {
-    if (layout.y + layout.charSize > layout.pageHeight - layout.bottomMargin) {
-      return update({message: t('noRoom'), finished: true, failed: true});
-    }
     const pen = await currentPen();
     update({message: t('connecting')});
     const {endpoints} = await loadBridges();
@@ -162,6 +163,16 @@ export class AskFlow {
     update({showProgress: this.conn.settings.showProgress});
     try {
       if (!this.cancelled) {
+        // No room under the selection: start on a fresh page right after this one.
+        if (
+          layout.y + layout.charSize >
+          layout.pageHeight - layout.bottomMargin
+        ) {
+          await insertPageAfter(ctx.filePath, ctx.page + 1, ctx.page);
+          await jumpToPage(ctx.page + 1);
+          ctx = {...ctx, page: ctx.page + 1};
+          layout = {...layout, y: layout.continueTop ?? layout.bottomMargin};
+        }
         await this.converse(question, layout, ctx, pen, update);
       }
     } finally {
@@ -191,8 +202,10 @@ export class AskFlow {
     let pagesReady = 1;
     // Ink drops mark where the answer will appear until its first line arrives.
     const drops = new InkDrops(
+      ctx.filePath,
       ctx.page,
       layout.x,
+      layout.width,
       Math.round(layout.y + layout.charSize * 0.8),
       layout.charSize,
       pen,
@@ -216,7 +229,18 @@ export class AskFlow {
           await jumpToPage(ctx.page + pagesReady);
           pagesReady++;
         }
-        await writeStrokes(strokes, ctx.page + pageOffset, pen);
+        // A few strokes at a time, so the answer is seen being written, not appearing whole.
+        for (let i = 0; i < strokes.length; i += STROKES_PER_STEP) {
+          if (this.cancelled) {
+            return;
+          }
+          await writeStrokes(
+            strokes.slice(i, i + STROKES_PER_STEP),
+            ctx.page + pageOffset,
+            pen,
+          );
+          await sleep(STEP_PAUSE_MS);
+        }
         written++;
         answer += text;
         update({message: t('writing', {lines: written}), answer});

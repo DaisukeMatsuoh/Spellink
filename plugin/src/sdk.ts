@@ -198,7 +198,7 @@ export async function writeStrokes(
   page: number,
   pen: PenStyle,
   timing?: WriteTiming,
-): Promise<void> {
+): Promise<string[]> {
   const mode = await probeFillMode();
   const elements: Element[] = [];
   try {
@@ -239,6 +239,7 @@ export async function writeStrokes(
     if (timing) {
       timing.insert += Date.now() - t;
     }
+    return elements.map(e => e.uuid);
   } finally {
     for (const e of elements) {
       PluginCommAPI.recycleElement(e.uuid);

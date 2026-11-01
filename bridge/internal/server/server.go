@@ -287,6 +287,7 @@ func (s *session) startAsk(ctx context.Context, m *protocol.ClientMessage) {
 
 func (s *session) answer(ctx, askCtx context.Context, stop context.CancelFunc, id, q, lang string, layout ink.Layout) {
 	started := time.Now()
+	layout.Tilt = s.deps.Settings().LineTilt
 	composer := ink.NewComposer(s.deps.Font, layout, seedFrom(id))
 	emit := func(lines []ink.Line) {
 		for _, l := range lines {

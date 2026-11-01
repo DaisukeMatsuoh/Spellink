@@ -18,7 +18,13 @@ type Layout struct {
 	// more = continue at ContinueTop on newly inserted pages. 0 means 1.
 	MaxPages    int     `json:"maxPages,omitempty"`
 	ContinueTop float64 `json:"continueTop,omitempty"`
+	// Tilt gives every line a slightly different slope, like a hand writing without ruled
+	// lines. Set by the bridge from the user's settings, not by the plugin.
+	Tilt bool `json:"-"`
 }
+
+// Standard deviation of a line's slope when Tilt is on (≈0.3°).
+const tiltSigma = 0.005
 
 // Line is one finished line of handwriting. Page is relative to the starting page (0, 1, …).
 type Line struct {
@@ -210,6 +216,14 @@ func (c *Composer) emit(out *[]Line) {
 		}
 		x += p.advance
 		text.WriteRune(p.ch)
+	}
+	if c.layout.Tilt {
+		slope := c.rng.Gaussian() * tiltSigma
+		for _, s := range strokes {
+			for i := 0; i < len(s.P); i += 2 {
+				s.P[i+1] += int(math.Round((float64(s.P[i]) - c.layout.X) * slope))
+			}
+		}
 	}
 	*out = append(*out, Line{Index: c.emitted, Page: c.page, Text: text.String(), Strokes: strokes})
 	c.emitted++

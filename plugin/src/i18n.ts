@@ -25,6 +25,9 @@ const STRINGS = {
     showProgress: 'Show progress panel (debug)',
     showProgressHelp:
       'Off: the answer is simply written onto the page. The panel still opens when something goes wrong.',
+    lineTilt: 'Tilt lines slightly',
+    lineTiltHelp:
+      'Each written line gets a slightly different slope, like writing without ruled lines.',
     connectedTo: 'Connected to {name}',
     saved: 'Saved.',
   },
@@ -52,6 +55,9 @@ const STRINGS = {
     showProgress: '進捗パネルを表示（デバッグ）',
     showProgressHelp:
       'OFF のときは、回答をそのままページに書き込みます。エラーのときだけパネルが開きます。',
+    lineTilt: '行をわずかに傾ける',
+    lineTiltHelp:
+      '罫線なしで書いたときのように、行ごとに少しだけ傾きを変えます。',
     connectedTo: '{name} に接続しました',
     saved: '保存しました。',
   },

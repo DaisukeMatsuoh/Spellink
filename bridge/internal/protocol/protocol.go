@@ -33,6 +33,8 @@ type Settings struct {
 	// ShowProgress opens the progress panel while answering (debug view). Off: the answer is
 	// just written onto the page; the panel appears only on errors.
 	ShowProgress bool `json:"showProgress"`
+	// LineTilt lets each written line slope slightly, for a more handwritten look.
+	LineTilt bool `json:"lineTilt"`
 }
 
 // SettingsReply confirms a setSettings.

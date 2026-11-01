@@ -217,7 +217,24 @@ func proportional(strokes [][]float64, bearing float64) ink.Glyph {
 
 // fullWidth keeps CJK glyphs near-square but tightens narrow ones (kana, punctuation) around
 // their ink so lines read like natural Japanese handwriting.
+// Hiragana are written a little smaller than kanji, sitting on the same bottom line — the
+// balance Japanese readers find natural in handwriting.
+const (
+	hiraganaScale = 0.85
+	cjkBottomLine = 0.9 * em
+)
+
 func fullWidth(strokes [][]float64, r rune) ink.Glyph {
+	if r >= 0x3041 && r <= 0x309f {
+		minX, maxX := xRange(strokes)
+		cx := (minX + maxX) / 2
+		for _, s := range strokes {
+			for i := 0; i < len(s); i += 2 {
+				s[i] = cx + (s[i]-cx)*hiraganaScale
+				s[i+1] = cjkBottomLine - (cjkBottomLine-s[i+1])*hiraganaScale
+			}
+		}
+	}
 	isPunct := (r >= 0x3000 && r <= 0x303f) || (r >= 0xff00 && r <= 0xff0f)
 	minX, maxX := xRange(strokes)
 	minW := 0.8 * em

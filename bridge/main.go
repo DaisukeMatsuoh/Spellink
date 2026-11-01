@@ -142,13 +142,14 @@ func serve() error {
 		Settings: func() protocol.Settings {
 			settingsMu.Lock()
 			defer settingsMu.Unlock()
-			return protocol.Settings{ShowProgress: cfg.ShowProgress}
+			return protocol.Settings{ShowProgress: cfg.ShowProgress, LineTilt: cfg.LineTiltOn()}
 		},
 		SetSettings: func(s protocol.Settings) error {
 			settingsMu.Lock()
 			defer settingsMu.Unlock()
 			cfg.ShowProgress = s.ShowProgress
-			logger.Printf("settings changed: showProgress=%v", s.ShowProgress)
+			cfg.LineTilt = &s.LineTilt
+			logger.Printf("settings changed: showProgress=%v lineTilt=%v", s.ShowProgress, s.LineTilt)
 			return config.Save(cfg)
 		},
 	}

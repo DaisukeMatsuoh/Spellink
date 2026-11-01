@@ -27,6 +27,8 @@ export interface InkStroke {
 export interface Settings {
   /** Open the progress panel while answering; off = just write onto the page. */
   showProgress: boolean;
+  /** Let each written line slope slightly, for a more handwritten look. */
+  lineTilt: boolean;
 }
 
 export type ClientMessage =

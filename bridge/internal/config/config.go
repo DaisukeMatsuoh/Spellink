@@ -31,7 +31,12 @@ type Config struct {
 	RelayURL string `json:"relayUrl,omitempty"`
 	// ShowProgress is the plugin's debug view setting (protocol.Settings), changed from the plugin.
 	ShowProgress bool `json:"showProgress,omitempty"`
+	// LineTilt defaults to on; nil means "not set".
+	LineTilt *bool `json:"lineTilt,omitempty"`
 }
+
+// LineTiltOn reports the line-tilt setting, on unless turned off.
+func (c *Config) LineTiltOn() bool { return c.LineTilt == nil || *c.LineTilt }
 
 // Save writes the config back (used when the plugin changes a setting).
 func Save(c *Config) error {

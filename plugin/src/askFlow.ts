@@ -1,5 +1,6 @@
 import {PluginCommAPI} from 'sn-plugin-lib';
 import {connectFirst, type BridgeConnection} from './bridgeClient';
+import {InkDrops} from './inkDrops';
 import {loadBridges} from './bridgeConfig';
 import {t} from './i18n';
 import type {BridgeMessage, InkStroke, Lang, LayoutParams} from './protocol';
@@ -188,12 +189,24 @@ export class AskFlow {
     let written = 0;
     let answer = '';
     let pagesReady = 1;
+    // Ink drops mark where the answer will appear until its first line arrives.
+    const drops = new InkDrops(
+      ctx.page,
+      layout.x,
+      Math.round(layout.y + layout.charSize * 0.8),
+      layout.charSize,
+      pen,
+    );
+    let dropsCleared: Promise<void> | null = null;
+    const clearDrops = () => (dropsCleared ??= drops.stop());
+    drops.start();
     const writeLine = (
       strokes: InkStroke[],
       text: string,
       pageOffset: number,
     ) => {
       writes = writes.then(async () => {
+        await clearDrops();
         if (this.cancelled) {
           return;
         }
@@ -247,6 +260,6 @@ export class AskFlow {
         lang: questionLang(question),
         layout,
       });
-    });
+    }).finally(clearDrops);
   }
 }

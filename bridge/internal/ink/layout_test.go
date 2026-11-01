@@ -142,3 +142,20 @@ func TestFontRoundTrip(t *testing.T) {
 		t.Fatal("expected error for bad magic")
 	}
 }
+
+func TestTiltSlopesLinesButKeepsTheirStart(t *testing.T) {
+	l := testLayout
+	l.Width = 5000 // one long line
+	flat, _ := compose("ああああああああああ", l)
+	l.Tilt = true
+	tilted, _ := compose("ああああああああああ", l)
+	// Same seed: the first glyph (near X) barely moves, the last one moves more.
+	first := func(ls []Line) int { return ls[0].Strokes[0].P[1] }
+	last := func(ls []Line) int { s := ls[0].Strokes[len(ls[0].Strokes)-1]; return s.P[1] }
+	if d := first(tilted) - first(flat); d < -1 || d > 1 {
+		t.Fatalf("line start should stay put, moved %d", d)
+	}
+	if last(tilted) == last(flat) {
+		t.Fatal("tilt had no effect at the end of the line")
+	}
+}

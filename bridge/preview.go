@@ -32,7 +32,7 @@ func preview(args []string) error {
 	const w, h = 1404, 1872 // Nomad
 	c := ink.NewComposer(font, ink.Layout{
 		X: 80, Y: 80, Width: w - 160, PageHeight: h, BottomMargin: 80, CharSize: size,
-		MaxPages: pages, ContinueTop: 80,
+		MaxPages: pages, ContinueTop: 80, Tilt: true, // as with the default settings
 	}, 1)
 	lines := append(c.Push(args[0]), c.Finish()...)
 

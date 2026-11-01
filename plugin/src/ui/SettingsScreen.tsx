@@ -38,14 +38,17 @@ export function SettingsScreen() {
     return () => c?.close();
   }, []);
 
-  const toggle = useCallback(() => {
-    if (conn && settings) {
-      conn.send({
-        type: 'setSettings',
-        settings: {...settings, showProgress: !settings.showProgress},
-      });
-    }
-  }, [conn, settings]);
+  const toggle = useCallback(
+    (key: keyof Settings) => {
+      if (conn && settings) {
+        conn.send({
+          type: 'setSettings',
+          settings: {...settings, [key]: !settings[key]},
+        });
+      }
+    },
+    [conn, settings],
+  );
 
   return (
     <View style={styles.screen}>
@@ -57,10 +60,18 @@ export function SettingsScreen() {
           label={`${t('showProgress')}: ${
             settings?.showProgress ? 'ON' : 'OFF'
           }`}
-          onPress={toggle}
+          onPress={() => toggle('showProgress')}
         />
       </View>
       <Text style={styles.small}>{t('showProgressHelp')}</Text>
+      <View style={styles.row}>
+        <Button
+          disabled={!settings}
+          label={`${t('lineTilt')}: ${settings?.lineTilt ? 'ON' : 'OFF'}`}
+          onPress={() => toggle('lineTilt')}
+        />
+      </View>
+      <Text style={styles.small}>{t('lineTiltHelp')}</Text>
       <View style={styles.row}>
         <Button label={t('diagButton')} onPress={() => show('diagnostics')} />
         <Button

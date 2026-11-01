@@ -193,6 +193,7 @@ export function connectFirst(
           resolve(
             new BridgeConnection(ws, channel, m.bridge, url, mode, {
               showProgress: m.settings?.showProgress ?? false,
+              lineTilt: m.settings?.lineTilt ?? true,
             }),
           );
         };

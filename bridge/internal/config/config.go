@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -61,7 +62,7 @@ func Load() (*Config, error) {
 	if err == nil {
 		c := &Config{}
 		if err := json.Unmarshal(b, c); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s: %w", file, err)
 		}
 		if c.Port == 0 {
 			c.Port = 8765

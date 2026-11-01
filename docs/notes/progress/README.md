@@ -64,7 +64,10 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
 - 権限: 初期状態は 3 つとも 0。`getPageSize` は FILE:READ が要る。**INTERNET を許可しないと通信は端末内で止まる**（診断の通信系が権限を求めていなかったバグ → 修正済み）。
 - `insertText` の座標は整数でないと拒否される（107）→ 修正済み。
 - `canHandwrite` はプラグイン画面表示中は false。
-- まだ: ブリッジとの通信（平文 ws / Noise）、日本語 OCR、ラッソからの一連の流れ。
+- **通信: PluginHost は平文の http/ws を禁止**（ネットワークセキュリティポリシー）。`.local` も解決できない。→ **wss://（公的 CA）必須**。家の中でも Cloudflare 経由（ADR 0007 追記）。
+- 検証用に Cloudflare クイックトンネル（`/tmp/cfd/cloudflared tunnel --url http://127.0.0.1:8765`、一時 URL、ユーザー承認済み・検証限定）を張り、`extraUrls` に入れてプラグインをビルド。正式運用はユーザーのドメインで名前付きトンネル（無料プラン）。
+- 開発機の `~/.config/spellink-bridge/config.json` にユーザーが `"model": "haiku"` を追加済み（カンマ抜けを修正）。
+- まだ: 端末からトンネル経由での接続、日本語 OCR、ラッソからの一連の流れ。
 
 ## 未解決の質問・ユーザーの方針
 - 外出先: 利用者には何も求めない。**Spellink の中継サーバ（ADR 0010）を実装済み**。Go で運用する方針（ユーザー決定）。ホスティングはフェーズ 1 = この機械＋Cloudflare Tunnel を推奨（`docs/notes/research/2026-11-01-relay-hosting.md`）。ユーザーの Cloudflare 設定（ドメイン、`cloudflared tunnel login`）待ち。

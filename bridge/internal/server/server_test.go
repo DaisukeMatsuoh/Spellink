@@ -155,3 +155,22 @@ func TestValidLayout(t *testing.T) {
 		t.Error("nil layout accepted")
 	}
 }
+
+func TestProxiedConnectionsMustBeEncrypted(t *testing.T) {
+	url := startTest(t, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+		HTTPHeader: map[string][]string{"Cf-Connecting-Ip": {"203.0.113.9"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+	b, _ := json.Marshal(hello)
+	_ = c.Write(ctx, websocket.MessageText, b)
+	_, reply, err := c.Read(ctx)
+	if err != nil || !strings.Contains(string(reply), "unauthorized") {
+		t.Fatalf("plaintext hello through a proxy should be refused, got %q %v", reply, err)
+	}
+}

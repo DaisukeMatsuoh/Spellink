@@ -58,7 +58,10 @@ func Handler(d Deps) http.Handler {
 		if err != nil {
 			return
 		}
-		ServeConn(r.Context(), d, c, r.RemoteAddr, false)
+		// Anything arriving through a proxy or tunnel (e.g. Cloudflare) has crossed the internet:
+		// only the end-to-end encrypted handshake is accepted there.
+		proxied := r.Header.Get("Cf-Connecting-Ip") != "" || r.Header.Get("X-Forwarded-For") != ""
+		ServeConn(r.Context(), d, c, r.RemoteAddr, proxied)
 	})
 	return mux
 }

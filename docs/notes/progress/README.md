@@ -77,6 +77,10 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
 - 応答時間の内訳（ROCK 5B+、haiku）: Claude Code CLI の起動 1.3〜1.5 秒 ＋ API の最初の応答 0.9〜1.2 秒 ＋ 生成。端末側はトンネル経由の接続に 0.5〜2 秒。
   改善候補: CLI を事前起動しておく（約 1.3 秒短縮見込み）、LAN 直結（独自ドメインの証明書で wss、ADR 0007）。
 
+- 2026-11-01 追加: 半角の字間拡大、行の途中書き（8 文字ごと、単語の途中は切らない）。LAN 直結 wss（ADR 0011）を実装（`lan` 設定、certmagic）。
+  **実証明書は未確認**: ユーザーが Cloudflare のドメインと API トークン（Zone→DNS→編集）を `config.json` の `lan` に入れたら動作確認する。
+  応答が一斉に出て見えるのは、回答が短い／Claude が約 8 文字ずつ塊で返す／e-ink がまとめて描くため。設計（行ごと挿入）どおり。
+
 ## 未解決の質問・ユーザーの方針
 - 外出先: 利用者には何も求めない。**Spellink の中継サーバ（ADR 0010）を実装済み**。Go で運用する方針（ユーザー決定）。ホスティングはフェーズ 1 = この機械＋Cloudflare Tunnel を推奨（`docs/notes/research/2026-11-01-relay-hosting.md`）。ユーザーの Cloudflare 設定（ドメイン、`cloudflared tunnel login`）待ち。
 - 名前: **Spellink に決定**（2026-10-31）。リポジトリ内は置換済み。GitHub リポジトリ名と Go モジュールパス（`github.com/DaisukeMatsuoh/Spellink/bridge`）はユーザーが GitHub で改名した後に変更。開発機の設定は `~/.config/spellink-bridge/`、バイナリは `~/.local/bin/spellink-bridge`。

@@ -25,6 +25,7 @@ import (
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/config"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/glyphbuild"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/lantls"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/relay"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/server"
@@ -74,6 +75,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+}
+
+func dir0() string {
+	d, _ := config.Dir()
+	return d
 }
 
 func buildGlyphs() (*ink.Font, error) {
@@ -163,12 +169,6 @@ func serve() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go func() {
-		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shutdown)
-	}()
 
 	if cfg.RelayURL != "" {
 		go relay.Connect(ctx, cfg.RelayURL, cfg.Token, func(ctx context.Context, c *websocket.Conn, peer string) {
@@ -176,11 +176,38 @@ func serve() error {
 		}, logger)
 	}
 
+	// Direct wss:// on the LAN (a plugin refuses cleartext and untrusted certificates).
+	var lanSrv *http.Server
+	if cfg.LAN != nil {
+		cfg.LAN.StorageDir = filepath.Join(dir0(), "certs")
+		tlsCfg, err := lantls.Setup(ctx, cfg.LAN)
+		if err != nil {
+			logger.Printf("lan wss disabled: %v", err)
+		} else {
+			lanSrv = &http.Server{Addr: ":8766", Handler: handler, TLSConfig: tlsCfg, ReadHeaderTimeout: 10 * time.Second}
+			go func() {
+				if err := lanSrv.ListenAndServeTLS("", ""); !errors.Is(err, http.ErrServerClosed) {
+					logger.Printf("lan wss: %v", err)
+				}
+			}()
+			logger.Printf("lan wss: wss://%s:8766%s", cfg.LAN.Host, protocol.WSPath)
+		}
+	}
+
 	dir, _ := config.Dir()
 	logger.Printf("spellink-bridge %s %q listening on port %d (config: %s)", version, cfg.Name, cfg.Port, dir)
 	for _, u := range pairURLs(cfg) {
 		logger.Printf("  %s", u)
 	}
+	go func() {
+		<-ctx.Done()
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdown)
+		if lanSrv != nil {
+			_ = lanSrv.Shutdown(shutdown)
+		}
+	}()
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -217,6 +244,9 @@ func pairURLs(cfg *config.Config) []string {
 	urls := append(candidateURLs(cfg.Port), cfg.ExtraURLs...)
 	if cfg.RelayURL != "" {
 		urls = append(urls, relay.ClientURL(cfg.RelayURL, cfg.Token))
+	}
+	if cfg.LAN != nil && cfg.LAN.Host != "" {
+		urls = append([]string{fmt.Sprintf("wss://%s:8766%s", cfg.LAN.Host, protocol.WSPath)}, urls...)
 	}
 	return urls
 }

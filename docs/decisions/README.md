@@ -15,3 +15,4 @@
 | [0008](0008-bridge-in-go.md) | ブリッジを Go で実装し、単一バイナリで配る | Accepted |
 | [0009](0009-long-answers-continue-on-new-pages.md) | 長い回答は字数を合わせ、溢れたら直後に挿入したページへ続ける | Proposed |
 | [0010](0010-rendezvous-relay.md) | 外出先からの接続は Spellink の中継サーバ（ランデブー）で受け持つ | Proposed |
+| [0011](0011-lan-direct-wss.md) | 家の中は Let's Encrypt 証明書つきの wss:// で直接つなぐ | Proposed |

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/lantls"
 	"io/fs"
 	"math"
 	mrand "math/rand/v2"
@@ -38,6 +39,9 @@ type Config struct {
 	// TiltDegrees is this agent's handwriting slope (positive rises to the right), picked at
 	// random the first time so every agent has its own habit. Edit to taste.
 	TiltDegrees *float64 `json:"tiltDegrees,omitempty"`
+	// LAN enables direct wss:// at home with a Let's Encrypt certificate for a name that points
+	// at this machine's LAN address (internal/lantls). Empty disables it.
+	LAN *lantls.Config `json:"lan,omitempty"`
 }
 
 // ensureTilt gives a new agent its writing habit: mostly gentle, sometimes more pronounced.

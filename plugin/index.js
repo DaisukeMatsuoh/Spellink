@@ -1,6 +1,5 @@
 import {AppRegistry, Image} from 'react-native';
 import {PluginManager} from 'sn-plugin-lib';
-import App from './App';
 import {name as appName} from './app.json';
 import {buttonName, startLocaleTracking} from './src/i18n';
 import {show} from './src/session';
@@ -13,7 +12,9 @@ const SHOW_UI = 1;
 const ASK_BUTTON_ID = 200;
 const DIAGNOSTICS_BUTTON_ID = 900;
 
-AppRegistry.registerComponent(appName, () => App);
+// The UI (and the crypto it pulls in) loads only when a button opens it, so a failure there
+// can never stop the buttons below from being registered.
+AppRegistry.registerComponent(appName, () => require('./App').default);
 
 PluginManager.init();
 startLocaleTracking();

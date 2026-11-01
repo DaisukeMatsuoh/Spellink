@@ -53,6 +53,19 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
 - Go ツールチェーンは `~/.local/go`（PATH に入っていないので `export PATH=$HOME/.local/go/bin:$PATH`）。
 - `plugin/PluginConfig.json` の `pluginID` は変更禁止。生成物 `plugin/build/`・`bridge/dist/` は git 管理外。
 
+## 実機での確認結果（2026-11-01、Nomad / Chauvet 3.31.45）
+- **注意: OS 更新後は新しいノートで試すこと。** 更新前に作ったノートではプラグインのボタンが出なかった（左ツールバーにパズルのアイコンが出ない）。
+- ボタンの場所: 左ツールバーのパズル（プラグイン）→ 一覧。ラッソ用はラッソツールバーの「…」の中。
+- 合成ストローク: **挿入でき、閉じなくても即座に画面に出る**（`reloadFile` は不要）。点列は一括書き込み（bulk）が動く。
+  速度: 200 本×30 点で 2.0 秒（作成 415ms / 点列 872ms / 挿入 707ms）≒ 1 本 10ms。300 字（約 2,000 本）で約 20 秒の見込み → 行ごとの逐次挿入で体感を補う。遅ければネイティブ化を検討。
+- ペン: `{"color":0,"width":200,"type":10}`。この値で普通の線の太さになった。
+- 新ページ: `insertNotePage` 117ms、新ページへの書き込みと `jumpToPage` も動く（ADR 0009 の仕組みは実機で成立）。
+- JS エンジン: `BigInt` あり、`crypto.getRandomValues` なし（代替乱数を使用）、`TextEncoder` あり、`TextDecoder` なし（自前の UTF-8 で対応済み）。
+- 権限: 初期状態は 3 つとも 0。`getPageSize` は FILE:READ が要る。**INTERNET を許可しないと通信は端末内で止まる**（診断の通信系が権限を求めていなかったバグ → 修正済み）。
+- `insertText` の座標は整数でないと拒否される（107）→ 修正済み。
+- `canHandwrite` はプラグイン画面表示中は false。
+- まだ: ブリッジとの通信（平文 ws / Noise）、日本語 OCR、ラッソからの一連の流れ。
+
 ## 未解決の質問・ユーザーの方針
 - 外出先: 利用者には何も求めない。**Spellink の中継サーバ（ADR 0010）を実装済み**。Go で運用する方針（ユーザー決定）。ホスティングはフェーズ 1 = この機械＋Cloudflare Tunnel を推奨（`docs/notes/research/2026-11-01-relay-hosting.md`）。ユーザーの Cloudflare 設定（ドメイン、`cloudflared tunnel login`）待ち。
 - 名前: **Spellink に決定**（2026-10-31）。リポジトリ内は置換済み。GitHub リポジトリ名と Go モジュールパス（`github.com/DaisukeMatsuoh/Spellink/bridge`）はユーザーが GitHub で改名した後に変更。開発機の設定は `~/.config/spellink-bridge/`、バイナリは `~/.local/bin/spellink-bridge`。
@@ -61,6 +74,7 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
 
 ## 作業ログ
 - 2026-10-30: 公式ドキュメント全 154 ページ、sn-plugin-lib 0.2.3 / テンプレート 1.0.13 のソース、先行プラグイン（sn-copilot, sn-dictionary, supernote-plugin-research）を調査。docs 一式を作成。
+- 2026-11-01: 実機で診断（ストローク挿入・新ページは成功、通信は権限未許可で未到達 → 修正）。
 - 2026-11-01: Noise による端末⇔ブリッジ間の暗号化（Go＋TS、相互接続確認）、中継サーバと中継経由接続を実装（実 Claude Code で確認）。ホスティング調査。
 - 2026-10-31: 名前を Spellink に決定・置換。外出先接続の方針を中継サーバ（ADR 0010）に。
 - 2026-10-31: 名前の候補出し、外出先アクセスの整理、ブリッジ設定 `extraUrls` を追加。

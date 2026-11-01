@@ -303,6 +303,8 @@ export async function pageBoxes(
   filePath: string,
   page: number,
   budgetMs: number,
+  /** Ignore elements numbered above this (ones we drew after the baseline was taken). */
+  maxNum = Infinity,
 ): Promise<Box[]> {
   const deadline = Date.now() + budgetMs;
   const elements =
@@ -314,6 +316,9 @@ export async function pageBoxes(
   try {
     const strokes: Element[] = [];
     for (const e of elements) {
+      if (e.numInPage > maxNum) {
+        continue;
+      }
       if (e.type === 100 && e.title) {
         boxes.push({
           left: e.title.X,

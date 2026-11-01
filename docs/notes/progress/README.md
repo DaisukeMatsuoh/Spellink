@@ -91,6 +91,10 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
   カバレッジ: ブリッジ 64.9%、プラグイン 70.9%（行）。CI（`bridge.yml` / `plugin.yml`）でサマリを表示し、下限 60% を割ると失敗。
   テストで見つかった実バグ: Claude Code のキャンセルでプロセスが戻らない（`WaitDelay` を追加）、診断レポートの保存先ディレクトリが無いと失敗。
 
+- 2026-11-01 追加: **波線を質問の認識の直後に開始**（ブリッジ接続・ページ読み取りを待たない。数秒短縮）。
+  明らかに余白がないときは接続前に新ページへ移って開始。読み取りで余白なしと分かったら、波線を消して新ページで描き直す。
+  ページ読み取りは「開始前の要素数」以下の要素だけを対象にし、自分の波線を障害物と誤認しない。テスト 44 件（プラグイン）。
+
 ## 未解決の質問・ユーザーの方針
 - 外出先: 利用者には何も求めない。**Spellink の中継サーバ（ADR 0010）を実装済み**。Go で運用する方針（ユーザー決定）。ホスティングはフェーズ 1 = この機械＋Cloudflare Tunnel を推奨（`docs/notes/research/2026-11-01-relay-hosting.md`）。ユーザーの Cloudflare 設定（ドメイン、`cloudflared tunnel login`）待ち。
 - 名前: **Spellink に決定**（2026-10-31）。リポジトリ内は置換済み。GitHub リポジトリ名と Go モジュールパス（`github.com/DaisukeMatsuoh/Spellink/bridge`）はユーザーが GitHub で改名した後に変更。開発機の設定は `~/.config/spellink-bridge/`、バイナリは `~/.local/bin/spellink-bridge`。

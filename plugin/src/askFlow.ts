@@ -132,6 +132,7 @@ export class AskFlow {
     question: string,
     layout: LayoutParams,
     ctx: NoteContext,
+    selection?: Box,
   ): Promise<void> {
     const state: AskState = {message: '', question, finished: false};
     const update = (patch: Partial<AskState>) => {
@@ -139,7 +140,7 @@ export class AskFlow {
       this.report({...state});
     };
     try {
-      await this.answer(question, layout, ctx, update);
+      await this.answer(question, layout, ctx, update, selection);
     } catch (e) {
       update({
         message: t('error', {message: (e as Error).message}),
@@ -157,46 +158,103 @@ export class AskFlow {
     selection?: Box,
   ): Promise<void> {
     const pen = await currentPen();
-    // Read the page while connecting: where is there room below the selection?
-    const scan = selection
-      ? pageBoxes(ctx.filePath, ctx.page, SCAN_BUDGET_MS).catch(
-          () => [] as Box[],
-        )
-      : Promise.resolve([] as Box[]);
-    update({message: t('connecting')});
-    const {endpoints} = await loadBridges();
-    try {
-      this.conn = await connectFirst(endpoints);
-    } catch {
-      return update({message: t('noBridge'), finished: true, failed: true});
+    // Number of elements on the page now: the baseline for the thinking wave, and the limit for
+    // reading existing content (so the wave we are about to draw is never mistaken for it).
+    const base = await elementCount(ctx.filePath, ctx.page).catch(() => null);
+
+    // The wave must not start before we know where the answer goes: if there is plainly no room
+    // under the selection, go to a fresh page right away.
+    const pageBottom = layout.pageHeight - layout.bottomMargin;
+    const newPage = async () => {
+      await insertPageAfter(ctx.filePath, ctx.page + 1, ctx.page);
+      await jumpToPage(ctx.page + 1);
+      ctx = {...ctx, page: ctx.page + 1};
+      layout = {...layout, y: layout.continueTop ?? layout.bottomMargin};
+      return elementCount(ctx.filePath, ctx.page).catch(() => null);
+    };
+    let waveBase = base;
+    const obviouslyFull = layout.y + layout.charSize > pageBottom;
+    if (obviouslyFull) {
+      waveBase = await newPage();
     }
-    update({showProgress: this.conn.settings.showProgress});
+    // Read the page while connecting: where is there room below the selection?
+    const scan =
+      selection && !obviouslyFull
+        ? pageBoxes(
+            ctx.filePath,
+            ctx.page,
+            SCAN_BUDGET_MS,
+            base ?? Infinity,
+          ).catch(() => [] as Box[])
+        : Promise.resolve([] as Box[]);
+    // Start the wave now, not after connecting: that wait is several seconds.
+    let wave = this.startWave(ctx, layout, pen, waveBase);
+
     try {
-      if (!this.cancelled) {
+      update({message: t('connecting')});
+      const {endpoints} = await loadBridges();
+      try {
+        this.conn = await connectFirst(endpoints);
+      } catch {
+        return update({message: t('noBridge'), finished: true, failed: true});
+      }
+      update({showProgress: this.conn.settings.showProgress});
+      if (this.cancelled) {
+        return;
+      }
+      if (!obviouslyFull) {
         const limit = selection
           ? freeLimit(
               await scan,
               selection,
               {left: layout.x, right: layout.x + layout.width},
               layout.y,
-              layout.pageHeight - layout.bottomMargin,
+              pageBottom,
               layout.charSize * 0.4,
             )
-          : layout.pageHeight - layout.bottomMargin;
-        // No room under the selection (page end or existing writing): start on a fresh page.
+          : pageBottom;
         if (limit - layout.y < layout.charSize) {
-          await insertPageAfter(ctx.filePath, ctx.page + 1, ctx.page);
-          await jumpToPage(ctx.page + 1);
-          ctx = {...ctx, page: ctx.page + 1};
-          layout = {...layout, y: layout.continueTop ?? layout.bottomMargin};
+          // Existing writing right below the selection: move the wave and the answer to a new page.
+          await wave.stop();
+          const nb = await newPage();
+          wave = this.startWave(ctx, layout, pen, nb);
         } else {
           layout = {...layout, startLimit: Math.round(limit)};
         }
-        await this.converse(question, layout, ctx, pen, update);
       }
+      await this.converse(question, layout, ctx, pen, update, wave);
     } finally {
-      this.conn.close();
+      await wave.stop();
+      this.conn?.close();
     }
+  }
+
+  /**
+   * A wavy line is drawn where the answer will appear until its first line arrives. It needs the
+   * page's element count from before it started; without one there is no animation (never guess).
+   */
+  private startWave(
+    ctx: NoteContext,
+    layout: LayoutParams,
+    pen: Awaited<ReturnType<typeof currentPen>>,
+    base: number | null,
+  ): {stop: () => Promise<void>} {
+    if (base === null || this.cancelled) {
+      return {stop: async () => {}};
+    }
+    const drops = new InkDrops(
+      ctx.filePath,
+      ctx.page,
+      layout.x,
+      layout.width,
+      Math.round(layout.y + layout.charSize * 0.8),
+      layout.charSize,
+      pen,
+      base,
+    );
+    drops.start();
+    let stopped: Promise<void> | null = null;
+    return {stop: () => (stopped ??= drops.stop())};
   }
 
   /**
@@ -210,6 +268,7 @@ export class AskFlow {
     ctx: NoteContext,
     pen: Awaited<ReturnType<typeof currentPen>>,
     update: (patch: Partial<AskState>) => void,
+    wave: {stop: () => Promise<void>},
   ): Promise<void> {
     const conn = this.conn!;
     this.id = `${Date.now().toString(36)}-${Math.random()
@@ -219,26 +278,7 @@ export class AskFlow {
     let written = 0;
     let answer = '';
     let pagesReady = 1;
-    // A wave is drawn where the answer will appear until its first line arrives. It needs the
-    // page's current element count as a baseline; without one there is no animation (never guess).
-    const drops: Promise<InkDrops | null> = elementCount(ctx.filePath, ctx.page)
-      .then(base => {
-        const d = new InkDrops(
-          ctx.filePath,
-          ctx.page,
-          layout.x,
-          layout.width,
-          Math.round(layout.y + layout.charSize * 0.8),
-          layout.charSize,
-          pen,
-          base,
-        );
-        d.start();
-        return d;
-      })
-      .catch(() => null);
-    let dropsCleared: Promise<void> | null = null;
-    const clearDrops = () => (dropsCleared ??= drops.then(d => d?.stop()));
+    const clearDrops = () => wave.stop();
     const writeLine = (
       strokesIn: InkStroke[] | null,
       text: string,

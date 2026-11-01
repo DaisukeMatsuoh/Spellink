@@ -1,5 +1,9 @@
-// In-memory stand-in for the Supernote SDK, used by the unit tests. It models one note page
-// list with strokes, so code that inserts and deletes elements can be tested for real.
+// In-memory stand-in for the Supernote SDK, used by the unit tests.
+//
+// It models the rule the SDK documents: edits to the open note go to an in-memory cache
+// (`pages`) and reach the file (`file`) only on saveCurrentNote(). File-level APIs read and
+// write the file; a file-level write such as insertNotePage reloads the cache from the file, so
+// anything not saved first is lost.
 type Pt = {x: number; y: number};
 
 class Accessor<T> {
@@ -39,44 +43,53 @@ export class Element {
   } | null = null;
 }
 
+const copyPages = (m: Map<number, Element[]>) =>
+  new Map([...m].map(([k, list]) => [k, list.map(e => Object.assign(new Element(), e))]));
+
 let nextUuid = 1;
 export const fakeNote = {
-  /** pages[page] = elements on that page, in order. */
+  /** What the app shows and the Comm APIs edit (the in-memory cache). */
   pages: new Map<number, Element[]>(),
+  /** What is on disk; file-level APIs read this. */
+  file: new Map<number, Element[]>(),
   deleted: [] as number[],
   currentPage: 0,
   inserted: [] as number[],
+  saves: 0,
   /** Simulate a delete that reports success but removes nothing. */
   ignoreNextDelete: false,
   /** Simulate a device that does not keep Element.userData. */
   dropUserData: false,
   reset() {
     this.pages = new Map();
+    this.file = new Map();
     this.deleted = [];
     this.currentPage = 0;
     this.inserted = [];
+    this.saves = 0;
     this.ignoreNextDelete = false;
+    this.dropUserData = false;
     nextUuid = 1;
   },
-  /** Adds a stroke the way the user's pen would. */
+  /** Adds a stroke the way the user's pen would: into the cache, not yet saved. */
   addUserStroke(page: number, points: Pt[]) {
     const list = this.pages.get(page) ?? [];
     const e = new Element();
     e.uuid = `user-${nextUuid++}`;
-    e.stroke = {
-      penType: 10,
-      penColor: 0,
-      points: new Accessor<Pt>(),
-      pressures: new Accessor<number>(),
-    };
+    e.stroke = {penType: 10, penColor: 0, points: new Accessor<Pt>(), pressures: new Accessor<number>()};
     e.stroke.points.data = points;
     e.numInPage = list.length + 1;
     list.push(e);
     this.pages.set(page, list);
     return e;
   },
+  /** What the user sees on a page. */
   strokes(page: number) {
     return this.pages.get(page) ?? [];
+  },
+  /** What is saved on a page. */
+  saved(page: number) {
+    return this.file.get(page) ?? [];
   },
 };
 
@@ -87,12 +100,7 @@ export const PluginCommAPI = {
     const e = new Element();
     e.type = type;
     e.uuid = `new-${nextUuid++}`;
-    e.stroke = {
-      penType: 10,
-      penColor: 0,
-      points: new Accessor<Pt>(),
-      pressures: new Accessor<number>(),
-    };
+    e.stroke = {penType: 10, penColor: 0, points: new Accessor<Pt>(), pressures: new Accessor<number>()};
     return ok(e);
   },
   async insertPageElements(elements: Element[], page: number) {
@@ -138,34 +146,36 @@ export const PluginCommAPI = {
   },
 };
 
-export const PluginFileAPI = {
-  async getElements(page: number) {
-    return ok([...(fakeNote.pages.get(page) ?? [])]);
-  },
-  async getElementNumList(_path: string, page: number) {
-    return ok((fakeNote.pages.get(page) ?? []).map(e => e.numInPage));
+export const PluginNoteAPI = {
+  async saveCurrentNote() {
+    fakeNote.saves++;
+    fakeNote.file = copyPages(fakeNote.pages);
+    return ok(true);
   },
 };
 
-PluginFileAPI_extra();
-
-function PluginFileAPI_extra() {
-  Object.assign(PluginFileAPI, {
-    async getNotePageTemplate() {
-      return ok({name: 'style_blank', md5: '0'});
-    },
-    /** Inserts an empty page at `page`; later pages move down. */
-    async insertNotePage(params: {page: number}) {
-      const moved = new Map<number, Element[]>();
-      for (const [i, list] of fakeNote.pages) {
-        moved.set(i >= params.page ? i + 1 : i, list);
-      }
-      fakeNote.pages = moved;
-      fakeNote.inserted.push(params.page);
-      return ok(true);
-    },
-  });
-}
+export const PluginFileAPI = {
+  async getElements(page: number) {
+    return ok([...(fakeNote.file.get(page) ?? [])]);
+  },
+  async getElementNumList(_path: string, page: number) {
+    return ok((fakeNote.file.get(page) ?? []).map(e => e.numInPage));
+  },
+  async getNotePageTemplate() {
+    return ok({name: 'style_blank', md5: '0'});
+  },
+  /** A file-level write: pages shift in the file, then the cache is reloaded from it. */
+  async insertNotePage(params: {page: number}) {
+    const moved = new Map<number, Element[]>();
+    for (const [i, list] of fakeNote.file) {
+      moved.set(i >= params.page ? i + 1 : i, list);
+    }
+    fakeNote.file = moved;
+    fakeNote.pages = copyPages(fakeNote.file); // unsaved edits are gone
+    fakeNote.inserted.push(params.page);
+    return ok(true);
+  },
+};
 
 export const PluginManager = {
   async hasPermission() {

@@ -64,23 +64,5 @@ export function freeLimit(
   return limit;
 }
 
-/** A stroke we drew, remembered by its first point and point count. */
-export interface Signature {
-  x: number;
-  y: number;
-  n: number;
-}
-
-/** True when a stroke read back from the page is the one described by `sig`. */
-export function matchesSignature(
-  sig: Signature,
-  first: {x: number; y: number} | null,
-  count: number,
-): boolean {
-  return (
-    first !== null &&
-    count === sig.n &&
-    Math.abs(first.x - sig.x) <= 2 &&
-    Math.abs(first.y - sig.y) <= 2
-  );
-}
+/** Strokes of the thinking animation carry a marker starting with this in Element.userData. */
+export const WAVE_MARKER_PREFIX = 'spellink-wave:';

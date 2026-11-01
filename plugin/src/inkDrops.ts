@@ -2,19 +2,22 @@
 // per tick, across the answer width; at the end of the line it is wiped and starts again. It
 // runs until the first answer line is ready, then everything it drew is removed.
 //
-// Safety: a stroke is deleted only if it is provably ours — it sits after the elements that were
-// on the page when we started, AND it carries our random marker in Element.userData or (if the
-// device does not keep the marker) its first point and point count match a piece we drew.
-// Anything else (the user's writing) is never touched, even if element numbers are not what
-// we expect.
-import {PluginCommAPI, PluginFileAPI, type Element} from 'sn-plugin-lib';
-import {matchesSignature, type Signature} from './freeSpace';
-import {call, writeStrokes, type PenStyle} from './sdk';
+// Every stroke carries the same unique marker in Element.userData. Removal is exactly "find the
+// elements with this marker, delete them" — nothing is inferred from positions or numbers, so
+// nothing else can be matched.
+import {PluginCommAPI} from 'sn-plugin-lib';
+import {WAVE_MARKER_PREFIX} from './freeSpace';
+import {
+  call,
+  readPage,
+  releaseElements,
+  writeStrokes,
+  type PenStyle,
+} from './sdk';
 
 const INTERVAL_MS = 450;
 /** Length of one drawn piece, in character widths. */
 const PIECE_CHARS = 1.1;
-const MAX_CLEAR_ROUNDS = 4;
 
 /** One piece of a sine wave from x0 to x1, centred on `y`. */
 export function wavePiece(
@@ -23,8 +26,6 @@ export function wavePiece(
   y: number,
   amp: number,
   wavelength: number,
-  /** Shifts the wave's phase; each pass over the line uses a new one so its strokes differ. */
-  pass = 0,
 ) {
   const p: number[] = [];
   const w: number[] = [];
@@ -33,10 +34,7 @@ export function wavePiece(
     const x = x0 + ((x1 - x0) * i) / n;
     p.push(
       Math.round(x),
-      Math.round(
-        y +
-          amp * Math.sin((2 * Math.PI * x) / wavelength + pass * (Math.PI / 2)),
-      ),
+      Math.round(y + amp * Math.sin((2 * Math.PI * x) / wavelength)),
     );
     // Pressure swells in the middle of a piece, like a pen drawn at an even speed.
     w.push(Math.round(2600 + 1200 * Math.sin((Math.PI * i) / n)));
@@ -44,20 +42,19 @@ export function wavePiece(
   return {p, w};
 }
 
+/** A marker no other run (and no user) will ever have. */
+const newMarker = () =>
+  `${WAVE_MARKER_PREFIX}${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 12)}`;
+
 export class InkDrops {
-  private sigs: Signature[] = [];
+  private readonly marker = newMarker();
   private cursor: number;
-  private pass = 0;
+  private drawnPieces = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private chain: Promise<void> = Promise.resolve();
   private stopped = false;
-  /** Strokes drawn / removed, for the debug panel. */
-  drawn = 0;
-  removed = 0;
-  /** Random per animation, so strokes of an earlier run can never be mistaken for these. */
-  private readonly marker = `spellink-wave:${Math.random()
-    .toString(36)
-    .slice(2, 10)}`;
 
   constructor(
     private readonly filePath: string,
@@ -67,8 +64,6 @@ export class InkDrops {
     private readonly baseline: number,
     private readonly size: number,
     private readonly pen: PenStyle,
-    /** Number of elements on the page before we drew anything. */
-    private readonly baseCount: number,
   ) {
     this.cursor = x;
   }
@@ -97,7 +92,6 @@ export class InkDrops {
     if (this.cursor >= end) {
       await this.clear();
       this.cursor = this.x;
-      this.pass++;
       return;
     }
     const next = Math.min(end, this.cursor + this.size * PIECE_CHARS);
@@ -107,74 +101,30 @@ export class InkDrops {
       this.baseline,
       this.size * 0.22,
       this.size * 1.6,
-      this.pass,
     );
-    this.sigs.push({x: piece.p[0], y: piece.p[1], n: piece.p.length / 2});
     await writeStrokes([piece], this.page, this.pen, undefined, this.marker);
-    this.drawn++;
+    this.drawnPieces++;
     this.cursor = next;
   }
 
-  /**
-   * Removes every stroke of ours. Each round lists the page, picks the strokes that are provably
-   * ours and deletes them (highest number first, so deleting one cannot shift the numbers of
-   * the rest); it repeats until a round finds none, because a delete may be partial.
-   */
+  /** Deletes every element carrying our marker. Highest number first, so that deleting one
+   * cannot renumber the ones still to be deleted. */
   private async clear(): Promise<void> {
-    if (this.sigs.length === 0) {
+    if (this.drawnPieces === 0) {
       return;
     }
-    const sigs = this.sigs;
-    for (let round = 0; round < MAX_CLEAR_ROUNDS; round++) {
-      const nums = await this.findOurs(sigs);
-      if (nums.length === 0) {
-        break;
-      }
+    const elements = await readPage(this.filePath, this.page);
+    const nums = elements
+      .filter(e => e.userData === this.marker)
+      .map(e => e.numInPage)
+      .sort((a, b) => b - a);
+    releaseElements(elements);
+    this.drawnPieces = 0;
+    if (nums.length > 0) {
       await call(
         'deletePageElements',
-        PluginCommAPI.deletePageElements(
-          nums.sort((a, b) => b - a),
-          this.page,
-        ),
+        PluginCommAPI.deletePageElements(nums, this.page),
       );
-      this.removed += nums.length;
     }
-    this.sigs = this.sigs.filter(s => !sigs.includes(s));
-  }
-
-  private async findOurs(sigs: Signature[]): Promise<number[]> {
-    const elements =
-      (await call<Element[] | null>(
-        'getElements',
-        PluginFileAPI.getElements(this.page, this.filePath),
-      )) ?? [];
-    const nums: number[] = [];
-    try {
-      for (const e of elements) {
-        if (
-          e.type !== 0 ||
-          !e.stroke?.points ||
-          e.numInPage <= this.baseCount
-        ) {
-          continue;
-        }
-        // Our marker is proof enough and costs no point reads. Without it (the device may not
-        // keep userData), fall back to matching the stroke's first point and point count.
-        if (e.userData === this.marker) {
-          nums.push(e.numInPage);
-          continue;
-        }
-        const n = await e.stroke.points.size();
-        const first = n > 0 ? await e.stroke.points.get(0) : null;
-        if (sigs.some(s => matchesSignature(s, first, n))) {
-          nums.push(e.numInPage);
-        }
-      }
-    } finally {
-      for (const e of elements) {
-        PluginCommAPI.recycleElement(e.uuid);
-      }
-    }
-    return nums;
   }
 }

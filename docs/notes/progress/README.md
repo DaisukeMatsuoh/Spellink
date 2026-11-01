@@ -104,6 +104,14 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
   印が保存されない端末では署名照合に自動で戻る。診断「9. Marker (userData)」で端末が userData を保持するか確認できる（結果を `Send log to bridge`）。
   ネイティブ側に `userData` キーはあるが、保存・読み戻しの可否は実機未確認。
 
+- 2026-11-01 **重大バグの修正: ページ送りで直前のページが空になる**。原因: 開いているノートへの変更はメモリ上のキャッシュにあり、`insertNotePage` などファイル系 API を保存せずに呼ぶと失われる（SDK ドキュメント `saveCurrentNote`）。
+  対策: ファイル系 API（`insertNotePage`・`getElements` など）の前に必ず `saveCurrentNote`。ページ読み取りも同様（保存前だとユーザーの最新の字が見えず、重ね書きの原因にもなっていた）。
+  偽 SDK を「キャッシュとファイルを分け、ファイル系の書き込みでキャッシュを再読み込みする」仕様にして再現テストを追加（直前は失敗、修正後は成功）。
+- 波線の削除を**単純化**（ユーザー指示: 場当たり的なやり直しは禁止）: 全ストロークに共通の一意な印（`Element.userData`）を付け、「その印を持つ要素を探して消す」だけ。
+  署名照合・開始前の要素数・位相・リトライループは撤去。ユーザーの字と一致しうる条件がなくなった。
+  実機で波線が消えることはユーザーが確認済み（印の保存可否は診断 9 でも確認可）。
+- 設計方針（ユーザー）: 識別は確実な ID で行い、回数や再試行で帳尻を合わせない。
+
 ## 未解決の質問・ユーザーの方針
 - 外出先: 利用者には何も求めない。**Spellink の中継サーバ（ADR 0010）を実装済み**。Go で運用する方針（ユーザー決定）。ホスティングはフェーズ 1 = この機械＋Cloudflare Tunnel を推奨（`docs/notes/research/2026-11-01-relay-hosting.md`）。ユーザーの Cloudflare 設定（ドメイン、`cloudflared tunnel login`）待ち。
 - 名前: **Spellink に決定**（2026-10-31）。リポジトリ内は置換済み。GitHub リポジトリ名と Go モジュールパス（`github.com/DaisukeMatsuoh/Spellink/bridge`）はユーザーが GitHub で改名した後に変更。開発機の設定は `~/.config/spellink-bridge/`、バイナリは `~/.local/bin/spellink-bridge`。

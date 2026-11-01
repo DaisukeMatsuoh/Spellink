@@ -3,11 +3,12 @@ import {
   PluginCommAPI,
   PluginFileAPI,
   PluginManager,
+  PluginNoteAPI,
   type ElementDataAccessor,
   type Point,
   type Rect,
 } from 'sn-plugin-lib';
-import {boundsOf, type Box} from './freeSpace';
+import {WAVE_MARKER_PREFIX, boundsOf, type Box} from './freeSpace';
 import type {InkStroke} from './protocol';
 
 export class SdkError extends Error {
@@ -253,6 +254,15 @@ export async function writeStrokes(
   }
 }
 
+/**
+ * Edits to the open note live in an in-memory cache until saved, and file-level APIs
+ * (insertNotePage, getElements, …) work on the file. Calling one without saving first loses
+ * the unsaved edits or reads stale data (SDK docs: saveCurrentNote). Save before every one.
+ */
+export async function saveNote(): Promise<void> {
+  await call<boolean>('saveCurrentNote', PluginNoteAPI.saveCurrentNote());
+}
+
 const BLANK_TEMPLATE = 'style_blank';
 
 /**
@@ -264,6 +274,7 @@ export async function insertPageAfter(
   page: number,
   likePage: number,
 ): Promise<void> {
+  await saveNote();
   let template = BLANK_TEMPLATE;
   try {
     const t = await call<{name: string; md5: string}>(
@@ -286,42 +297,37 @@ export function jumpToPage(page: number): Promise<boolean> {
   return call<boolean>('jumpToPage', PluginCommAPI.jumpToPage(page));
 }
 
-/** Number of elements currently on a page (used as the baseline for the thinking animation). */
-export async function elementCount(
-  filePath: string,
-  page: number,
-): Promise<number> {
-  const nums = await call<number[] | null>(
-    'getElementNumList',
-    PluginFileAPI.getElementNumList(filePath, page),
-  );
-  return nums ? nums.length : 0;
-}
-
 const SCAN_CONCURRENCY = 16;
 
-/**
- * Bounding boxes of the page's strokes, titles, pictures and text boxes. Stops after `budgetMs`
- * (the boxes found so far are returned), because pages can hold thousands of strokes.
- */
-export async function pageBoxes(
+/** The page's elements as saved. Saves first so writing the user just did is included. */
+export async function readPage(
   filePath: string,
   page: number,
-  budgetMs: number,
-  /** Ignore elements numbered above this (ones we drew after the baseline was taken). */
-  maxNum = Infinity,
-): Promise<Box[]> {
-  const deadline = Date.now() + budgetMs;
-  const elements =
+): Promise<Element[]> {
+  await saveNote();
+  return (
     (await call<Element[] | null>(
       'getElements',
       PluginFileAPI.getElements(page, filePath),
-    )) ?? [];
+    )) ?? []
+  );
+}
+
+/**
+ * Bounding boxes of the strokes, titles, pictures and text boxes in `elements` (as returned by
+ * readPage; released here). The thinking animation's own strokes are skipped by their marker.
+ * Stops after `budgetMs` — pages can hold thousands of strokes — and returns what it found.
+ */
+export async function boxesOf(
+  elements: Element[],
+  budgetMs: number,
+): Promise<Box[]> {
+  const deadline = Date.now() + budgetMs;
   const boxes: Box[] = [];
   try {
     const strokes: Element[] = [];
     for (const e of elements) {
-      if (e.numInPage > maxNum) {
+      if (e.userData?.startsWith(WAVE_MARKER_PREFIX)) {
         continue;
       }
       if (e.type === 100 && e.title) {
@@ -360,9 +366,13 @@ export async function pageBoxes(
       }
     }
   } finally {
-    for (const e of elements) {
-      PluginCommAPI.recycleElement(e.uuid);
-    }
+    releaseElements(elements);
   }
   return boxes;
+}
+
+export function releaseElements(elements: Element[]): void {
+  for (const e of elements) {
+    PluginCommAPI.recycleElement(e.uuid);
+  }
 }

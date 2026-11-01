@@ -1,9 +1,4 @@
-import {
-  boundsOf,
-  freeLimit,
-  matchesSignature,
-  type Box,
-} from '../src/freeSpace';
+import {boundsOf, freeLimit, type Box} from '../src/freeSpace';
 
 const selection: Box = {left: 400, top: 100, right: 900, bottom: 200};
 const band = {left: 400, right: 1300};
@@ -58,18 +53,5 @@ describe('boundsOf', () => {
       right: 7,
       bottom: 20,
     });
-  });
-});
-
-describe('matchesSignature (never delete what is not ours)', () => {
-  const sig = {x: 100, y: 200, n: 17};
-  it('matches the stroke we drew', () => {
-    expect(matchesSignature(sig, {x: 100, y: 200}, 17)).toBe(true);
-    expect(matchesSignature(sig, {x: 101, y: 199}, 17)).toBe(true);
-  });
-  it('rejects a different start point or length', () => {
-    expect(matchesSignature(sig, {x: 140, y: 200}, 17)).toBe(false);
-    expect(matchesSignature(sig, {x: 100, y: 200}, 18)).toBe(false);
-    expect(matchesSignature(sig, null, 17)).toBe(false);
   });
 });

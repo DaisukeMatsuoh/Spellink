@@ -7,13 +7,13 @@ import {t} from './i18n';
 import type {BridgeMessage, InkStroke, Lang, LayoutParams} from './protocol';
 import {
   currentPen,
-  elementCount,
   ensurePermissions,
   insertPageAfter,
   jumpToPage,
   lassoRect,
   noteContext,
-  pageBoxes,
+  boxesOf,
+  readPage,
   recognizeLasso,
   writeStrokes,
   type NoteContext,
@@ -35,7 +35,7 @@ type Report = (s: AskState) => void;
 const LASSO_REMOVE = 2;
 /** Answers are inserted this many strokes at a time (about two or three characters). */
 const STROKES_PER_STEP = 15;
-/** Reading the page for existing content stops after this long (big pages hold thousands of strokes). */
+/** Working out where existing content is stops after this long (big pages hold thousands of strokes). */
 const SCAN_BUDGET_MS = 2500;
 /** Long answers continue on up to this many freshly inserted pages after the current one. */
 const MAX_EXTRA_PAGES = 2;
@@ -158,37 +158,29 @@ export class AskFlow {
     selection?: Box,
   ): Promise<void> {
     const pen = await currentPen();
-    // Number of elements on the page now: the baseline for the thinking wave, and the limit for
-    // reading existing content (so the wave we are about to draw is never mistaken for it).
-    const base = await elementCount(ctx.filePath, ctx.page).catch(() => null);
-
-    // The wave must not start before we know where the answer goes: if there is plainly no room
-    // under the selection, go to a fresh page right away.
     const pageBottom = layout.pageHeight - layout.bottomMargin;
     const newPage = async () => {
       await insertPageAfter(ctx.filePath, ctx.page + 1, ctx.page);
       await jumpToPage(ctx.page + 1);
       ctx = {...ctx, page: ctx.page + 1};
       layout = {...layout, y: layout.continueTop ?? layout.bottomMargin};
-      return elementCount(ctx.filePath, ctx.page).catch(() => null);
     };
-    let waveBase = base;
+
+    // If there is plainly no room under the selection, start on a fresh page right away.
     const obviouslyFull = layout.y + layout.charSize > pageBottom;
     if (obviouslyFull) {
-      waveBase = await newPage();
+      await newPage();
     }
-    // Read the page while connecting: where is there room below the selection?
-    const scan =
+    // Read the page (saved first, so the user's latest writing is in it) before anything of ours
+    // is drawn; the boxes are worked out while we connect.
+    const snapshot =
       selection && !obviouslyFull
-        ? pageBoxes(
-            ctx.filePath,
-            ctx.page,
-            SCAN_BUDGET_MS,
-            base ?? Infinity,
-          ).catch(() => [] as Box[])
-        : Promise.resolve([] as Box[]);
-    // Start the wave now, not after connecting: that wait is several seconds.
-    let wave = this.startWave(ctx, layout, pen, waveBase);
+        ? await readPage(ctx.filePath, ctx.page).catch(() => null)
+        : null;
+    let wave = this.startWave(ctx, layout, pen);
+    const scan = snapshot
+      ? boxesOf(snapshot, SCAN_BUDGET_MS).catch(() => [] as Box[])
+      : Promise.resolve([] as Box[]);
 
     try {
       update({message: t('connecting')});
@@ -202,22 +194,20 @@ export class AskFlow {
       if (this.cancelled) {
         return;
       }
-      if (!obviouslyFull) {
-        const limit = selection
-          ? freeLimit(
-              await scan,
-              selection,
-              {left: layout.x, right: layout.x + layout.width},
-              layout.y,
-              pageBottom,
-              layout.charSize * 0.4,
-            )
-          : pageBottom;
+      if (selection && !obviouslyFull) {
+        const limit = freeLimit(
+          await scan,
+          selection,
+          {left: layout.x, right: layout.x + layout.width},
+          layout.y,
+          pageBottom,
+          layout.charSize * 0.4,
+        );
         if (limit - layout.y < layout.charSize) {
           // Existing writing right below the selection: move the wave and the answer to a new page.
           await wave.stop();
-          const nb = await newPage();
-          wave = this.startWave(ctx, layout, pen, nb);
+          await newPage();
+          wave = this.startWave(ctx, layout, pen);
         } else {
           layout = {...layout, startLimit: Math.round(limit)};
         }
@@ -229,17 +219,13 @@ export class AskFlow {
     }
   }
 
-  /**
-   * A wavy line is drawn where the answer will appear until its first line arrives. It needs the
-   * page's element count from before it started; without one there is no animation (never guess).
-   */
+  /** A wavy line drawn where the answer will appear until its first line arrives. */
   private startWave(
     ctx: NoteContext,
     layout: LayoutParams,
     pen: Awaited<ReturnType<typeof currentPen>>,
-    base: number | null,
   ): {stop: () => Promise<void>} {
-    if (base === null || this.cancelled) {
+    if (this.cancelled) {
       return {stop: async () => {}};
     }
     const drops = new InkDrops(
@@ -250,7 +236,6 @@ export class AskFlow {
       Math.round(layout.y + layout.charSize * 0.8),
       layout.charSize,
       pen,
-      base,
     );
     drops.start();
     let stopped: Promise<void> | null = null;

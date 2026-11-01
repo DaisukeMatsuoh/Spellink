@@ -299,3 +299,54 @@ describe('AskFlow', () => {
     });
   });
 });
+
+describe('page switching must not lose anything (regression: the old page came back empty)', () => {
+  beforeEach(() => fakeNote.reset());
+
+  it("keeps the user's writing and the answer on the page we leave", async () => {
+    // The user's writing and our first lines live in the cache, unsaved, when the page is added.
+    const mine = fakeNote.addUserStroke(0, [
+      {x: 90, y: 100},
+      {x: 120, y: 130},
+    ]);
+    mockScript = (send, id) => {
+      send(line(id, 0, 0, [stroke()]));
+      send(line(id, 1, 1, [stroke()])); // the answer overflows onto a new page
+      send(done(id));
+    };
+    await run(layout);
+    expect(fakeNote.inserted).toEqual([1]);
+    expect(fakeNote.strokes(0)).toContainEqual(mine);
+    expect(answerStrokes(0)).toHaveLength(1);
+    expect(answerStrokes(1)).toHaveLength(1);
+  });
+
+  it('keeps the old page when there is no room and the answer starts on a new page', async () => {
+    const mine = fakeNote.addUserStroke(0, [
+      {x: 90, y: 1800},
+      {x: 120, y: 1830},
+    ]);
+    mockScript = (send, id) => {
+      send(line(id, 0, 0, [stroke()]));
+      send(done(id));
+    };
+    await run({...layout, y: 1860});
+    expect(fakeNote.strokes(0)).toContainEqual(mine);
+    expect(answerStrokes(1)).toHaveLength(1);
+  });
+
+  it('sees writing that has not been saved yet when looking for free space', async () => {
+    // Unsaved (cache-only) writing right under the selection must still be avoided.
+    fakeNote.addUserStroke(
+      0,
+      Array.from({length: 5}, (_, i) => ({x: 200 + i * 20, y: 310 + i})),
+    );
+    mockScript = (send, id) => {
+      send(line(id, 0, 0, [stroke()]));
+      send(done(id));
+    };
+    await run(layout, {left: 84, top: 100, right: 400, bottom: 260});
+    expect(answerStrokes(0)).toHaveLength(0);
+    expect(answerStrokes(1)).toHaveLength(1);
+  });
+});

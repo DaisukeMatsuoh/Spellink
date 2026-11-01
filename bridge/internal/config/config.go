@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
+	mrand "math/rand/v2"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,6 +35,19 @@ type Config struct {
 	ShowProgress bool `json:"showProgress,omitempty"`
 	// LineTilt defaults to on; nil means "not set".
 	LineTilt *bool `json:"lineTilt,omitempty"`
+	// TiltDegrees is this agent's handwriting slope (positive rises to the right), picked at
+	// random the first time so every agent has its own habit. Edit to taste.
+	TiltDegrees *float64 `json:"tiltDegrees,omitempty"`
+}
+
+// ensureTilt gives a new agent its writing habit: mostly gentle, sometimes more pronounced.
+func (c *Config) ensureTilt() bool {
+	if c.TiltDegrees != nil {
+		return false
+	}
+	d := math.Round(max(-2.5, min(2.5, mrand.NormFloat64()*1.0))*10) / 10
+	c.TiltDegrees = &d
+	return true
 }
 
 // LineTiltOn reports the line-tilt setting, on unless turned off.
@@ -94,6 +109,9 @@ func Load() (*Config, error) {
 		if c.ClaudeExecutable == "" {
 			c.ClaudeExecutable = "claude"
 		}
+		if c.ensureTilt() {
+			return c, Save(c)
+		}
 		return c, nil
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
@@ -109,6 +127,7 @@ func Load() (*Config, error) {
 		Token:            base64.RawURLEncoding.EncodeToString(secret),
 		ClaudeExecutable: "claude",
 	}
+	c.ensureTilt()
 	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		return nil, err
 	}

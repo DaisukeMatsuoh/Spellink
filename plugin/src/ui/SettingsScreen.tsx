@@ -9,6 +9,13 @@ import {ensurePermissions} from '../sdk';
 import {show} from '../session';
 import {Button, styles} from './common';
 
+function describeAngle(deg: number | undefined): string {
+  if (!deg) {
+    return t('level');
+  }
+  return t(deg > 0 ? 'risesRight' : 'fallsRight', {deg: Math.abs(deg)});
+}
+
 /** Opened from the plugin's config button. Settings live on the bridge. */
 export function SettingsScreen() {
   const [status, setStatus] = useState(t('connecting'));
@@ -71,7 +78,9 @@ export function SettingsScreen() {
           onPress={() => toggle('lineTilt')}
         />
       </View>
-      <Text style={styles.small}>{t('lineTiltHelp')}</Text>
+      <Text style={styles.small}>
+        {t('lineTiltHelp', {angle: describeAngle(settings?.tiltDegrees)})}
+      </Text>
       <View style={styles.row}>
         <Button label={t('diagButton')} onPress={() => show('diagnostics')} />
         <Button

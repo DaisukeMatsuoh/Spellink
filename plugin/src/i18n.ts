@@ -25,9 +25,12 @@ const STRINGS = {
     showProgress: 'Show progress panel (debug)',
     showProgressHelp:
       'Off: the answer is simply written onto the page. The panel still opens when something goes wrong.',
-    lineTilt: 'Tilt lines slightly',
+    lineTilt: 'Writing slope',
     lineTiltHelp:
-      'Each written line gets a slightly different slope, like writing without ruled lines.',
+      "Like a person's handwriting habit, the whole answer is written at this agent's own angle: {angle}.",
+    risesRight: 'rises to the right {deg}°',
+    fallsRight: 'falls to the right {deg}°',
+    level: 'level',
     connectedTo: 'Connected to {name}',
     saved: 'Saved.',
   },
@@ -55,9 +58,12 @@ const STRINGS = {
     showProgress: '進捗パネルを表示（デバッグ）',
     showProgressHelp:
       'OFF のときは、回答をそのままページに書き込みます。エラーのときだけパネルが開きます。',
-    lineTilt: '行をわずかに傾ける',
+    lineTilt: '書き癖の傾き',
     lineTiltHelp:
-      '罫線なしで書いたときのように、行ごとに少しだけ傾きを変えます。',
+      '人の書き癖のように、回答全体をこのエージェント固有の角度で書きます: {angle}',
+    risesRight: '右上がり {deg}°',
+    fallsRight: '右下がり {deg}°',
+    level: '水平',
     connectedTo: '{name} に接続しました',
     saved: '保存しました。',
   },

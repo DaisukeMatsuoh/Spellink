@@ -27,8 +27,10 @@ export interface InkStroke {
 export interface Settings {
   /** Open the progress panel while answering; off = just write onto the page. */
   showProgress: boolean;
-  /** Let each written line slope slightly, for a more handwritten look. */
+  /** Apply the agent's writing slope to answers. */
   lineTilt: boolean;
+  /** The agent's own habit (positive rises to the right); chosen by the bridge, read-only. */
+  tiltDegrees?: number;
 }
 
 export type ClientMessage =

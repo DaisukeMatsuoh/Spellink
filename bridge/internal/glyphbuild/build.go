@@ -180,12 +180,16 @@ func shifted(strokes [][]float64, dx float64) [][]int16 {
 	return out
 }
 
-// Latin letters, digits and symbols are written smaller than kana/kanji, the way they look in
-// Japanese handwriting: scaled around the baseline. Digits get a minimum width so narrow ones
-// ("1") still read as separate characters without leaving gaps.
+// Everything except kanji is written at one smaller size, sitting on the kanji bottom line —
+// the balance Japanese readers find natural in handwriting. Scales were measured on the KanjiVG
+// data so that hiragana, katakana, Latin capitals and digits end up about the same height
+// (≈75% of kanji). Digits get a minimum width so a narrow "1" doesn't leave gaps.
 const (
-	latinScale    = 0.72
+	hiraganaScale = 0.85
+	katakanaScale = 0.94
+	latinScale    = 0.83
 	minDigitWidth = 0.36 * em
+	cjkBottomLine = 0.9 * em
 )
 
 func halfWidth(strokes [][]float64, r rune) ink.Glyph {
@@ -217,21 +221,21 @@ func proportional(strokes [][]float64, bearing float64) ink.Glyph {
 
 // fullWidth keeps CJK glyphs near-square but tightens narrow ones (kana, punctuation) around
 // their ink so lines read like natural Japanese handwriting.
-// Hiragana are written a little smaller than kanji, sitting on the same bottom line — the
-// balance Japanese readers find natural in handwriting.
-const (
-	hiraganaScale = 0.85
-	cjkBottomLine = 0.9 * em
-)
-
 func fullWidth(strokes [][]float64, r rune) ink.Glyph {
-	if r >= 0x3041 && r <= 0x309f {
+	scale := 1.0
+	switch {
+	case r >= 0x3041 && r <= 0x309f:
+		scale = hiraganaScale
+	case r >= 0x30a1 && r <= 0x30ff:
+		scale = katakanaScale
+	}
+	if scale != 1 {
 		minX, maxX := xRange(strokes)
 		cx := (minX + maxX) / 2
 		for _, s := range strokes {
 			for i := 0; i < len(s); i += 2 {
-				s[i] = cx + (s[i]-cx)*hiraganaScale
-				s[i+1] = cjkBottomLine - (cjkBottomLine-s[i+1])*hiraganaScale
+				s[i] = cx + (s[i]-cx)*scale
+				s[i+1] = cjkBottomLine - (cjkBottomLine-s[i+1])*scale
 			}
 		}
 	}

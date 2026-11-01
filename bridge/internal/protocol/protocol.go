@@ -33,8 +33,11 @@ type Settings struct {
 	// ShowProgress opens the progress panel while answering (debug view). Off: the answer is
 	// just written onto the page; the panel appears only on errors.
 	ShowProgress bool `json:"showProgress"`
-	// LineTilt lets each written line slope slightly, for a more handwritten look.
+	// LineTilt applies the agent's writing slope (TiltDegrees) to answers.
 	LineTilt bool `json:"lineTilt"`
+	// TiltDegrees is the agent's own habit: positive rises to the right. Chosen once per
+	// bridge; read-only for the plugin.
+	TiltDegrees float64 `json:"tiltDegrees"`
 }
 
 // SettingsReply confirms a setSettings.

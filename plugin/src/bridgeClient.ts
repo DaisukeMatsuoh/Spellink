@@ -194,6 +194,7 @@ export function connectFirst(
             new BridgeConnection(ws, channel, m.bridge, url, mode, {
               showProgress: m.settings?.showProgress ?? false,
               lineTilt: m.settings?.lineTilt ?? true,
+              tiltDegrees: m.settings?.tiltDegrees,
             }),
           );
         };

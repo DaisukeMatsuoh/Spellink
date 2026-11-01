@@ -142,7 +142,9 @@ func serve() error {
 		Settings: func() protocol.Settings {
 			settingsMu.Lock()
 			defer settingsMu.Unlock()
-			return protocol.Settings{ShowProgress: cfg.ShowProgress, LineTilt: cfg.LineTiltOn()}
+			return protocol.Settings{
+				ShowProgress: cfg.ShowProgress, LineTilt: cfg.LineTiltOn(), TiltDegrees: *cfg.TiltDegrees,
+			}
 		},
 		SetSettings: func(s protocol.Settings) error {
 			settingsMu.Lock()

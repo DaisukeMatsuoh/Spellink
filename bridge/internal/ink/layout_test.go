@@ -143,19 +143,19 @@ func TestFontRoundTrip(t *testing.T) {
 	}
 }
 
-func TestTiltSlopesLinesButKeepsTheirStart(t *testing.T) {
+func TestSlopeTiltsTheWholeBlockUniformly(t *testing.T) {
+	flat, _ := compose("ああああああああああ", testLayout)
 	l := testLayout
-	l.Width = 5000 // one long line
-	flat, _ := compose("ああああああああああ", l)
-	l.Tilt = true
+	l.Slope = -0.02 // rises to the right
 	tilted, _ := compose("ああああああああああ", l)
-	// Same seed: the first glyph (near X) barely moves, the last one moves more.
-	first := func(ls []Line) int { return ls[0].Strokes[0].P[1] }
-	last := func(ls []Line) int { s := ls[0].Strokes[len(ls[0].Strokes)-1]; return s.P[1] }
-	if d := first(tilted) - first(flat); d < -1 || d > 1 {
-		t.Fatalf("line start should stay put, moved %d", d)
+	shift := func(line int, stroke int) int {
+		return tilted[line].Strokes[stroke].P[1] - flat[line].Strokes[stroke].P[1]
 	}
-	if last(tilted) == last(flat) {
-		t.Fatal("tilt had no effect at the end of the line")
+	// Same position in both lines → same shift (lines stay parallel); further right → higher.
+	if shift(0, 4) != shift(1, 4) {
+		t.Fatalf("lines should share one slope: %d vs %d", shift(0, 4), shift(1, 4))
+	}
+	if !(shift(0, 4) < shift(0, 0)) {
+		t.Fatalf("right end should rise: start %d, end %d", shift(0, 0), shift(0, 4))
 	}
 }

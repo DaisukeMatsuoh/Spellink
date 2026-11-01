@@ -1,0 +1,49 @@
+name: plugin
+
+on:
+  push:
+    branches: [main]
+    paths: ['plugin/**', '.github/workflows/plugin.yml']
+  pull_request:
+    paths: ['plugin/**', '.github/workflows/plugin.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx eslint index.js App.tsx src
+      - name: Unit tests with coverage
+        run: npx jest --coverage --coverageReporters=text --coverageReporters=json-summary --coverageReporters=lcov | tee jest.txt
+      - name: Coverage summary and gate
+        env:
+          MIN_COVERAGE: '60'
+        run: |
+          total=$(node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct)")
+          {
+            echo "### Plugin coverage (lines): ${total}%"
+            echo
+            echo '```'
+            sed -n '/^---/,$p' jest.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          node -e "process.exit(${total} < ${MIN_COVERAGE} ? 1 : 0)" || { echo "coverage ${total}% is below ${MIN_COVERAGE}%"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-coverage
+          path: plugin/coverage
+      - name: Build the plugin package
+        run: bash buildPlugin.sh

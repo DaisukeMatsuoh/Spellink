@@ -2,6 +2,7 @@ package ink
 
 import (
 	"bytes"
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -182,5 +183,55 @@ func TestFragmentsStartEarlyAndJoinSeamlessly(t *testing.T) {
 	lastX := all[len(all)-1].Strokes[0].P[0]
 	if lastX <= firstX {
 		t.Fatalf("later fragments must start further right: %d <= %d", lastX, firstX)
+	}
+}
+
+func TestFragmentWithoutGlyphsHasEmptyStrokesNotNull(t *testing.T) {
+	// Regression: "🙂" has no glyph, so a fragment made of it carried `"strokes":null`, which
+	// crashed the plugin with "Cannot read property 'length' of null".
+	c := NewComposer(testFont(), testLayout, 1)
+	out := append(c.Push("🙂🙂🙂🙂🙂🙂🙂🙂🙂"), c.Finish()...)
+	if len(out) == 0 {
+		t.Fatal("expected a fragment")
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), `"strokes":null`) {
+		t.Fatalf("strokes must be [] not null: %s", b)
+	}
+}
+
+func TestStartLimitSendsTextToTheNextPageWhenThereIsNoRoom(t *testing.T) {
+	l := testLayout
+	l.Y, l.StartLimit, l.MaxPages, l.ContinueTop = 200, 250, 2, 10 // < one line of room
+	lines, _ := compose("あ", l)
+	if lines[0].Page != 1 {
+		t.Fatalf("no room above StartLimit: want page 1, got %d", lines[0].Page)
+	}
+}
+
+func TestStartLimitKeepsRoomyAnswersOnTheFirstPage(t *testing.T) {
+	l := testLayout
+	l.Y, l.StartLimit, l.MaxPages, l.ContinueTop = 200, 600, 2, 10
+	lines, _ := compose("あい\nう", l)
+	for _, ln := range lines {
+		if ln.Page != 0 {
+			t.Fatalf("%q should fit on the first page", ln.Text)
+		}
+	}
+	l.StartLimit = 360 // room for one line only
+	lines, _ = compose("あい\nう", l)
+	if lines[len(lines)-1].Page != 1 {
+		t.Fatal("second line must continue on the next page")
+	}
+}
+
+func TestCapacityHonoursStartLimit(t *testing.T) {
+	l := testLayout
+	l.StartLimit = 300 // two lines of 145px from y=0 → 2×5 chars
+	if got := Capacity(l); got != 10 {
+		t.Fatalf("got %d, want 10", got)
 	}
 }

@@ -232,7 +232,8 @@ func ValidLayout(l *ink.Layout) bool {
 		in(l.Width, l.CharSize, page) &&
 		in(l.BottomMargin, 0, l.PageHeight) &&
 		l.MaxPages >= 0 && l.MaxPages <= maxPages &&
-		in(l.ContinueTop, 0, l.PageHeight)
+		in(l.ContinueTop, 0, l.PageHeight) &&
+		in(l.StartLimit, 0, l.PageHeight)
 }
 
 func seedFrom(id string) uint32 {

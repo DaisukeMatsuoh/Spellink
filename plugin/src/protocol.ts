@@ -15,6 +15,8 @@ export interface LayoutParams {
   maxPages?: number;
   /** Top of the first line on continuation pages. */
   continueTop?: number;
+  /** Lowest y the answer may reach on the starting page (existing content below). */
+  startLimit?: number;
 }
 
 /** One pen stroke in page pixels: `p` = [x0,y0,x1,y1,…], `w` = pressure per point (0..4096). */

@@ -7,6 +7,7 @@ import {
   type Point,
   type Rect,
 } from 'sn-plugin-lib';
+import {boundsOf, type Box} from './freeSpace';
 import type {InkStroke} from './protocol';
 
 export class SdkError extends Error {
@@ -278,4 +279,80 @@ export async function insertPageAfter(
 
 export function jumpToPage(page: number): Promise<boolean> {
   return call<boolean>('jumpToPage', PluginCommAPI.jumpToPage(page));
+}
+
+/** Number of elements currently on a page (used as the baseline for the thinking animation). */
+export async function elementCount(
+  filePath: string,
+  page: number,
+): Promise<number> {
+  const nums = await call<number[] | null>(
+    'getElementNumList',
+    PluginFileAPI.getElementNumList(filePath, page),
+  );
+  return nums ? nums.length : 0;
+}
+
+const SCAN_CONCURRENCY = 16;
+
+/**
+ * Bounding boxes of the page's strokes, titles, pictures and text boxes. Stops after `budgetMs`
+ * (the boxes found so far are returned), because pages can hold thousands of strokes.
+ */
+export async function pageBoxes(
+  filePath: string,
+  page: number,
+  budgetMs: number,
+): Promise<Box[]> {
+  const deadline = Date.now() + budgetMs;
+  const elements =
+    (await call<Element[] | null>(
+      'getElements',
+      PluginFileAPI.getElements(page, filePath),
+    )) ?? [];
+  const boxes: Box[] = [];
+  try {
+    const strokes: Element[] = [];
+    for (const e of elements) {
+      if (e.type === 100 && e.title) {
+        boxes.push({
+          left: e.title.X,
+          top: e.title.Y,
+          right: e.title.X + e.title.width,
+          bottom: e.title.Y + e.title.height,
+        });
+      } else if (e.type === 200 && e.picture?.rect) {
+        boxes.push(e.picture.rect);
+      } else if (
+        (e.type === 500 || e.type === 501 || e.type === 502) &&
+        e.textBox?.textRect
+      ) {
+        boxes.push(e.textBox.textRect);
+      } else if (e.type === 0 && e.stroke?.points) {
+        strokes.push(e);
+      }
+    }
+    for (
+      let i = 0;
+      i < strokes.length && Date.now() < deadline;
+      i += SCAN_CONCURRENCY
+    ) {
+      const found = await Promise.all(
+        strokes.slice(i, i + SCAN_CONCURRENCY).map(async e => {
+          const n = await e.stroke!.points.size();
+          return boundsOf(n > 0 ? await e.stroke!.points.getRange(0, n) : []);
+        }),
+      );
+      for (const b of found) {
+        if (b) {
+          boxes.push(b);
+        }
+      }
+    }
+  } finally {
+    for (const e of elements) {
+      PluginCommAPI.recycleElement(e.uuid);
+    }
+  }
+  return boxes;
 }

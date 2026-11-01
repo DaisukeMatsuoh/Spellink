@@ -24,7 +24,29 @@ jobs:
           go-version-file: bridge/go.mod
           cache-dependency-path: bridge/go.sum
       - run: go vet ./...
-      - run: go test -race ./...
+      - name: Test with coverage
+        run: go test -race -coverprofile=cover.out ./...
+      - name: Coverage summary and gate
+        env:
+          MIN_COVERAGE: '60'
+        run: |
+          go tool cover -func=cover.out > cover.txt
+          total=$(tail -1 cover.txt | awk '{print $3}' | tr -d '%')
+          {
+            echo "### Bridge coverage: ${total}%"
+            echo
+            echo '| package | coverage |'
+            echo '|---|---|'
+            go test -cover ./... 2>/dev/null | awk '/coverage:/ {print "| " $2 " | " $5 " |"}' | sed 's#github.com/DaisukeMatsuoh/Spellink/bridge/##'
+          } >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -html=cover.out -o cover.html
+          awk -v t="$total" -v m="$MIN_COVERAGE" 'BEGIN { if (t+0 < m+0) { print "coverage " t "% is below " m "%"; exit 1 } }'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bridge-coverage
+          path: |
+            bridge/cover.out
+            bridge/cover.html
 
   release:
     if: startsWith(github.ref, 'refs/tags/bridge-v')

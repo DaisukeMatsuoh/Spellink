@@ -145,6 +145,9 @@ func AppendReport(peer string, data any) error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		return err
+	}
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err

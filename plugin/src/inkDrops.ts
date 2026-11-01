@@ -1,19 +1,21 @@
-// "Thinking" animation shown where the answer will start: a wavy line is drawn slowly, one
-// piece per tick, across the answer width; at the end of the line it is wiped and starts again.
-// It runs until the first answer line is ready, then everything it drew is removed.
+// "Thinking" animation shown where the answer will start: a wavy line drawn slowly, one piece
+// per tick, across the answer width; at the end of the line it is wiped and starts again. It
+// runs until the first answer line is ready, then everything it drew is removed.
 //
-// Only elements this module inserted are ever deleted: before each insert the page's element
-// numbers are listed, and the numbers that appear afterwards are ours. (Matching by uuid does
-// not work — the page reports different uuids after insertion.)
-import {PluginCommAPI, PluginFileAPI} from 'sn-plugin-lib';
+// Safety: a stroke is deleted only if it is provably ours — it sits after the elements that were
+// on the page when we started, AND its first point and point count match a piece we drew.
+// Anything else (the user's writing) is never touched, even if element numbers are not what
+// we expect.
+import {PluginCommAPI, PluginFileAPI, type Element} from 'sn-plugin-lib';
+import {matchesSignature, type Signature} from './freeSpace';
 import {call, writeStrokes, type PenStyle} from './sdk';
 
 const INTERVAL_MS = 450;
-/** Length of one drawn piece, in characters' widths. */
+/** Length of one drawn piece, in character widths. */
 const PIECE_CHARS = 1.1;
 
 /** One piece of a sine wave from x0 to x1, centred on `y`. */
-function wavePiece(
+export function wavePiece(
   x0: number,
   x1: number,
   y: number,
@@ -36,11 +38,14 @@ function wavePiece(
 }
 
 export class InkDrops {
-  private nums: number[] = [];
+  private sigs: Signature[] = [];
   private cursor: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private chain: Promise<void> = Promise.resolve();
   private stopped = false;
+  /** Strokes drawn / removed, for the debug panel. */
+  drawn = 0;
+  removed = 0;
 
   constructor(
     private readonly filePath: string,
@@ -50,6 +55,8 @@ export class InkDrops {
     private readonly baseline: number,
     private readonly size: number,
     private readonly pen: PenStyle,
+    /** Number of elements on the page before we drew anything. */
+    private readonly baseCount: number,
   ) {
     this.cursor = x;
   }
@@ -70,13 +77,6 @@ export class InkDrops {
     await this.clear().catch(() => {});
   }
 
-  private elementNums(): Promise<number[]> {
-    return call<number[]>(
-      'getElementNumList',
-      PluginFileAPI.getElementNumList(this.filePath, this.page),
-    );
-  }
-
   private async tick(): Promise<void> {
     if (this.stopped) {
       return;
@@ -95,25 +95,50 @@ export class InkDrops {
       this.size * 0.22,
       this.size * 1.6,
     );
-    const before = new Set(await this.elementNums());
+    this.sigs.push({x: piece.p[0], y: piece.p[1], n: piece.p.length / 2});
     await writeStrokes([piece], this.page, this.pen);
-    for (const n of await this.elementNums()) {
-      if (!before.has(n)) {
-        this.nums.push(n);
-      }
-    }
+    this.drawn++;
     this.cursor = next;
   }
 
   private async clear(): Promise<void> {
-    if (this.nums.length === 0) {
+    if (this.sigs.length === 0) {
       return;
     }
-    const nums = this.nums;
-    this.nums = [];
-    await call(
-      'deletePageElements',
-      PluginCommAPI.deletePageElements(nums, this.page),
-    );
+    const sigs = this.sigs;
+    this.sigs = [];
+    const elements =
+      (await call<Element[] | null>(
+        'getElements',
+        PluginFileAPI.getElements(this.page, this.filePath),
+      )) ?? [];
+    const nums: number[] = [];
+    try {
+      for (const e of elements) {
+        if (
+          e.type !== 0 ||
+          !e.stroke?.points ||
+          e.numInPage <= this.baseCount
+        ) {
+          continue;
+        }
+        const n = await e.stroke.points.size();
+        const first = n > 0 ? await e.stroke.points.get(0) : null;
+        if (sigs.some(s => matchesSignature(s, first, n))) {
+          nums.push(e.numInPage);
+        }
+      }
+    } finally {
+      for (const e of elements) {
+        PluginCommAPI.recycleElement(e.uuid);
+      }
+    }
+    if (nums.length > 0) {
+      await call(
+        'deletePageElements',
+        PluginCommAPI.deletePageElements(nums, this.page),
+      );
+      this.removed += nums.length;
+    }
   }
 }

@@ -18,6 +18,9 @@ type Layout struct {
 	// more = continue at ContinueTop on newly inserted pages. 0 means 1.
 	MaxPages    int     `json:"maxPages,omitempty"`
 	ContinueTop float64 `json:"continueTop,omitempty"`
+	// StartLimit is the lowest y the answer may reach on the starting page (the plugin found
+	// existing content below it). 0 means the normal page bottom.
+	StartLimit float64 `json:"startLimit,omitempty"`
 	// Slope tilts the whole answer block (dy/dx; negative rises to the right), like a writer's
 	// habit of drifting up or down without ruled lines. Set by the bridge from the agent's
 	// handwriting settings, not by the plugin.
@@ -215,8 +218,19 @@ func (c *Composer) top() float64 {
 	return start + c.lineIndex*c.layout.CharSize*lineHeight
 }
 
+// limit is the lowest y a line may reach on the current page.
+func (c *Composer) limit() float64 { return pageLimit(c.layout, c.page) }
+
+func pageLimit(l Layout, page int) float64 {
+	limit := l.PageHeight - l.BottomMargin
+	if page == 0 && l.StartLimit > 0 {
+		limit = math.Min(limit, l.StartLimit)
+	}
+	return limit
+}
+
 func (c *Composer) fits() bool {
-	return c.top()+c.layout.CharSize <= c.layout.PageHeight-c.layout.BottomMargin
+	return c.top()+c.layout.CharSize <= c.limit()
 }
 
 func (c *Composer) emit(out *[]Line) {
@@ -240,7 +254,7 @@ func (c *Composer) emit(out *[]Line) {
 // draw renders c.line[from:to] as one message. cont = more of this line follows.
 func (c *Composer) draw(out *[]Line, from, to int, cont bool) {
 	top := c.top()
-	var strokes []Stroke
+	strokes := []Stroke{} // never nil: JSON null would crash the plugin
 	var text strings.Builder
 	x := c.layout.X + c.lineDrawnX
 	for _, p := range c.line[from:to] {
@@ -274,6 +288,6 @@ func (c *Composer) resetLine() {
 // so the model can be asked for an answer that fits without turning the page.
 func Capacity(l Layout) int {
 	perLine := math.Floor(l.Width / l.CharSize)
-	lines := math.Floor((l.PageHeight - l.BottomMargin - l.Y) / (l.CharSize * lineHeight))
+	lines := math.Floor((pageLimit(l, 0) - l.Y) / (l.CharSize * lineHeight))
 	return int(math.Max(0, perLine*lines))
 }

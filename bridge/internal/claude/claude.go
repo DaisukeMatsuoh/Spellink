@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 type Runner struct {
@@ -68,6 +69,8 @@ func (r *Runner) Ask(ctx context.Context, question, systemPrompt string, onText 
 	}
 	cmd := exec.CommandContext(ctx, r.Executable, args...)
 	cmd.Dir = r.workDir
+	// A killed process can leave children holding stdout open, which would block Wait forever.
+	cmd.WaitDelay = 2 * time.Second
 	cmd.Stdin = strings.NewReader(question)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

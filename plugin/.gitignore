@@ -77,3 +77,4 @@ yarn-error.log
 # Spellink
 src/bridges.local.json
 android_project_react_packages.txt
+coverage/

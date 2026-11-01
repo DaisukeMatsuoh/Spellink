@@ -9,7 +9,8 @@
     "start": "react-native start",
     "test": "jest",
     "build": "node scripts/prepare-local-config.js && bash buildPlugin.sh",
-    "typecheck": "node scripts/prepare-local-config.js && tsc --noEmit"
+    "typecheck": "node scripts/prepare-local-config.js && tsc --noEmit",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

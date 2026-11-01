@@ -146,6 +146,7 @@ func TestValidLayout(t *testing.T) {
 		"y":        func(l *ink.Layout) { l.Y = 5000 },
 		"maxPages": func(l *ink.Layout) { l.MaxPages = 99 },
 		"top":      func(l *ink.Layout) { l.ContinueTop = -1 },
+		"limit":    func(l *ink.Layout) { l.StartLimit = 99999 },
 	} {
 		l := layout
 		mut(&l)

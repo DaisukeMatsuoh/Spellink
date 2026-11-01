@@ -1,16 +1,19 @@
 import {PluginCommAPI} from 'sn-plugin-lib';
 import {connectFirst, type BridgeConnection} from './bridgeClient';
+import {freeLimit, type Box} from './freeSpace';
 import {InkDrops} from './inkDrops';
 import {loadBridges} from './bridgeConfig';
 import {t} from './i18n';
 import type {BridgeMessage, InkStroke, Lang, LayoutParams} from './protocol';
 import {
   currentPen,
+  elementCount,
   ensurePermissions,
   insertPageAfter,
   jumpToPage,
   lassoRect,
   noteContext,
+  pageBoxes,
   recognizeLasso,
   writeStrokes,
   type NoteContext,
@@ -31,9 +34,9 @@ type Report = (s: AskState) => void;
 
 const LASSO_REMOVE = 2;
 /** Answers are inserted this many strokes at a time (about two or three characters). */
-const STROKES_PER_STEP = 10;
-const STEP_PAUSE_MS = 60;
-const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+const STROKES_PER_STEP = 15;
+/** Reading the page for existing content stops after this long (big pages hold thousands of strokes). */
+const SCAN_BUDGET_MS = 2500;
 /** Long answers continue on up to this many freshly inserted pages after the current one. */
 const MAX_EXTRA_PAGES = 2;
 
@@ -151,8 +154,15 @@ export class AskFlow {
     layout: LayoutParams,
     ctx: NoteContext,
     update: (patch: Partial<AskState>) => void,
+    selection?: Box,
   ): Promise<void> {
     const pen = await currentPen();
+    // Read the page while connecting: where is there room below the selection?
+    const scan = selection
+      ? pageBoxes(ctx.filePath, ctx.page, SCAN_BUDGET_MS).catch(
+          () => [] as Box[],
+        )
+      : Promise.resolve([] as Box[]);
     update({message: t('connecting')});
     const {endpoints} = await loadBridges();
     try {
@@ -163,15 +173,24 @@ export class AskFlow {
     update({showProgress: this.conn.settings.showProgress});
     try {
       if (!this.cancelled) {
-        // No room under the selection: start on a fresh page right after this one.
-        if (
-          layout.y + layout.charSize >
-          layout.pageHeight - layout.bottomMargin
-        ) {
+        const limit = selection
+          ? freeLimit(
+              await scan,
+              selection,
+              {left: layout.x, right: layout.x + layout.width},
+              layout.y,
+              layout.pageHeight - layout.bottomMargin,
+              layout.charSize * 0.4,
+            )
+          : layout.pageHeight - layout.bottomMargin;
+        // No room under the selection (page end or existing writing): start on a fresh page.
+        if (limit - layout.y < layout.charSize) {
           await insertPageAfter(ctx.filePath, ctx.page + 1, ctx.page);
           await jumpToPage(ctx.page + 1);
           ctx = {...ctx, page: ctx.page + 1};
           layout = {...layout, y: layout.continueTop ?? layout.bottomMargin};
+        } else {
+          layout = {...layout, startLimit: Math.round(limit)};
         }
         await this.converse(question, layout, ctx, pen, update);
       }
@@ -200,24 +219,32 @@ export class AskFlow {
     let written = 0;
     let answer = '';
     let pagesReady = 1;
-    // Ink drops mark where the answer will appear until its first line arrives.
-    const drops = new InkDrops(
-      ctx.filePath,
-      ctx.page,
-      layout.x,
-      layout.width,
-      Math.round(layout.y + layout.charSize * 0.8),
-      layout.charSize,
-      pen,
-    );
+    // A wave is drawn where the answer will appear until its first line arrives. It needs the
+    // page's current element count as a baseline; without one there is no animation (never guess).
+    const drops: Promise<InkDrops | null> = elementCount(ctx.filePath, ctx.page)
+      .then(base => {
+        const d = new InkDrops(
+          ctx.filePath,
+          ctx.page,
+          layout.x,
+          layout.width,
+          Math.round(layout.y + layout.charSize * 0.8),
+          layout.charSize,
+          pen,
+          base,
+        );
+        d.start();
+        return d;
+      })
+      .catch(() => null);
     let dropsCleared: Promise<void> | null = null;
-    const clearDrops = () => (dropsCleared ??= drops.stop());
-    drops.start();
+    const clearDrops = () => (dropsCleared ??= drops.then(d => d?.stop()));
     const writeLine = (
-      strokes: InkStroke[],
+      strokesIn: InkStroke[] | null,
       text: string,
       pageOffset: number,
     ) => {
+      const strokes = strokesIn ?? []; // a fragment may have no glyphs at all
       writes = writes.then(async () => {
         await clearDrops();
         if (this.cancelled) {
@@ -239,7 +266,6 @@ export class AskFlow {
             ctx.page + pageOffset,
             pen,
           );
-          await sleep(STEP_PAUSE_MS);
         }
         written++;
         answer += text;

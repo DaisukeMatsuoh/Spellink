@@ -83,4 +83,33 @@ describe('InkDrops', () => {
     await d.stop();
     expect(fakeNote.strokes(0)).toHaveLength(0);
   });
+
+  it('removes everything after the wave wrapped around the line, even if deletion renumbers as it goes', async () => {
+    const user = [
+      fakeNote.addUserStroke(0, userPoints(150, 80)),
+      fakeNote.addUserStroke(0, userPoints(150, 900)),
+    ];
+    const d = make(2);
+    for (let i = 0; i < 40; i++) {
+      await tick(d); // far more than one pass of the line
+    }
+    await d.stop();
+    expect(fakeNote.strokes(0)).toEqual(user);
+  });
+
+  it('the second pass is distinguishable from the first (different signatures)', () => {
+    const first = wavePiece(100, 144, 500, 9, 64, 0);
+    const second = wavePiece(100, 144, 500, 9, 64, 1);
+    expect([second.p[0], second.p[1]]).not.toEqual([first.p[0], first.p[1]]);
+  });
+
+  it('keeps going until nothing of ours is left when a delete does not take effect', async () => {
+    const d = make(0);
+    for (let i = 0; i < 3; i++) {
+      await tick(d);
+    }
+    fakeNote.ignoreNextDelete = true; // the first delete reports success but removes nothing
+    await d.stop();
+    expect(fakeNote.strokes(0)).toHaveLength(0);
+  });
 });

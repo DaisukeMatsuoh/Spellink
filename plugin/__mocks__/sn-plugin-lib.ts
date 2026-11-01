@@ -45,11 +45,14 @@ export const fakeNote = {
   deleted: [] as number[],
   currentPage: 0,
   inserted: [] as number[],
+  /** Simulate a delete that reports success but removes nothing. */
+  ignoreNextDelete: false,
   reset() {
     this.pages = new Map();
     this.deleted = [];
     this.currentPage = 0;
     this.inserted = [];
+    this.ignoreNextDelete = false;
     nextUuid = 1;
   },
   /** Adds a stroke the way the user's pen would. */
@@ -98,13 +101,25 @@ export const PluginCommAPI = {
     fakeNote.pages.set(page, list);
     return ok(true);
   },
+  /**
+   * Deletes the numbered elements one after another, renumbering after each — the strictest
+   * plausible behaviour: an ascending list [5,6,7] then removes old 5, 7 and 9.
+   */
   async deletePageElements(nums: number[], page: number) {
     fakeNote.deleted.push(...nums);
-    const kept = (fakeNote.pages.get(page) ?? []).filter(
-      e => !nums.includes(e.numInPage),
-    );
-    kept.forEach((e, i) => (e.numInPage = i + 1));
-    fakeNote.pages.set(page, kept);
+    if (fakeNote.ignoreNextDelete) {
+      fakeNote.ignoreNextDelete = false;
+      return ok(true);
+    }
+    const list = fakeNote.pages.get(page) ?? [];
+    for (const n of nums) {
+      const i = list.findIndex(e => e.numInPage === n);
+      if (i >= 0) {
+        list.splice(i, 1);
+      }
+      list.forEach((e, k) => (e.numInPage = k + 1));
+    }
+    fakeNote.pages.set(page, list);
     return ok(true);
   },
   recycleElement() {},

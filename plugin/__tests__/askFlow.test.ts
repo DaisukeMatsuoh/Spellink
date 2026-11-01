@@ -207,6 +207,26 @@ describe('AskFlow', () => {
     });
   });
 
+  describe('slow answers', () => {
+    it('leaves no wave behind when the answer comes after the wave wrapped around the line', async () => {
+      // The wave advances ~1 character per tick; a narrow answer area makes it wrap quickly.
+      const narrow = {...layout, width: 140};
+      const mine = fakeNote.addUserStroke(
+        0,
+        Array.from({length: 17}, (_, i) => ({x: 90 + i, y: 900})),
+      );
+      mockScript = async (send, id) => {
+        await pause(3200); // long enough for several passes
+        send(line(id, 0, 0, [stroke()]));
+        send(done(id));
+      };
+      await run(narrow);
+      expect(waveStrokes(0)).toHaveLength(0);
+      expect(answerStrokes(0)).toHaveLength(1);
+      expect(fakeNote.strokes(0)).toContain(mine);
+    }, 15000);
+  });
+
   describe('placement', () => {
     it('goes to a new page at once when the selection is at the page bottom, and animates there', async () => {
       let waveOnNewPage = -1;

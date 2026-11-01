@@ -293,8 +293,91 @@ export async function insertPageAfter(
   );
 }
 
-export function jumpToPage(page: number): Promise<boolean> {
-  return call<boolean>('jumpToPage', PluginCommAPI.jumpToPage(page));
+/** Thrown when the note we are working on is no longer the open one. */
+export class NoteMovedError extends Error {
+  constructor(readonly filePath: string) {
+    super(`note ${filePath} is no longer open`);
+  }
+}
+
+/**
+ * Comm-level APIs (insertPageElements, deletePageElements, jumpToPage…) act on whatever file is
+ * open, whatever path we mean. So every one of them goes through here first: if the open file is
+ * not ours, nothing is done.
+ */
+export async function ensureOpen(filePath: string): Promise<void> {
+  let open: string | null = null;
+  try {
+    open = await call<string>(
+      'getCurrentFilePath',
+      PluginCommAPI.getCurrentFilePath(),
+    );
+  } catch {
+    // The note app is not bound: it is not open.
+  }
+  if (open !== filePath) {
+    throw new NoteMovedError(filePath);
+  }
+}
+
+/** Where the user is looking, relative to where we mean to write. */
+export async function isOnPage(
+  filePath: string,
+  page: number,
+): Promise<boolean> {
+  await ensureOpen(filePath);
+  return (
+    (await call<number>(
+      'getCurrentPageNum',
+      PluginCommAPI.getCurrentPageNum(),
+    )) === page
+  );
+}
+
+export async function jumpToPageIn(
+  filePath: string,
+  page: number,
+): Promise<void> {
+  await ensureOpen(filePath);
+  await call<boolean>('jumpToPage', PluginCommAPI.jumpToPage(page));
+}
+
+/**
+ * Writes strokes to `page` of `filePath`, only while that note is open, and only after bringing
+ * the user to that page (strokes written while another page is on screen have been lost).
+ */
+export async function writeStrokesAt(
+  filePath: string,
+  page: number,
+  strokes: InkStroke[],
+  pen: PenStyle,
+  userData?: string,
+): Promise<void> {
+  if (!(await isOnPage(filePath, page))) {
+    await jumpToPageIn(filePath, page);
+  }
+  await writeStrokes(strokes, page, pen, undefined, userData);
+}
+
+/** Deletes elements (highest number first) from `page` of `filePath`, only while it is open. */
+export async function deleteElementsAt(
+  filePath: string,
+  page: number,
+  nums: number[],
+): Promise<void> {
+  if (nums.length === 0) {
+    return;
+  }
+  if (!(await isOnPage(filePath, page))) {
+    await jumpToPageIn(filePath, page);
+  }
+  await call(
+    'deletePageElements',
+    PluginCommAPI.deletePageElements(
+      [...nums].sort((a, b) => b - a),
+      page,
+    ),
+  );
 }
 
 const SCAN_CONCURRENCY = 16;

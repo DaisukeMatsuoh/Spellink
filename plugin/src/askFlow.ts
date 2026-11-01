@@ -9,15 +9,23 @@ import {
   currentPen,
   ensurePermissions,
   insertPageAfter,
-  jumpToPage,
+  jumpToPageIn,
+  NoteMovedError,
   lassoRect,
   noteContext,
   boxesOf,
   readPage,
   recognizeLasso,
-  writeStrokes,
+  writeStrokesAt,
   type NoteContext,
 } from './sdk';
+
+/** What the user reads when the answer could not be completed. */
+export function describeFailure(e: unknown): string {
+  return e instanceof NoteMovedError
+    ? t('noteMoved')
+    : t('error', {message: (e as Error).message});
+}
 
 export interface AskState {
   message: string;
@@ -120,7 +128,7 @@ export class AskFlow {
       await this.answer(question, answerLayout(ctx.size, rect), ctx, update);
     } catch (e) {
       update({
-        message: t('error', {message: (e as Error).message}),
+        message: describeFailure(e),
         finished: true,
         failed: true,
       });
@@ -143,7 +151,7 @@ export class AskFlow {
       await this.answer(question, layout, ctx, update, selection);
     } catch (e) {
       update({
-        message: t('error', {message: (e as Error).message}),
+        message: describeFailure(e),
         finished: true,
         failed: true,
       });
@@ -161,7 +169,7 @@ export class AskFlow {
     const pageBottom = layout.pageHeight - layout.bottomMargin;
     const newPage = async () => {
       await insertPageAfter(ctx.filePath, ctx.page + 1, ctx.page);
-      await jumpToPage(ctx.page + 1);
+      await jumpToPageIn(ctx.filePath, ctx.page + 1);
       ctx = {...ctx, page: ctx.page + 1};
       layout = {...layout, y: layout.continueTop ?? layout.bottomMargin};
     };
@@ -270,35 +278,48 @@ export class AskFlow {
       pageOffset: number,
     ) => {
       const strokes = strokesIn ?? []; // a fragment may have no glyphs at all
-      writes = writes.then(async () => {
-        await clearDrops();
-        if (this.cancelled) {
-          return;
-        }
-        // The first line past the bottom inserts the next page and turns to it.
-        while (pagesReady <= pageOffset) {
-          await insertPageAfter(ctx.filePath, ctx.page + pagesReady, ctx.page);
-          await jumpToPage(ctx.page + pagesReady);
-          pagesReady++;
-        }
-        // A few strokes at a time, so the answer is seen being written, not appearing whole.
-        for (let i = 0; i < strokes.length; i += STROKES_PER_STEP) {
+      writes = writes
+        .then(async () => {
+          await clearDrops();
           if (this.cancelled) {
             return;
           }
-          await writeStrokes(
-            strokes.slice(i, i + STROKES_PER_STEP),
-            ctx.page + pageOffset,
-            pen,
-          );
-        }
-        written++;
-        answer += text;
-        update({message: t('writing', {lines: written}), answer});
-      });
+          // The first line past the bottom inserts the next page and turns to it.
+          while (pagesReady <= pageOffset) {
+            await insertPageAfter(
+              ctx.filePath,
+              ctx.page + pagesReady,
+              ctx.page,
+            );
+            await jumpToPageIn(ctx.filePath, ctx.page + pagesReady);
+            pagesReady++;
+          }
+          // A few strokes at a time, so the answer is seen being written, not appearing whole.
+          for (let i = 0; i < strokes.length; i += STROKES_PER_STEP) {
+            if (this.cancelled) {
+              return;
+            }
+            await writeStrokesAt(
+              ctx.filePath,
+              ctx.page + pageOffset,
+              strokes.slice(i, i + STROKES_PER_STEP),
+              pen,
+            );
+          }
+          written++;
+          answer += text;
+          update({message: t('writing', {lines: written}), answer});
+        })
+        .catch(e => {
+          // Could not write (e.g. the note is no longer open): stop here, do not carry on half-way.
+          abort(e as Error);
+          this.cancel();
+        });
     };
 
+    let abort: (e: Error) => void = () => {};
     return new Promise<void>((resolve, reject) => {
+      abort = reject;
       conn.onClose = reason => reject(new Error(reason));
       conn.onMessage = (m: BridgeMessage) => {
         if ('id' in m && m.id !== this.id) {

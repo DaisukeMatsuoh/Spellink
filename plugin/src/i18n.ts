@@ -16,6 +16,8 @@ const STRINGS = {
     done: 'Done.',
     truncated: 'The answer did not fit on this page and was cut short.',
     noRoom: 'There is no room below the selection on this page.',
+    noteMoved:
+      'The note was switched or closed, so the answer was stopped. Nothing was written to the other document.',
     error: 'Error: {message}',
     question: 'Question',
     answer: 'Answer',
@@ -49,6 +51,8 @@ const STRINGS = {
     done: '完了しました。',
     truncated: '回答がこのページに収まらなかったため、途中までになっています。',
     noRoom: 'このページには選択範囲の下に書く余白がありません。',
+    noteMoved:
+      'ノートが切り替わった（または閉じられた）ため、回答を中断しました。別のドキュメントには何も書き込んでいません。',
     error: 'エラー: {message}',
     question: '質問',
     answer: '回答',

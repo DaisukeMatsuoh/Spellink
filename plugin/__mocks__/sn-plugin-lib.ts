@@ -44,7 +44,12 @@ export class Element {
 }
 
 const copyPages = (m: Map<number, Element[]>) =>
-  new Map([...m].map(([k, list]) => [k, list.map(e => Object.assign(new Element(), e))]));
+  new Map(
+    [...m].map(([k, list]) => [
+      k,
+      list.map(e => Object.assign(new Element(), e)),
+    ]),
+  );
 
 let nextUuid = 1;
 export const fakeNote = {
@@ -54,6 +59,12 @@ export const fakeNote = {
   file: new Map<number, Element[]>(),
   deleted: [] as number[],
   currentPage: 0,
+  /** The document on screen. Comm-level APIs act on this one, whichever note the plugin means. */
+  currentFile: '/note.note',
+  /** What an unrelated document would receive: anything written while it is open lands here. */
+  strayWrites: 0,
+  strayDeletes: 0,
+  strayJumps: 0,
   inserted: [] as number[],
   saves: 0,
   /** Simulate a delete that reports success but removes nothing. */
@@ -65,6 +76,10 @@ export const fakeNote = {
     this.file = new Map();
     this.deleted = [];
     this.currentPage = 0;
+    this.currentFile = '/note.note';
+    this.strayWrites = 0;
+    this.strayDeletes = 0;
+    this.strayJumps = 0;
     this.inserted = [];
     this.saves = 0;
     this.ignoreNextDelete = false;
@@ -76,7 +91,12 @@ export const fakeNote = {
     const list = this.pages.get(page) ?? [];
     const e = new Element();
     e.uuid = `user-${nextUuid++}`;
-    e.stroke = {penType: 10, penColor: 0, points: new Accessor<Pt>(), pressures: new Accessor<number>()};
+    e.stroke = {
+      penType: 10,
+      penColor: 0,
+      points: new Accessor<Pt>(),
+      pressures: new Accessor<number>(),
+    };
     e.stroke.points.data = points;
     e.numInPage = list.length + 1;
     list.push(e);
@@ -100,10 +120,22 @@ export const PluginCommAPI = {
     const e = new Element();
     e.type = type;
     e.uuid = `new-${nextUuid++}`;
-    e.stroke = {penType: 10, penColor: 0, points: new Accessor<Pt>(), pressures: new Accessor<number>()};
+    e.stroke = {
+      penType: 10,
+      penColor: 0,
+      points: new Accessor<Pt>(),
+      pressures: new Accessor<number>(),
+    };
     return ok(e);
   },
   async insertPageElements(elements: Element[], page: number) {
+    if (fakeNote.currentFile !== '/note.note') {
+      fakeNote.strayWrites += elements.length; // would have corrupted another document
+      return {
+        success: false,
+        error: {code: 105, message: 'No note-related app is bound!'},
+      };
+    }
     const list = fakeNote.pages.get(page) ?? [];
     for (const e of elements) {
       if (fakeNote.dropUserData) {
@@ -120,6 +152,13 @@ export const PluginCommAPI = {
    * plausible behaviour: an ascending list [5,6,7] then removes old 5, 7 and 9.
    */
   async deletePageElements(nums: number[], page: number) {
+    if (fakeNote.currentFile !== '/note.note') {
+      fakeNote.strayDeletes += nums.length;
+      return {
+        success: false,
+        error: {code: 105, message: 'No note-related app is bound!'},
+      };
+    }
     fakeNote.deleted.push(...nums);
     if (fakeNote.ignoreNextDelete) {
       fakeNote.ignoreNextDelete = false;
@@ -138,8 +177,17 @@ export const PluginCommAPI = {
   },
   recycleElement() {},
   async jumpToPage(page: number) {
+    if (fakeNote.currentFile !== '/note.note') {
+      fakeNote.strayJumps++;
+    }
     fakeNote.currentPage = page;
     return ok(true);
+  },
+  async getCurrentFilePath() {
+    return ok(fakeNote.currentFile);
+  },
+  async getCurrentPageNum() {
+    return ok(fakeNote.currentPage);
   },
   async getPenInfo() {
     return ok({type: 10, color: 0, width: 200});

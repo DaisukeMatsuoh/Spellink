@@ -11,7 +11,7 @@ import {
   currentPen,
   ensurePermissions,
   insertPageAfter,
-  jumpToPage,
+  jumpToPageIn,
   noteContext,
   PERMISSIONS,
   readPage,
@@ -211,7 +211,7 @@ export async function newPageTest(log: Log): Promise<void> {
       await currentPen(),
     );
     log(`write on new page: ${Date.now() - t}ms`);
-    await jumpToPage(target);
+    await jumpToPageIn(ctx.filePath, target);
     log(
       '→ Did the view turn to a new page with zig-zags on it? (template copied from this page)',
     );

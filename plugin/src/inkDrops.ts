@@ -5,13 +5,13 @@
 // Every stroke carries the same unique marker in Element.userData. Removal is exactly "find the
 // elements with this marker, delete them" — nothing is inferred from positions or numbers, so
 // nothing else can be matched.
-import {PluginCommAPI} from 'sn-plugin-lib';
 import {WAVE_MARKER_PREFIX} from './freeSpace';
 import {
-  call,
+  deleteElementsAt,
+  isOnPage,
   readPage,
   releaseElements,
-  writeStrokes,
+  writeStrokesAt,
   type PenStyle,
 } from './sdk';
 
@@ -70,7 +70,9 @@ export class InkDrops {
 
   start(): void {
     this.timer = setInterval(() => {
-      this.chain = this.chain.then(() => this.tick()).catch(() => {});
+      this.chain = this.chain
+        .then(() => this.tick())
+        .catch(e => this.giveUp(e));
     }, INTERVAL_MS);
   }
 
@@ -81,11 +83,23 @@ export class InkDrops {
       clearInterval(this.timer);
     }
     await this.chain;
-    await this.clear().catch(() => {});
+    await this.clear().catch(e => this.giveUp(e));
+  }
+
+  /** Whatever went wrong, the animation just ends; the answer itself does not depend on it. */
+  private giveUp(_error: unknown): void {
+    this.stopped = true;
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
   }
 
   private async tick(): Promise<void> {
     if (this.stopped) {
+      return;
+    }
+    // The user looking at another page: draw nothing until they are back.
+    if (!(await isOnPage(this.filePath, this.page))) {
       return;
     }
     const end = this.x + this.width;
@@ -102,7 +116,13 @@ export class InkDrops {
       this.size * 0.22,
       this.size * 1.6,
     );
-    await writeStrokes([piece], this.page, this.pen, undefined, this.marker);
+    await writeStrokesAt(
+      this.filePath,
+      this.page,
+      [piece],
+      this.pen,
+      this.marker,
+    );
     this.drawnPieces++;
     this.cursor = next;
   }
@@ -120,11 +140,6 @@ export class InkDrops {
       .sort((a, b) => b - a);
     releaseElements(elements);
     this.drawnPieces = 0;
-    if (nums.length > 0) {
-      await call(
-        'deletePageElements',
-        PluginCommAPI.deletePageElements(nums, this.page),
-      );
-    }
+    await deleteElementsAt(this.filePath, this.page, nums);
   }
 }

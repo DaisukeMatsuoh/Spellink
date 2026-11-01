@@ -350,3 +350,82 @@ describe('page switching must not lose anything (regression: the old page came b
     expect(answerStrokes(1)).toHaveLength(1);
   });
 });
+
+describe('the user leaves the note while the answer is being written', () => {
+  beforeEach(() => fakeNote.reset());
+
+  it('never writes into the document that is now open, and says why it stopped', async () => {
+    mockScript = async (send, id) => {
+      send(line(id, 0, 0, [stroke()]));
+      await pause(200);
+      fakeNote.currentFile = '/other-document.note'; // the user opened something else
+      send(line(id, 1, 0, [stroke()]));
+      send(line(id, 2, 0, [stroke()]));
+      send(done(id));
+    };
+    const last = await run(layout);
+    expect(fakeNote.strayWrites).toBe(0);
+    expect(fakeNote.strayDeletes).toBe(0);
+    expect(fakeNote.strayJumps).toBe(0);
+    expect(last.failed).toBe(true);
+    expect(last.message).toContain('切り替わ');
+    expect(answerStrokes(0)).toHaveLength(1); // what was written before stays
+  });
+
+  it('removes nothing from another document when the wave is cleaned up', async () => {
+    mockScript = async (send, id) => {
+      await pause(800);
+      fakeNote.currentFile = '/other-document.note';
+      await pause(100);
+      send(line(id, 0, 0, [stroke()]));
+      send(done(id));
+    };
+    await run(layout);
+    expect(fakeNote.strayDeletes).toBe(0);
+    expect(fakeNote.strayWrites).toBe(0);
+  });
+
+  it('brings the answer back to its page when the user flipped to another page', async () => {
+    mockScript = async (send, id) => {
+      send(line(id, 0, 0, [stroke()]));
+      await pause(100);
+      fakeNote.currentPage = 5; // flipped away mid-answer
+      send(line(id, 1, 0, [stroke()]));
+      send(done(id));
+    };
+    const last = await run(layout);
+    expect(last.failed).toBeFalsy();
+    expect(fakeNote.currentPage).toBe(0);
+    expect(answerStrokes(0)).toHaveLength(2);
+    expect(answerStrokes(5)).toHaveLength(0);
+  });
+});
+
+describe('the user keeps flipping pages while a long answer is written', () => {
+  beforeEach(() => fakeNote.reset());
+
+  it('loses no stroke and writes nothing to the page the user flipped to', async () => {
+    const lines = 12;
+    mockScript = async (send, id) => {
+      for (let i = 0; i < lines; i++) {
+        fakeNote.currentPage = ((i * 7) % 5) + 1; // the user is on some other page every time
+        send(
+          line(
+            id,
+            i,
+            0,
+            Array.from({length: 40}, () => stroke()),
+          ),
+        );
+        await pause(5);
+      }
+      send(done(id));
+    };
+    const last = await run({...layout, maxPages: 1});
+    expect(last.failed).toBeFalsy();
+    expect(answerStrokes(0)).toHaveLength(lines * 40); // every stroke landed on its own page
+    for (const other of [1, 2, 3, 4, 5]) {
+      expect(answerStrokes(other)).toHaveLength(0);
+    }
+  }, 30000);
+});

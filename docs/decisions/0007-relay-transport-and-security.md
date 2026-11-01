@@ -28,3 +28,14 @@ Wi-Fi 越しのやり取りなので暗号化したい。gRPC や UDP の独自�
 - スパイク版は **平文 WebSocket + 共有トークン**（`hello` で提示、ブリッジ側は SHA-256 を定数時間比較）で実装。
   同じ LAN の盗聴者からは質問・回答・トークンが見える状態なので、**Noise による暗号化を入れるまでは自宅など信頼できるネットワーク限定**。
 - 実機で平文 ws:// が通るかを診断画面で確認してから、Noise（ws:// の場合）か TLS ピン留め（ネイティブ）かを決める。
+
+## 追記（2026-11-01）: Noise を実装
+- 方式: `Noise_NNpsk0_25519_ChaChaPoly_BLAKE2s`。事前共有鍵はペアリングトークンから導出（`SHA-256("spellink-psk-v1:" + token)`）。
+  鍵を持っていること自体が認証になり、セッションごとに一時鍵で前方秘匿性も得る。PAKE は使わず、トークンはペアリングファイルで渡す。
+- ブリッジ: `internal/securechan`（`github.com/flynn/noise`）。最初のフレームがバイナリなら Noise、テキストなら旧来の平文 hello（**LAN のみ**、中継経由は拒否）。
+- プラグイン: `src/noise.ts`（`@noble/curves`・`@noble/ciphers`・`@noble/hashes` の基本関数の上に、仕様どおりの状態機械を最小限で実装）。
+  `crypto.getRandomValues` が無い環境では、多数の `Math.random()` と時刻をハッシュした代替乱数を使う（弱いが、事前共有鍵があるので秘匿性と認証は保たれ、前方秘匿性だけが弱まる）。
+  Noise が端末上で動かない場合のみ、LAN の URL に限って平文にフォールバックする。診断画面に方式（noise / plaintext）と乱数源を表示。
+- 確認: Go 同士のテスト（大きなメッセージの分割、誤った鍵の拒否）、TypeScript 実装と Go ブリッジの相互接続（Node 上で実 Claude Code まで）、改ざん検出、代替乱数。
+- 未確認: 端末の JS エンジン（Hermes）上で動くか（BigInt・乱数源）。→ 診断 1 で確認。
+- 状態は Proposed のまま（端末での確認後に Accepted）。平文 hello は端末で Noise が動くと確認できたら削除する。

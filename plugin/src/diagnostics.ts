@@ -4,6 +4,7 @@ import {PluginCommAPI, PluginManager, PluginNoteAPI} from 'sn-plugin-lib';
 import {answerLayout, AskFlow} from './askFlow';
 import {connectFirst, type ConnectAttempt} from './bridgeClient';
 import {loadBridges} from './bridgeConfig';
+import {randomSource} from './noise';
 import type {InkStroke} from './protocol';
 import {
   call,
@@ -35,6 +36,10 @@ const safe = async (
 };
 
 export async function environment(log: Log): Promise<void> {
+  // What the end-to-end encryption can rely on in this JS engine.
+  log(
+    `js: BigInt=${typeof BigInt} crypto.getRandomValues=${randomSource()} TextEncoder=${typeof TextEncoder} TextDecoder=${typeof TextDecoder}`,
+  );
   await safe('deviceType', () => PluginManager.getDeviceType(), log);
   await safe('pluginDir', () => PluginManager.getPluginDirPath(), log);
   await safe(
@@ -85,7 +90,7 @@ export async function network(log: Log): Promise<void> {
   const attempts: ConnectAttempt[] = [];
   try {
     const conn = await connectFirst(loaded.endpoints, 5000, attempts);
-    log(`ws winner: ${conn.name} ${conn.url}`);
+    log(`ws winner: ${conn.name} ${conn.url} [${conn.mode}]`);
     conn.close();
   } catch (e) {
     log(`ws: ERROR ${(e as Error).message}`);

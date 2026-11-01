@@ -12,6 +12,9 @@
     "typecheck": "node scripts/prepare-local-config.js && tsc --noEmit"
   },
   "dependencies": {
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
     "react": "19.0.0",
     "react-native": "0.79.2",
     "sn-plugin-lib": "^0.2.3"

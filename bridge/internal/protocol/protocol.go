@@ -2,7 +2,7 @@
 // one WebSocket. The plugin keeps its own copy in plugin/src/protocol.ts — change both together.
 package protocol
 
-import "github.com/DaisukeMatsuoh/Cloute/bridge/internal/ink"
+import "github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 
 const (
 	Version = 1

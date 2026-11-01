@@ -13,7 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/DaisukeMatsuoh/Cloute/bridge/internal/ink"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 )
 
 var layout = ink.Layout{X: 10, Y: 10, Width: 400, PageHeight: 1000, BottomMargin: 20, CharSize: 40}

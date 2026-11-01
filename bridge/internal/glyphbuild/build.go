@@ -18,7 +18,7 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/DaisukeMatsuoh/Cloute/bridge/internal/ink"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 )
 
 const (

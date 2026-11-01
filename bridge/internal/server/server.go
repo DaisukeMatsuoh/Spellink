@@ -19,9 +19,10 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/DaisukeMatsuoh/Cloute/bridge/internal/claude"
-	"github.com/DaisukeMatsuoh/Cloute/bridge/internal/ink"
-	"github.com/DaisukeMatsuoh/Cloute/bridge/internal/protocol"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/claude"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/securechan"
 )
 
 // AskFunc asks the model and streams text deltas through onText.
@@ -51,18 +52,27 @@ func Handler(d Deps) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "protocol": protocol.Version})
 	})
-	expected := sha256.Sum256([]byte(d.Token))
 	mux.HandleFunc(protocol.WSPath, func(w http.ResponseWriter, r *http.Request) {
 		// The plugin is not a browser, so there is no Origin to check; the token authenticates.
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 		if err != nil {
 			return
 		}
-		c.SetReadLimit(maxFrameBytes)
-		s := &session{deps: d, conn: c, peer: r.RemoteAddr, expected: expected}
-		s.run(r.Context())
+		ServeConn(r.Context(), d, c, r.RemoteAddr, false)
 	})
 	return mux
+}
+
+// ServeConn runs one plugin session on an accepted WebSocket, whether it came in directly on
+// the LAN or through the relay. With requireEncryption (relay sessions) only the Noise
+// handshake is accepted; on the LAN the legacy plaintext hello still works for now.
+func ServeConn(ctx context.Context, d Deps, c *websocket.Conn, peer string, requireEncryption bool) {
+	c.SetReadLimit(maxFrameBytes)
+	s := &session{
+		deps: d, conn: c, peer: peer, expected: sha256.Sum256([]byte(d.Token)),
+		requireEncryption: requireEncryption,
+	}
+	s.run(ctx)
 }
 
 type session struct {
@@ -70,6 +80,9 @@ type session struct {
 	conn     *websocket.Conn
 	peer     string
 	expected [32]byte
+
+	requireEncryption bool
+	secure            *securechan.Channel // set once the Noise handshake succeeds
 
 	writeMu sync.Mutex
 	askMu   sync.Mutex
@@ -84,6 +97,10 @@ func (s *session) send(ctx context.Context, v any) {
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if s.secure != nil {
+		_ = s.secure.Write(ctx, b)
+		return
+	}
 	_ = s.conn.Write(ctx, websocket.MessageText, b)
 }
 
@@ -93,15 +110,56 @@ func (s *session) fail(ctx context.Context, code, msg string) {
 }
 
 func (s *session) read(ctx context.Context) (*protocol.ClientMessage, error) {
-	typ, b, err := s.conn.Read(ctx)
+	var b []byte
+	var err error
+	if s.secure != nil {
+		b, err = s.secure.Read(ctx)
+	} else {
+		var typ websocket.MessageType
+		typ, b, err = s.conn.Read(ctx)
+		if err == nil && typ != websocket.MessageText {
+			err = errors.New("frames must be JSON text")
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
 	var m protocol.ClientMessage
-	if typ != websocket.MessageText || json.Unmarshal(b, &m) != nil {
-		return nil, errors.New("frames must be JSON text")
+	if json.Unmarshal(b, &m) != nil {
+		return nil, errors.New("frames must be JSON")
 	}
 	return &m, nil
+}
+
+// authenticate handles the first frame: a binary Noise handshake (authenticated by the
+// token-derived key), or — on the LAN only — a plaintext hello carrying the token.
+func (s *session) authenticate(ctx context.Context) (client string, ok bool) {
+	typ, first, err := s.conn.Read(ctx)
+	if err != nil {
+		return "", false
+	}
+	if typ == websocket.MessageBinary {
+		ch, err := securechan.Accept(ctx, s.conn, securechan.PSK(s.deps.Token), first)
+		if err != nil {
+			s.deps.Log.Printf("rejected connection from %s: %v", s.peer, err)
+			_ = s.conn.Close(websocket.StatusPolicyViolation, "unauthorized")
+			return "", false
+		}
+		s.secure = ch
+		return "noise", true
+	}
+	var hello protocol.ClientMessage
+	if s.requireEncryption || json.Unmarshal(first, &hello) != nil || hello.Type != "hello" {
+		s.fail(ctx, "unauthorized", "encrypted handshake expected")
+		return "", false
+	}
+	got := sha256.Sum256([]byte(hello.Token))
+	if subtle.ConstantTimeCompare(got[:], s.expected[:]) != 1 {
+		s.deps.Log.Printf("rejected connection from %s", s.peer)
+		s.fail(ctx, "unauthorized", "bad token")
+		return "", false
+	}
+	return hello.Client + " (plaintext)", true
 }
 
 func (s *session) run(parent context.Context) {
@@ -110,19 +168,12 @@ func (s *session) run(parent context.Context) {
 	defer s.conn.CloseNow()
 
 	helloCtx, helloCancel := context.WithTimeout(ctx, helloTimeout)
-	hello, err := s.read(helloCtx)
+	client, ok := s.authenticate(helloCtx)
 	helloCancel()
-	if err != nil || hello.Type != "hello" {
-		s.fail(ctx, "unauthorized", "hello expected")
+	if !ok {
 		return
 	}
-	got := sha256.Sum256([]byte(hello.Token))
-	if subtle.ConstantTimeCompare(got[:], s.expected[:]) != 1 {
-		s.deps.Log.Printf("rejected connection from %s", s.peer)
-		s.fail(ctx, "unauthorized", "bad token")
-		return
-	}
-	s.deps.Log.Printf("connected: %s (%.80s)", s.peer, hello.Client)
+	s.deps.Log.Printf("connected: %s (%.80s)", s.peer, client)
 	s.send(ctx, protocol.Welcome{Type: "welcome", Bridge: s.deps.Name, Version: s.deps.Version, Protocol: protocol.Version})
 
 	for {

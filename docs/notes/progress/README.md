@@ -41,7 +41,8 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
    - `fetch('file://…')` で MyStyle の設定ファイルを読めるか
    - 日本語 OCR の精度
 2. 結果を受けて: ADR 0002/0003/0007/0009 を確定、暗号化（Noise）、ペアリング UX。
-3. 中継サーバ（ADR 0010）: ホスティング先が決まったら、Noise（ADR 0007）→ 中継 → ペアリングの順で実装。
+3. 中継の本番運用: ユーザーが Cloudflare（ドメイン・トンネル）を用意 → エージェントが systemd ユニットと手順を整える。
+   Noise・中継は実装済み（端末での動作は未確認）。ペアリング情報の端末側保存は未解決（現状はビルド時埋め込み）。
 4. 知財: 弁理士への相談は当面しない方針。情報はローカルの `docs/notes/ip/private/`、ルールは `docs/notes/ip/README.md`。
 5. 配布準備: CI でリリース、macOS の公証、CONTRIBUTING・SECURITY.md。
 
@@ -53,13 +54,14 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
 - `plugin/PluginConfig.json` の `pluginID` は変更禁止。生成物 `plugin/build/`・`bridge/dist/` は git 管理外。
 
 ## 未解決の質問・ユーザーの方針
-- 外出先: VPN もトンネルも利用者に求めない。**Spellink の中継サーバ（ランデブー）を作る方針**（ADR 0010、Proposed）。ホスティング先（VPS/Fly.io の Go 中継 か Cloudflare Workers か）はユーザーの決定待ち。トンネル（`extraUrls`）と NetBird は上級者向け代替。
-- 名前: **Spellink に決定**（2026-10-31）。リポジトリ内は置換済み。GitHub リポジトリ名と Go モジュールパス（`github.com/DaisukeMatsuoh/Cloute/bridge`）はユーザーが GitHub で改名した後に変更。開発機の設定は `~/.config/spellink-bridge/`、バイナリは `~/.local/bin/spellink-bridge`。
+- 外出先: 利用者には何も求めない。**Spellink の中継サーバ（ADR 0010）を実装済み**。Go で運用する方針（ユーザー決定）。ホスティングはフェーズ 1 = この機械＋Cloudflare Tunnel を推奨（`docs/notes/research/2026-11-01-relay-hosting.md`）。ユーザーの Cloudflare 設定（ドメイン、`cloudflared tunnel login`）待ち。
+- 名前: **Spellink に決定**（2026-10-31）。リポジトリ内は置換済み。GitHub リポジトリ名と Go モジュールパス（`github.com/DaisukeMatsuoh/Spellink/bridge`）はユーザーが GitHub で改名した後に変更。開発機の設定は `~/.config/spellink-bridge/`、バイナリは `~/.local/bin/spellink-bridge`。
 - 弁理士: すぐには相談しない（情報として保持）。
 - push: ユーザーの指示があるまでしない（まだ公開しない）。
 
 ## 作業ログ
 - 2026-10-30: 公式ドキュメント全 154 ページ、sn-plugin-lib 0.2.3 / テンプレート 1.0.13 のソース、先行プラグイン（sn-copilot, sn-dictionary, supernote-plugin-research）を調査。docs 一式を作成。
+- 2026-11-01: Noise による端末⇔ブリッジ間の暗号化（Go＋TS、相互接続確認）、中継サーバと中継経由接続を実装（実 Claude Code で確認）。ホスティング調査。
 - 2026-10-31: 名前を Spellink に決定・置換。外出先接続の方針を中継サーバ（ADR 0010）に。
 - 2026-10-31: 名前の候補出し、外出先アクセスの整理、ブリッジ設定 `extraUrls` を追加。
 - 2026-10-31: ブリッジを Go に移植（ADR 0008）。長い回答の字数指示と次ページへの続き書き（ADR 0009）。特許調査（ローカルのみ）、名前と大きな紙の検討ノート。

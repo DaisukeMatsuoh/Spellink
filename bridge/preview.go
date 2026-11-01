@@ -10,7 +10,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/DaisukeMatsuoh/Cloute/bridge/internal/ink"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 )
 
 // preview renders text as handwriting onto Nomad-sized PNG pages, to check output without a device.

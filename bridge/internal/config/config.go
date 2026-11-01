@@ -25,6 +25,9 @@ type Config struct {
 	// ExtraURLs are additional addresses the plugin may try, such as a tunnel that reaches
 	// this bridge from outside the LAN (e.g. "wss://bridge.example.com/v1").
 	ExtraURLs []string `json:"extraUrls,omitempty"`
+	// RelayURL is a Spellink relay (e.g. "wss://relay.example.com") the bridge registers with so
+	// the plugin can reach it from outside the LAN (ADR 0010). Empty disables the relay.
+	RelayURL string `json:"relayUrl,omitempty"`
 }
 
 // Dir is where config.json, glyphs.bin and reports.jsonl live.

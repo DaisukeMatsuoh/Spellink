@@ -159,3 +159,28 @@ func TestSlopeTiltsTheWholeBlockUniformly(t *testing.T) {
 		t.Fatalf("right end should rise: start %d, end %d", shift(0, 0), shift(0, 4))
 	}
 }
+
+func TestFragmentsStartEarlyAndJoinSeamlessly(t *testing.T) {
+	l := testLayout
+	l.Width = 1000 // 10 full-width chars per line
+	c := NewComposer(testFont(), l, 1)
+	early := c.Push("あいうえおあいうえ") // 9 chars: line not full yet
+	if len(early) == 0 || !early[0].Cont {
+		t.Fatalf("expected an early fragment, got %v", early)
+	}
+	rest := append(c.Push("お"), c.Finish()...)
+	all := append(early, rest...)
+	var text strings.Builder
+	for _, ln := range all {
+		text.WriteString(ln.Text)
+	}
+	if text.String() != "あいうえおあいうえお" {
+		t.Fatalf("fragments must add up to the line, got %q", text.String())
+	}
+	// Fragments of one line share a baseline and continue to the right.
+	firstX := all[0].Strokes[0].P[0]
+	lastX := all[len(all)-1].Strokes[0].P[0]
+	if lastX <= firstX {
+		t.Fatalf("later fragments must start further right: %d <= %d", lastX, firstX)
+	}
+}

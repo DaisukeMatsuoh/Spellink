@@ -30,7 +30,13 @@ type Line struct {
 	Page    int      `json:"page"`
 	Text    string   `json:"text"`
 	Strokes []Stroke `json:"strokes"`
+	// Cont marks a fragment: more of the same visual line follows in later messages.
+	Cont bool `json:"cont,omitempty"`
 }
+
+// fragmentChars: once this many unwritten characters are pending on a line, they are drawn
+// right away instead of waiting for the line to fill, so writing starts sooner.
+const fragmentChars = 8
 
 const (
 	lineHeight = 1.45 // × CharSize
@@ -70,6 +76,8 @@ type Composer struct {
 	Pages     int  // pages used so far
 
 	line             []pending
+	lineDrawn        int     // characters of c.line already sent as fragments
+	lineDrawnX       float64 // x offset (page px) where the next fragment starts
 	lineWidth        float64
 	wordStart        int
 	lineIndex        float64 // line slot on the current page; fractional after a paragraph gap
@@ -106,6 +114,8 @@ func (c *Composer) Push(text string) []Line {
 			c.add(ch, &out)
 		}
 	}
+	// Draw what has gathered so far without waiting for the line to fill.
+	c.fragment(&out)
 	return out
 }
 
@@ -170,6 +180,23 @@ func (c *Composer) append(ch rune, adv float64, isWord bool) {
 	c.lineWidth += adv
 }
 
+// fragment draws the pending part of the current line up to the last safe break (not inside a
+// Latin word) once enough characters have gathered. Returns nothing if the line is not ready.
+func (c *Composer) fragment(out *[]Line) {
+	pendingChars := len(c.line) - c.lineDrawn
+	if pendingChars < fragmentChars || !c.fits() {
+		return
+	}
+	end := len(c.line)
+	if c.wordStart >= 0 {
+		end = c.wordStart // keep an unfinished Latin word for the next piece
+	}
+	if end-c.lineDrawn < fragmentChars/2 {
+		return
+	}
+	c.draw(out, c.lineDrawn, end, true)
+}
+
 // flush ends the current line. A hard break on an empty line leaves half a line between paragraphs.
 func (c *Composer) flush(out *[]Line, hardBreak bool) {
 	if len(c.line) > 0 {
@@ -204,11 +231,19 @@ func (c *Composer) emit(out *[]Line) {
 		c.lineIndex = 0
 		c.atParagraphStart = true
 	}
+	c.draw(out, c.lineDrawn, len(c.line), false)
+	c.lineIndex++
+	c.atParagraphStart = false
+	c.resetLine()
+}
+
+// draw renders c.line[from:to] as one message. cont = more of this line follows.
+func (c *Composer) draw(out *[]Line, from, to int, cont bool) {
 	top := c.top()
 	var strokes []Stroke
 	var text strings.Builder
-	x := c.layout.X
-	for _, p := range c.line {
+	x := c.layout.X + c.lineDrawnX
+	for _, p := range c.line[from:to] {
 		if g, ok := c.font.Glyphs[p.ch]; ok {
 			strokes = append(strokes, RenderGlyph(g, c.font.Em, x, top, c.layout.CharSize, c.rng)...)
 		}
@@ -222,15 +257,15 @@ func (c *Composer) emit(out *[]Line) {
 			}
 		}
 	}
-	*out = append(*out, Line{Index: c.emitted, Page: c.page, Text: text.String(), Strokes: strokes})
+	*out = append(*out, Line{Index: c.emitted, Page: c.page, Text: text.String(), Strokes: strokes, Cont: cont})
 	c.emitted++
-	c.lineIndex++
-	c.atParagraphStart = false
-	c.resetLine()
+	c.lineDrawn = to
+	c.lineDrawnX = x - c.layout.X
 }
 
 func (c *Composer) resetLine() {
 	c.line = c.line[:0]
+	c.lineDrawn, c.lineDrawnX = 0, 0
 	c.lineWidth = 0
 	c.wordStart = -1
 }

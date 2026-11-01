@@ -190,6 +190,8 @@ const (
 	latinScale    = 0.83
 	minDigitWidth = 0.36 * em
 	cjkBottomLine = 0.9 * em
+	// Side bearing for Latin/digit glyphs; wider than raw scaling gives, or letters touch.
+	latinBearing = 47.0
 )
 
 func halfWidth(strokes [][]float64, r rune) ink.Glyph {
@@ -201,13 +203,30 @@ func halfWidth(strokes [][]float64, r rune) ink.Glyph {
 	}
 	if r >= '0' && r <= '9' {
 		minX, maxX := xRange(strokes)
-		adv := math.Max(minDigitWidth, maxX-minX+2*sideBearing*latinScale)
+		adv := math.Max(minDigitWidth, maxX-minX+2*latinBearing)
 		return ink.Glyph{
 			Advance: int16(math.Round(adv)),
 			Strokes: shifted(strokes, (adv-(maxX-minX))/2-minX),
 		}
 	}
-	return proportional(strokes, sideBearing*latinScale)
+	g := proportional(strokes, latinBearing)
+	// Narrow letters (i, l, t…) and tight pairs (a-u, l-a) read as blobs; keep a minimum pitch.
+	if min := int16(0.3 * em); g.Advance < min && r != ' ' {
+		pad := float64(min-g.Advance) / 2
+		g = ink.Glyph{Advance: min, Strokes: shifted(unshift(g.Strokes), pad)}
+	}
+	return g
+}
+
+func unshift(s [][]int16) [][]float64 {
+	out := make([][]float64, len(s))
+	for i, st := range s {
+		out[i] = make([]float64, len(st))
+		for j, v := range st {
+			out[i][j] = float64(v)
+		}
+	}
+	return out
 }
 
 // proportional shifts a glyph so its ink starts at sideBearing and gives it a matching advance.

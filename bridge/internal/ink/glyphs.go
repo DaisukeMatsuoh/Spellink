@@ -26,7 +26,7 @@ type Font struct {
 	Glyphs  map[rune]Glyph
 }
 
-const magic = "CLGF\x05" // bump whenever glyph generation changes
+const magic = "CLGF\x07" // bump whenever glyph generation changes
 
 // ErrFormat means the file is not a glyph file of the current format (it should be rebuilt).
 var ErrFormat = errors.New("not a glyph file of the current format")

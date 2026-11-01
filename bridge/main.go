@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -108,7 +109,7 @@ func loadFont() (*ink.Font, error) {
 		return nil, err
 	}
 	font, err := ink.LoadFont(file)
-	if errors.Is(err, fs.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, ink.ErrFormat) {
 		return buildGlyphs()
 	}
 	return font, err
@@ -128,6 +129,7 @@ func serve() error {
 		return err
 	}
 	logger := log.New(os.Stdout, "", log.LstdFlags)
+	var settingsMu sync.Mutex
 	deps := server.Deps{
 		Name: cfg.Name, Version: version, Token: cfg.Token, Font: font,
 		Ask: runner.Ask,
@@ -137,6 +139,18 @@ func serve() error {
 			}
 		},
 		Log: logger,
+		Settings: func() protocol.Settings {
+			settingsMu.Lock()
+			defer settingsMu.Unlock()
+			return protocol.Settings{ShowProgress: cfg.ShowProgress}
+		},
+		SetSettings: func(s protocol.Settings) error {
+			settingsMu.Lock()
+			defer settingsMu.Unlock()
+			cfg.ShowProgress = s.ShowProgress
+			logger.Printf("settings changed: showProgress=%v", s.ShowProgress)
+			return config.Save(cfg)
+		},
 	}
 	handler := server.Handler(deps)
 	srv := &http.Server{

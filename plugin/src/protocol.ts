@@ -23,6 +23,12 @@ export interface InkStroke {
   w: number[];
 }
 
+/** User preferences, stored on the bridge (the plugin cannot persist data on the device). */
+export interface Settings {
+  /** Open the progress panel while answering; off = just write onto the page. */
+  showProgress: boolean;
+}
+
 export type ClientMessage =
   | {type: 'hello'; token: string; client: string}
   | {
@@ -33,10 +39,18 @@ export type ClientMessage =
       layout: LayoutParams;
     }
   | {type: 'cancel'; id: string}
-  | {type: 'report'; data: unknown};
+  | {type: 'report'; data: unknown}
+  | {type: 'setSettings'; settings: Settings};
 
 export type BridgeMessage =
-  | {type: 'welcome'; bridge: string; version: string; protocol: number}
+  | {
+      type: 'welcome';
+      bridge: string;
+      version: string;
+      protocol: number;
+      settings?: Settings;
+    }
+  | {type: 'settings'; settings: Settings}
   | {type: 'status'; id: string; stage: 'thinking' | 'writing'}
   | {
       type: 'line';

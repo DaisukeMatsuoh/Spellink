@@ -21,6 +21,12 @@ const STRINGS = {
     answer: 'Answer',
     close: 'Close',
     cancel: 'Cancel',
+    settingsTitle: 'Spellink settings',
+    showProgress: 'Show progress panel (debug)',
+    showProgressHelp:
+      'Off: the answer is simply written onto the page. The panel still opens when something goes wrong.',
+    connectedTo: 'Connected to {name}',
+    saved: 'Saved.',
   },
   ja: {
     askButton: 'Claudeに聞く',
@@ -42,6 +48,12 @@ const STRINGS = {
     answer: '回答',
     close: '閉じる',
     cancel: 'キャンセル',
+    settingsTitle: 'Spellink の設定',
+    showProgress: '進捗パネルを表示（デバッグ）',
+    showProgressHelp:
+      'OFF のときは、回答をそのままページに書き込みます。エラーのときだけパネルが開きます。',
+    connectedTo: '{name} に接続しました',
+    saved: '保存しました。',
   },
 } as const;
 

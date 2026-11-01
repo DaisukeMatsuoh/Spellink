@@ -1,6 +1,6 @@
 // Which screen the plugin view should show. Set from the button listener in index.js,
 // read by App; each press bumps `seq` so the same screen restarts on a new press.
-export type Screen = 'ask' | 'diagnostics';
+export type Screen = 'ask' | 'diagnostics' | 'settings';
 
 let current: {screen: Screen; seq: number} = {screen: 'diagnostics', seq: 0};
 const listeners = new Set<() => void>();

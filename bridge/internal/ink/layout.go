@@ -91,6 +91,9 @@ func (c *Composer) Push(text string) []Line {
 		if c.Truncated {
 			break
 		}
+		if ch >= 0xff01 && ch <= 0xff5e { // full-width ASCII → half-width
+			ch -= 0xfee0
+		}
 		switch {
 		case dropped[ch]:
 		case ch == '\n':

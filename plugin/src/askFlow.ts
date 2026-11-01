@@ -20,6 +20,10 @@ export interface AskState {
   question?: string;
   answer?: string;
   finished: boolean;
+  /** Ended without an answer (no text, no bridge, error…): the user must be told. */
+  failed?: boolean;
+  /** The user's "show progress" setting, known once the bridge has answered. */
+  showProgress?: boolean;
 }
 
 type Report = (s: AskState) => void;
@@ -91,6 +95,7 @@ export class AskFlow {
         return update({
           message: t('permissionDenied', {list: missing.join(', ')}),
           finished: true,
+          failed: true,
         });
       }
 
@@ -99,7 +104,7 @@ export class AskFlow {
       const rect = await lassoRect();
       const question = (await recognizeLasso(ctx.size)).trim();
       if (!question) {
-        return update({message: t('noText'), finished: true});
+        return update({message: t('noText'), finished: true, failed: true});
       }
       update({question});
       await PluginCommAPI.setLassoBoxState(LASSO_REMOVE);
@@ -109,6 +114,7 @@ export class AskFlow {
       update({
         message: t('error', {message: (e as Error).message}),
         finished: true,
+        failed: true,
       });
     }
   }
@@ -130,6 +136,7 @@ export class AskFlow {
       update({
         message: t('error', {message: (e as Error).message}),
         finished: true,
+        failed: true,
       });
     }
   }
@@ -141,7 +148,7 @@ export class AskFlow {
     update: (patch: Partial<AskState>) => void,
   ): Promise<void> {
     if (layout.y + layout.charSize > layout.pageHeight - layout.bottomMargin) {
-      return update({message: t('noRoom'), finished: true});
+      return update({message: t('noRoom'), finished: true, failed: true});
     }
     const pen = await currentPen();
     update({message: t('connecting')});
@@ -149,8 +156,9 @@ export class AskFlow {
     try {
       this.conn = await connectFirst(endpoints);
     } catch {
-      return update({message: t('noBridge'), finished: true});
+      return update({message: t('noBridge'), finished: true, failed: true});
     }
+    update({showProgress: this.conn.settings.showProgress});
     try {
       if (!this.cancelled) {
         await this.converse(question, layout, ctx, pen, update);

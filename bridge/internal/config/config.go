@@ -29,6 +29,25 @@ type Config struct {
 	// RelayURL is a Spellink relay (e.g. "wss://relay.example.com") the bridge registers with so
 	// the plugin can reach it from outside the LAN (ADR 0010). Empty disables the relay.
 	RelayURL string `json:"relayUrl,omitempty"`
+	// ShowProgress is the plugin's debug view setting (protocol.Settings), changed from the plugin.
+	ShowProgress bool `json:"showProgress,omitempty"`
+}
+
+// Save writes the config back (used when the plugin changes a setting).
+func Save(c *Config) error {
+	file, err := ConfigFile()
+	if err != nil {
+		return err
+	}
+	out, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := file + ".tmp"
+	if err := os.WriteFile(tmp, append(out, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, file)
 }
 
 // Dir is where config.json, glyphs.bin and reports.jsonl live.

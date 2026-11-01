@@ -14,6 +14,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
 )
 
 var layout = ink.Layout{X: 10, Y: 10, Width: 400, PageHeight: 1000, BottomMargin: 20, CharSize: 40}
@@ -23,7 +24,8 @@ func startTest(t *testing.T, ask AskFunc) string {
 	font := &ink.Font{Em: 100, Glyphs: map[rune]ink.Glyph{'あ': {Advance: 100, Strokes: [][]int16{{50, 0, 50, 100}}}}}
 	srv := httptest.NewServer(Handler(Deps{
 		Name: "test", Version: "0", Token: "secret", Font: font, Ask: ask,
-		Report: func(string, any) {}, Log: log.New(io.Discard, "", 0),
+		Report:   func(string, any) {},
+		Settings: func() protocol.Settings { return protocol.Settings{} }, SetSettings: func(protocol.Settings) error { return nil }, Log: log.New(io.Discard, "", 0),
 	}))
 	t.Cleanup(srv.Close)
 	return "ws" + strings.TrimPrefix(srv.URL, "http") + "/v1"
@@ -172,5 +174,30 @@ func TestProxiedConnectionsMustBeEncrypted(t *testing.T) {
 	_, reply, err := c.Read(ctx)
 	if err != nil || !strings.Contains(string(reply), "unauthorized") {
 		t.Fatalf("plaintext hello through a proxy should be refused, got %q %v", reply, err)
+	}
+}
+
+func TestSettingsRoundTrip(t *testing.T) {
+	stored := protocol.Settings{}
+	font := &ink.Font{Em: 100, Glyphs: map[rune]ink.Glyph{}}
+	srv := httptest.NewServer(Handler(Deps{
+		Name: "test", Version: "0", Token: "secret", Font: font, Log: log.New(io.Discard, "", 0),
+		Report:      func(string, any) {},
+		Settings:    func() protocol.Settings { return stored },
+		SetSettings: func(s protocol.Settings) error { stored = s; return nil },
+	}))
+	defer srv.Close()
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/v1"
+	got := converse(t, url, []any{hello,
+		map[string]any{"type": "setSettings", "settings": map[string]any{"showProgress": true}},
+	}, func(m msg) bool { return m["type"] == "settings" })
+	if types(got) != "welcome,settings" {
+		t.Fatalf("got %s", types(got))
+	}
+	if got[0]["settings"].(map[string]any)["showProgress"] != false {
+		t.Fatalf("welcome should carry the old settings: %v", got[0])
+	}
+	if got[1]["settings"].(map[string]any)["showProgress"] != true || !stored.ShowProgress {
+		t.Fatalf("setting not applied: %v", got[1])
 	}
 }

@@ -36,6 +36,9 @@ type Deps struct {
 	Ask     AskFunc
 	Report  func(peer string, data any)
 	Log     *log.Logger
+	// Settings returns the stored user settings; SetSettings changes and persists them.
+	Settings    func() protocol.Settings
+	SetSettings func(protocol.Settings) error
 }
 
 const (
@@ -177,7 +180,10 @@ func (s *session) run(parent context.Context) {
 		return
 	}
 	s.deps.Log.Printf("connected: %s (%.80s)", s.peer, client)
-	s.send(ctx, protocol.Welcome{Type: "welcome", Bridge: s.deps.Name, Version: s.deps.Version, Protocol: protocol.Version})
+	s.send(ctx, protocol.Welcome{
+		Type: "welcome", Bridge: s.deps.Name, Version: s.deps.Version, Protocol: protocol.Version,
+		Settings: s.deps.Settings(),
+	})
 
 	for {
 		m, err := s.read(ctx)
@@ -198,6 +204,15 @@ func (s *session) run(parent context.Context) {
 			s.askMu.Unlock()
 		case "report":
 			s.deps.Report(s.peer, m.Data)
+		case "setSettings":
+			if m.Settings == nil {
+				s.fail(ctx, "bad_request", "settings missing")
+				return
+			}
+			if err := s.deps.SetSettings(*m.Settings); err != nil {
+				s.deps.Log.Printf("settings: %v", err)
+			}
+			s.send(ctx, protocol.SettingsReply{Type: "settings", Settings: s.deps.Settings()})
 		default:
 			s.fail(ctx, "bad_request", "unknown message type")
 			return

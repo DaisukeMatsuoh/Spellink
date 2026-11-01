@@ -8,6 +8,7 @@ const SIDEBAR = 1;
 const LASSO_TOOLBAR = 2;
 const EDIT_DATA_STROKE = 0;
 const SHOW_UI = 1;
+const NO_UI = 0;
 
 const ASK_BUTTON_ID = 200;
 const DIAGNOSTICS_BUTTON_ID = 900;
@@ -26,11 +27,9 @@ PluginManager.registerButton(LASSO_TOOLBAR, ['NOTE'], {
   name: buttonName('askButton'),
   icon,
   editDataTypes: [EDIT_DATA_STROKE],
-  showType: SHOW_UI,
-  // Popup instead of full screen so the answer can be seen being written on the page.
-  regionType: 1,
-  regionWidth: 720,
-  regionHeight: 540,
+  // No UI: the answer is written while the note stays in view. The progress panel is opened
+  // by the controller only when the user enabled it or something went wrong.
+  showType: NO_UI,
 });
 
 PluginManager.registerButton(SIDEBAR, ['NOTE'], {
@@ -43,9 +42,18 @@ PluginManager.registerButton(SIDEBAR, ['NOTE'], {
 PluginManager.registerButtonListener({
   onButtonPress(event) {
     if (event.id === ASK_BUTTON_ID) {
-      show('ask');
+      require('./src/askController').startAsk();
     } else if (event.id === DIAGNOSTICS_BUTTON_ID) {
       show('diagnostics');
     }
+  },
+});
+
+// "Settings" entry on the plugin's card in Settings → Apps → Plugins.
+PluginManager.registerConfigButton();
+PluginManager.registerConfigButtonListener({
+  onClick() {
+    show('settings');
+    PluginManager.showPluginView();
   },
 });

@@ -98,7 +98,7 @@ func addKanjiVG(font *ink.Font, xml []byte) error {
 		if isFullWidth(r) {
 			font.Glyphs[r] = fullWidth(strokes, r)
 		} else {
-			font.Glyphs[r] = proportional(strokes)
+			font.Glyphs[r] = halfWidth(strokes, r)
 		}
 	}
 	return nil
@@ -131,7 +131,7 @@ func addHershey(font *ink.Font, js []byte) error {
 				s[j+1] = kvgBaseline - (22-s[j+1])*hersheyScale
 			}
 		}
-		font.Glyphs[r] = proportional(lines)
+		font.Glyphs[r] = halfWidth(lines, r)
 	}
 	return nil
 }
@@ -180,12 +180,38 @@ func shifted(strokes [][]float64, dx float64) [][]int16 {
 	return out
 }
 
+// Latin letters, digits and symbols are written smaller than kana/kanji, the way they look in
+// Japanese handwriting: scaled around the baseline. Digits get a minimum width so narrow ones
+// ("1") still read as separate characters without leaving gaps.
+const (
+	latinScale    = 0.72
+	minDigitWidth = 0.36 * em
+)
+
+func halfWidth(strokes [][]float64, r rune) ink.Glyph {
+	for _, s := range strokes {
+		for i := 0; i < len(s); i += 2 {
+			s[i] *= latinScale
+			s[i+1] = kvgBaseline - (kvgBaseline-s[i+1])*latinScale
+		}
+	}
+	if r >= '0' && r <= '9' {
+		minX, maxX := xRange(strokes)
+		adv := math.Max(minDigitWidth, maxX-minX+2*sideBearing*latinScale)
+		return ink.Glyph{
+			Advance: int16(math.Round(adv)),
+			Strokes: shifted(strokes, (adv-(maxX-minX))/2-minX),
+		}
+	}
+	return proportional(strokes, sideBearing*latinScale)
+}
+
 // proportional shifts a glyph so its ink starts at sideBearing and gives it a matching advance.
-func proportional(strokes [][]float64) ink.Glyph {
+func proportional(strokes [][]float64, bearing float64) ink.Glyph {
 	minX, maxX := xRange(strokes)
 	return ink.Glyph{
-		Advance: int16(math.Round(maxX - minX + 2*sideBearing)),
-		Strokes: shifted(strokes, sideBearing-minX),
+		Advance: int16(math.Round(maxX - minX + 2*bearing)),
+		Strokes: shifted(strokes, bearing-minX),
 	}
 }
 

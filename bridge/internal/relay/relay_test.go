@@ -13,6 +13,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/securechan"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/server"
 )
@@ -47,7 +48,8 @@ func TestSessionThroughRelay(t *testing.T) {
 	font := &ink.Font{Em: 100, Glyphs: map[rune]ink.Glyph{'あ': {Advance: 100, Strokes: [][]int16{{50, 0, 50, 100}}}}}
 	deps := server.Deps{
 		Name: "relayed", Version: "0", Token: "secret", Font: font, Log: quiet,
-		Report: func(string, any) {},
+		Report:   func(string, any) {},
+		Settings: func() protocol.Settings { return protocol.Settings{} }, SetSettings: func(protocol.Settings) error { return nil },
 		Ask: func(_ context.Context, _, _ string, onText func(string)) (string, error) {
 			onText("あ")
 			return "あ", nil

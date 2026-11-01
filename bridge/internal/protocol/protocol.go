@@ -14,6 +14,7 @@ const (
 //   - "ask":    ID, Question, Lang ("ja" | "en"), Layout
 //   - "cancel": ID
 //   - "report": Data — free-form diagnostics appended to the bridge's report log
+//   - "setSettings": Settings — change user settings stored on the bridge
 type ClientMessage struct {
 	Type     string      `json:"type"`
 	Token    string      `json:"token,omitempty"`
@@ -23,13 +24,29 @@ type ClientMessage struct {
 	Lang     string      `json:"lang,omitempty"`
 	Layout   *ink.Layout `json:"layout,omitempty"`
 	Data     any         `json:"data,omitempty"`
+	Settings *Settings   `json:"settings,omitempty"`
+}
+
+// Settings are the user's plugin preferences. The plugin cannot persist data on the device,
+// so the bridge stores them and hands them over in every welcome.
+type Settings struct {
+	// ShowProgress opens the progress panel while answering (debug view). Off: the answer is
+	// just written onto the page; the panel appears only on errors.
+	ShowProgress bool `json:"showProgress"`
+}
+
+// SettingsReply confirms a setSettings.
+type SettingsReply struct {
+	Type     string   `json:"type"` // "settings"
+	Settings Settings `json:"settings"`
 }
 
 type Welcome struct {
-	Type     string `json:"type"` // "welcome"
-	Bridge   string `json:"bridge"`
-	Version  string `json:"version"`
-	Protocol int    `json:"protocol"`
+	Type     string   `json:"type"` // "welcome"
+	Bridge   string   `json:"bridge"`
+	Version  string   `json:"version"`
+	Protocol int      `json:"protocol"`
+	Settings Settings `json:"settings"`
 }
 
 type Status struct {

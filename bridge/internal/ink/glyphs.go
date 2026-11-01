@@ -26,7 +26,10 @@ type Font struct {
 	Glyphs  map[rune]Glyph
 }
 
-const magic = "CLGF\x02"
+const magic = "CLGF\x03" // bump whenever glyph generation changes
+
+// ErrFormat means the file is not a glyph file of the current format (it should be rebuilt).
+var ErrFormat = errors.New("not a glyph file of the current format")
 
 // Write stores the font as a gzipped binary file. Points after the first in each stroke are
 // stored as deltas, which are small and compress well.
@@ -86,12 +89,12 @@ func undelta(s []int16) {
 func ReadFont(r io.Reader) (*Font, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return nil, errors.New("not a glyph file")
+		return nil, ErrFormat
 	}
 	br := bufio.NewReader(gz)
 	head := make([]byte, len(magic))
 	if _, err := io.ReadFull(br, head); err != nil || string(head) != magic {
-		return nil, errors.New("not a glyph file")
+		return nil, ErrFormat
 	}
 	get := func(v any) {
 		if err == nil {

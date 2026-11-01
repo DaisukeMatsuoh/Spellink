@@ -1,6 +1,6 @@
 import type {BridgeEndpoint} from './bridgeConfig';
 import {NoiseInitiator, pskFromToken, type SecureChannel} from './noise';
-import type {BridgeMessage, ClientMessage} from './protocol';
+import type {BridgeMessage, ClientMessage, Settings} from './protocol';
 import {utf8Decode, utf8Encode} from './utf8';
 
 const CLIENT = 'spellink-plugin/0.1.0';
@@ -33,6 +33,7 @@ export class BridgeConnection {
     readonly name: string,
     readonly url: string,
     readonly mode: ConnectionMode,
+    readonly settings: Settings,
   ) {
     ws.onmessage = e => {
       let m: BridgeMessage | null;
@@ -189,7 +190,11 @@ export function connectFirst(
             return;
           }
           finish(ws);
-          resolve(new BridgeConnection(ws, channel, m.bridge, url, mode));
+          resolve(
+            new BridgeConnection(ws, channel, m.bridge, url, mode, {
+              showProgress: m.settings?.showProgress ?? false,
+            }),
+          );
         };
         ws.onerror = e => fail((e as {message?: string}).message ?? 'error');
         ws.onclose = e => fail(e.reason || `closed (${e.code})`);

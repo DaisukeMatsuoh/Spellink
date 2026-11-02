@@ -27,6 +27,13 @@ const STRINGS = {
     showProgress: 'Show progress panel (debug)',
     showProgressHelp:
       'Off: the answer is simply written onto the page. The panel still opens when something goes wrong.',
+    thinkingAnimation: 'Thinking animation',
+    thinkingAnimationHelp:
+      'Draws a wavy line on the page while Claude is thinking, and removes it before the answer.',
+    fullWidthSpacing: 'Spacing: kanji / kana',
+    halfWidthSpacing: 'Spacing: letters / digits',
+    spacingHelp:
+      '100% is the tightest. Widen it if characters touch; full-width and half-width are set separately.',
     lineTilt: 'Writing slope',
     lineTiltHelp:
       "Like a person's handwriting habit, the whole answer is written at this agent's own angle: {angle}.",
@@ -62,6 +69,13 @@ const STRINGS = {
     showProgress: '進捗パネルを表示（デバッグ）',
     showProgressHelp:
       'OFF のときは、回答をそのままページに書き込みます。エラーのときだけパネルが開きます。',
+    thinkingAnimation: '待機中のアニメーション',
+    thinkingAnimationHelp:
+      'Claude が考えている間、ページに波線を描き、回答の直前に消します。',
+    fullWidthSpacing: '字間: 漢字・かな',
+    halfWidthSpacing: '字間: 英字・数字',
+    spacingHelp:
+      '100% が最も詰まった状態です。文字が重なるときは広げてください。全角と半角は別々に設定できます。',
     lineTilt: '書き癖の傾き',
     lineTiltHelp:
       '人の書き癖のように、回答全体をこのエージェント固有の角度で書きます: {angle}',

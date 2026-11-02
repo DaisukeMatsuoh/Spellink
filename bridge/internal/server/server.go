@@ -288,10 +288,13 @@ func (s *session) startAsk(ctx context.Context, m *protocol.ClientMessage) {
 
 func (s *session) answer(ctx, askCtx context.Context, stop context.CancelFunc, id, q, lang string, layout ink.Layout) {
 	started := time.Now()
-	if st := s.deps.Settings(); st.LineTilt {
+	st := s.deps.Settings()
+	if st.LineTilt {
 		// Positive degrees rise to the right, i.e. y decreases as x grows.
 		layout.Slope = -math.Tan(st.TiltDegrees * math.Pi / 180)
 	}
+	layout.SpacingFull = float64(st.FullWidthSpacing) / 100
+	layout.SpacingHalf = float64(st.HalfWidthSpacing) / 100
 	composer := ink.NewComposer(s.deps.Font, layout, seedFrom(id))
 	emit := func(lines []ink.Line) {
 		for _, l := range lines {

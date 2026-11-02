@@ -8,6 +8,7 @@ import type {Settings} from '../protocol';
 import {ensurePermissions} from '../sdk';
 import {show} from '../session';
 import {Button, styles} from './common';
+import {Slider} from './Slider';
 
 function describeAngle(deg: number | undefined): string {
   if (!deg) {
@@ -45,16 +46,21 @@ export function SettingsScreen() {
     return () => c?.close();
   }, []);
 
-  const toggle = useCallback(
-    (key: keyof Settings) => {
+  const change = useCallback(
+    (patch: Partial<Settings>) => {
       if (conn && settings) {
-        conn.send({
-          type: 'setSettings',
-          settings: {...settings, [key]: !settings[key]},
-        });
+        conn.send({type: 'setSettings', settings: {...settings, ...patch}});
       }
     },
     [conn, settings],
+  );
+  const toggle = useCallback(
+    (key: 'showProgress' | 'lineTilt' | 'thinkingAnimation') => {
+      if (settings) {
+        change({[key]: !settings[key]});
+      }
+    },
+    [change, settings],
   );
 
   return (
@@ -81,6 +87,35 @@ export function SettingsScreen() {
       <Text style={styles.small}>
         {t('lineTiltHelp', {angle: describeAngle(settings?.tiltDegrees)})}
       </Text>
+      <View style={styles.row}>
+        <Button
+          disabled={!settings}
+          label={`${t('thinkingAnimation')}: ${
+            settings?.thinkingAnimation ? 'ON' : 'OFF'
+          }`}
+          onPress={() => toggle('thinkingAnimation')}
+        />
+      </View>
+      <Text style={styles.small}>{t('thinkingAnimationHelp')}</Text>
+      <Slider
+        label={t('fullWidthSpacing')}
+        value={settings?.fullWidthSpacing ?? 100}
+        min={100}
+        max={140}
+        step={5}
+        disabled={!settings}
+        onCommit={v => change({fullWidthSpacing: v})}
+      />
+      <Slider
+        label={t('halfWidthSpacing')}
+        value={settings?.halfWidthSpacing ?? 110}
+        min={100}
+        max={160}
+        step={5}
+        disabled={!settings}
+        onCommit={v => change({halfWidthSpacing: v})}
+      />
+      <Text style={styles.small}>{t('spacingHelp')}</Text>
       <View style={styles.row}>
         <Button label={t('diagButton')} onPress={() => show('diagnostics')} />
         <Button

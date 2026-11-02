@@ -202,3 +202,23 @@ func TestSettingsRoundTrip(t *testing.T) {
 		t.Fatalf("setting not applied: %v", got[1])
 	}
 }
+
+func TestSettingsAreClampedAndPersistedTogether(t *testing.T) {
+	stored := protocol.Settings{FullWidthSpacing: 100, HalfWidthSpacing: 110, ThinkingAnimation: true}
+	font := &ink.Font{Em: 100, Glyphs: map[rune]ink.Glyph{}}
+	srv := httptest.NewServer(Handler(Deps{
+		Name: "t", Version: "0", Token: "secret", Font: font, Log: log.New(io.Discard, "", 0),
+		Report:      func(string, any) {},
+		Settings:    func() protocol.Settings { return stored },
+		SetSettings: func(s protocol.Settings) error { stored = s; return nil },
+	}))
+	defer srv.Close()
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/v1"
+	got := converse(t, url, []any{hello, map[string]any{"type": "setSettings", "settings": map[string]any{
+		"thinkingAnimation": false, "fullWidthSpacing": 120, "halfWidthSpacing": 130,
+	}}}, func(m msg) bool { return m["type"] == "settings" })
+	s := got[len(got)-1]["settings"].(map[string]any)
+	if s["thinkingAnimation"] != false || s["fullWidthSpacing"] != 120.0 || s["halfWidthSpacing"] != 130.0 {
+		t.Fatalf("got %v", s)
+	}
+}

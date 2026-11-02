@@ -1,9 +1,14 @@
 import {fakeNote} from '../__mocks__/sn-plugin-lib';
-import {AskFlow, type AskState} from '../src/askFlow';
+import {AskFlow, rememberSettings, type AskState} from '../src/askFlow';
 import type {Box} from '../src/freeSpace';
 import type {BridgeMessage, InkStroke, LayoutParams} from '../src/protocol';
 
 // The bridge connection is replaced by a script of messages.
+let mockBridgeSettings = {
+  showProgress: false,
+  lineTilt: true,
+  thinkingAnimation: true,
+};
 let mockScript: (
   send: (m: BridgeMessage) => void,
   id: string,
@@ -15,7 +20,9 @@ jest.mock('../src/bridgeClient', () => ({
   connectFirst: async () => {
     const conn: Record<string, unknown> = {
       name: 'fake',
-      settings: {showProgress: false, lineTilt: true},
+      get settings() {
+        return mockBridgeSettings; // read when used, so a test can change it
+      },
       onMessage: () => {},
       onClose: () => {},
       close: () => {},
@@ -276,7 +283,11 @@ describe('AskFlow', () => {
         async () =>
           ({
             name: 'fake',
-            settings: {showProgress: false, lineTilt: true},
+            settings: {
+              showProgress: false,
+              lineTilt: true,
+              thinkingAnimation: true,
+            },
             onMessage: () => {},
             onClose: () => {},
             close: () => {},
@@ -385,7 +396,7 @@ describe('the user leaves the note while the answer is being written', () => {
     expect(fakeNote.strayWrites).toBe(0);
   });
 
-  it('brings the answer back to its page when the user flipped to another page', async () => {
+  it('writes to its own page while the user looks at another one, without moving the user', async () => {
     mockScript = async (send, id) => {
       send(line(id, 0, 0, [stroke()]));
       await pause(100);
@@ -395,7 +406,7 @@ describe('the user leaves the note while the answer is being written', () => {
     };
     const last = await run(layout);
     expect(last.failed).toBeFalsy();
-    expect(fakeNote.currentPage).toBe(0);
+    expect(fakeNote.currentPage).toBe(5); // we never pulled the user back
     expect(answerStrokes(0)).toHaveLength(2);
     expect(answerStrokes(5)).toHaveLength(0);
   });
@@ -423,9 +434,37 @@ describe('the user keeps flipping pages while a long answer is written', () => {
     };
     const last = await run({...layout, maxPages: 1});
     expect(last.failed).toBeFalsy();
+    expect(fakeNote.jumps).toBe(0); // the user was never moved
     expect(answerStrokes(0)).toHaveLength(lines * 40); // every stroke landed on its own page
     for (const other of [1, 2, 3, 4, 5]) {
       expect(answerStrokes(other)).toHaveLength(0);
     }
   }, 30000);
+});
+
+describe('thinking animation setting', () => {
+  beforeEach(() => fakeNote.reset());
+
+  it('draws no wave when the last known settings turned it off', async () => {
+    // The wave starts before the bridge is reached, so it follows what the last connection said.
+    rememberSettings({...mockBridgeSettings, thinkingAnimation: false});
+    mockScript = () => {}; // the bridge never answers: we look at the page while it "thinks"
+    const flow = new AskFlow(() => {});
+    const running = flow.runWithQuestion('q', layout, ctx);
+    await pause(1200);
+    const waves = waveStrokes(0).length;
+    flow.cancel();
+    await running.catch(() => {});
+    expect(waves).toBe(0);
+  });
+});
+
+// Every test starts from the defaults, whatever an earlier one remembered.
+beforeEach(() => {
+  mockBridgeSettings = {
+    showProgress: false,
+    lineTilt: true,
+    thinkingAnimation: true,
+  };
+  rememberSettings({...mockBridgeSettings});
 });

@@ -33,6 +33,11 @@ export interface Settings {
   lineTilt: boolean;
   /** The agent's own habit (positive rises to the right); chosen by the bridge, read-only. */
   tiltDegrees?: number;
+  /** Draw a wave on the page while Claude thinks. */
+  thinkingAnimation: boolean;
+  /** Letter spacing in percent of the glyph's own advance (100 = tightest). */
+  fullWidthSpacing?: number;
+  halfWidthSpacing?: number;
 }
 
 export type ClientMessage =

@@ -39,6 +39,11 @@ type Config struct {
 	// TiltDegrees is this agent's handwriting slope (positive rises to the right), picked at
 	// random the first time so every agent has its own habit. Edit to taste.
 	TiltDegrees *float64 `json:"tiltDegrees,omitempty"`
+	// ThinkingAnimation defaults to on; nil means "not set".
+	ThinkingAnimation *bool `json:"thinkingAnimation,omitempty"`
+	// Letter spacing in percent (see protocol.Settings); nil means the default.
+	FullWidthSpacing *int `json:"fullWidthSpacing,omitempty"`
+	HalfWidthSpacing *int `json:"halfWidthSpacing,omitempty"`
 	// LAN enables direct wss:// at home with a Let's Encrypt certificate for a name that points
 	// at this machine's LAN address (internal/lantls). Empty disables it.
 	LAN *lantls.Config `json:"lan,omitempty"`
@@ -53,6 +58,26 @@ func (c *Config) ensureTilt() bool {
 	c.TiltDegrees = &d
 	return true
 }
+
+const (
+	defaultFullSpacing = 100
+	defaultHalfSpacing = 110
+)
+
+// ThinkingAnimationOn reports the animation setting, on unless turned off.
+func (c *Config) ThinkingAnimationOn() bool {
+	return c.ThinkingAnimation == nil || *c.ThinkingAnimation
+}
+
+func orDefault(v *int, def int) int {
+	if v == nil {
+		return def
+	}
+	return *v
+}
+
+func (c *Config) FullSpacing() int { return orDefault(c.FullWidthSpacing, defaultFullSpacing) }
+func (c *Config) HalfSpacing() int { return orDefault(c.HalfWidthSpacing, defaultHalfSpacing) }
 
 // LineTiltOn reports the line-tilt setting, on unless turned off.
 func (c *Config) LineTiltOn() bool { return c.LineTilt == nil || *c.LineTilt }

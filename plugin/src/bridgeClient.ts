@@ -195,6 +195,9 @@ export function connectFirst(
               showProgress: m.settings?.showProgress ?? false,
               lineTilt: m.settings?.lineTilt ?? true,
               tiltDegrees: m.settings?.tiltDegrees,
+              thinkingAnimation: m.settings?.thinkingAnimation ?? true,
+              fullWidthSpacing: m.settings?.fullWidthSpacing,
+              halfWidthSpacing: m.settings?.halfWidthSpacing,
             }),
           );
         };

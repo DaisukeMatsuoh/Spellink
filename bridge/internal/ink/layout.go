@@ -25,6 +25,10 @@ type Layout struct {
 	// habit of drifting up or down without ruled lines. Set by the bridge from the agent's
 	// handwriting settings, not by the plugin.
 	Slope float64 `json:"-"`
+	// SpacingFull / SpacingHalf scale the advance of full-width and half-width characters
+	// (1 = glyph data as is). Set by the bridge from the user's settings.
+	SpacingFull float64 `json:"-"`
+	SpacingHalf float64 `json:"-"`
 }
 
 // Line is one finished line of handwriting. Page is relative to the starting page (0, 1, …).
@@ -64,7 +68,8 @@ func runeSet(s string) map[rune]bool {
 
 type pending struct {
 	ch      rune
-	advance float64
+	advance float64 // after letter spacing
+	base    float64 // the glyph's own advance; the ink is centred in the extra room
 }
 
 // Composer accepts answer text as it streams in and returns each line, rendered into
@@ -129,7 +134,8 @@ func (c *Composer) Finish() []Line {
 	return out
 }
 
-func (c *Composer) advanceOf(ch rune) float64 {
+// natural returns a character's advance as the glyph data gives it.
+func (c *Composer) natural(ch rune) float64 {
 	size := c.layout.CharSize
 	switch ch {
 	case ' ':
@@ -145,11 +151,24 @@ func (c *Composer) advanceOf(ch rune) float64 {
 	return float64(g.Advance) / float64(c.font.Em) * size
 }
 
+// spacing is the user's letter-spacing factor for ch (1 when unset).
+func (c *Composer) spacing(ch rune) float64 {
+	f := c.layout.SpacingHalf
+	if ch >= 0x2e80 {
+		f = c.layout.SpacingFull
+	}
+	if f <= 0 {
+		return 1
+	}
+	return f
+}
+
 func (c *Composer) add(ch rune, out *[]Line) {
 	if ch == ' ' && len(c.line) == 0 {
 		return // no leading spaces on a wrapped line
 	}
-	adv := c.advanceOf(ch)
+	base := c.natural(ch)
+	adv := base * c.spacing(ch)
 	isWord := wordChar.MatchString(string(ch))
 	overflows := c.lineWidth+adv > c.layout.Width && len(c.line) > 0
 	if overflows && !noLineStart[ch] {
@@ -159,7 +178,7 @@ func (c *Composer) add(ch rune, out *[]Line) {
 			c.line = c.line[:c.wordStart]
 			c.emit(out)
 			for _, p := range carried {
-				c.append(p.ch, p.advance, true)
+				c.append(p, true)
 			}
 		} else {
 			c.emit(out)
@@ -168,10 +187,10 @@ func (c *Composer) add(ch rune, out *[]Line) {
 			}
 		}
 	}
-	c.append(ch, adv, isWord)
+	c.append(pending{ch, adv, base}, isWord)
 }
 
-func (c *Composer) append(ch rune, adv float64, isWord bool) {
+func (c *Composer) append(p pending, isWord bool) {
 	if isWord {
 		if c.wordStart < 0 {
 			c.wordStart = len(c.line)
@@ -179,8 +198,8 @@ func (c *Composer) append(ch rune, adv float64, isWord bool) {
 	} else {
 		c.wordStart = -1
 	}
-	c.line = append(c.line, pending{ch, adv})
-	c.lineWidth += adv
+	c.line = append(c.line, p)
+	c.lineWidth += p.advance
 }
 
 // fragment draws the pending part of the current line up to the last safe break (not inside a
@@ -259,7 +278,9 @@ func (c *Composer) draw(out *[]Line, from, to int, cont bool) {
 	x := c.layout.X + c.lineDrawnX
 	for _, p := range c.line[from:to] {
 		if g, ok := c.font.Glyphs[p.ch]; ok {
-			strokes = append(strokes, RenderGlyph(g, c.font.Em, x, top, c.layout.CharSize, c.rng)...)
+			// Letter spacing adds room around the ink, half on each side.
+			gx := x + (p.advance-p.base)/2
+			strokes = append(strokes, RenderGlyph(g, c.font.Em, gx, top, c.layout.CharSize, c.rng)...)
 		}
 		x += p.advance
 		text.WriteRune(p.ch)

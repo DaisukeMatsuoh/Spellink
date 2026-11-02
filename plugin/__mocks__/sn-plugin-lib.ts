@@ -72,6 +72,8 @@ export const fakeNote = {
   strayWrites: 0,
   strayDeletes: 0,
   strayJumps: 0,
+  /** Times the plugin moved the user to another page. */
+  jumps: 0,
   inserted: [] as number[],
   saves: 0,
   /** Simulate a delete that reports success but removes nothing. */
@@ -92,6 +94,7 @@ export const fakeNote = {
     this.strayWrites = 0;
     this.strayDeletes = 0;
     this.strayJumps = 0;
+    this.jumps = 0;
     this.inserted = [];
     this.saves = 0;
     this.ignoreNextDelete = false;

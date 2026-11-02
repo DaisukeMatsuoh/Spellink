@@ -38,7 +38,21 @@ type Settings struct {
 	// TiltDegrees is the agent's own habit: positive rises to the right. Chosen once per
 	// bridge; read-only for the plugin.
 	TiltDegrees float64 `json:"tiltDegrees"`
+	// ThinkingAnimation draws a wave on the page while Claude thinks.
+	ThinkingAnimation bool `json:"thinkingAnimation"`
+	// FullWidthSpacing and HalfWidthSpacing are letter spacing in percent of the glyph's natural
+	// advance, for full-width (kanji, kana) and half-width (Latin, digits) characters. 100 is
+	// the tightest the glyph data allows.
+	FullWidthSpacing int `json:"fullWidthSpacing"`
+	HalfWidthSpacing int `json:"halfWidthSpacing"`
 }
+
+// Limits of the spacing sliders (percent).
+const (
+	SpacingMin     = 100
+	FullSpacingMax = 140
+	HalfSpacingMax = 160
+)
 
 // SettingsReply confirms a setSettings.
 type SettingsReply struct {

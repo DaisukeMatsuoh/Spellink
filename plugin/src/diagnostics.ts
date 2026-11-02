@@ -5,6 +5,7 @@ import {answerLayout, AskFlow} from './askFlow';
 import {connectFirst, type ConnectAttempt} from './bridgeClient';
 import {loadBridges} from './bridgeConfig';
 import {randomSource} from './noise';
+import {dumpTrace} from './trace';
 import type {InkStroke} from './protocol';
 import {
   call,
@@ -294,7 +295,7 @@ export async function sendReport(lines: string[], log: Log): Promise<void> {
   await withPermissions(log);
   try {
     const conn = await connectFirst((await loadBridges()).endpoints);
-    conn.send({type: 'report', data: {log: lines}});
+    conn.send({type: 'report', data: {log: lines, trace: dumpTrace()}});
     setTimeout(() => conn.close(), 500);
     log(`report sent to ${conn.name}`);
   } catch (e) {

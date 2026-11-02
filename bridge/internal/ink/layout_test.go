@@ -235,3 +235,45 @@ func TestCapacityHonoursStartLimit(t *testing.T) {
 		t.Fatalf("got %d, want 10", got)
 	}
 }
+
+func TestLetterSpacingWidensHalfAndFullWidthIndependently(t *testing.T) {
+	width := func(text string, full, half float64) int {
+		l := testLayout
+		l.Width = 5000
+		l.SpacingFull, l.SpacingHalf = full, half
+		lines, _ := compose(text, l)
+		last := lines[0].Strokes[len(lines[0].Strokes)-1]
+		return last.P[0] // x of the last glyph
+	}
+	if width("あああああ", 1, 1) >= width("あああああ", 1.3, 1) {
+		t.Error("full-width spacing should push later characters to the right")
+	}
+	if width("あああああ", 1, 1) != width("あああああ", 1, 1.5) {
+		t.Error("half-width spacing must not affect full-width characters")
+	}
+	if width("abcde", 1, 1) >= width("abcde", 1, 1.5) {
+		t.Error("half-width spacing should push later characters to the right")
+	}
+	if width("abcde", 1, 1) != width("abcde", 1.4, 1) {
+		t.Error("full-width spacing must not affect half-width characters")
+	}
+}
+
+func TestLetterSpacingKeepsTheInkCentredInItsSlot(t *testing.T) {
+	l := testLayout
+	l.SpacingFull = 1.4
+	lines, _ := compose("あ", l)
+	// The glyph is a stroke at x = 50 of 100; with 40% extra room it moves right by 20% of the size.
+	if got := lines[0].Strokes[0].P[0]; got < 60 {
+		t.Fatalf("ink should shift by half the extra room, got x=%d", got)
+	}
+}
+
+func TestLetterSpacingWrapsEarlier(t *testing.T) {
+	l := testLayout
+	l.SpacingFull = 1.5 // 5 chars of 100px no longer fit in 500px
+	lines, _ := compose("ああああ", l)
+	if len(lines) < 2 {
+		t.Fatalf("wider spacing should wrap sooner, got %v", texts(lines))
+	}
+}

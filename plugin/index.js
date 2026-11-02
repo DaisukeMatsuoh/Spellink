@@ -18,6 +18,12 @@ const DIAGNOSTICS_BUTTON_ID = 900;
 AppRegistry.registerComponent(appName, () => require('./App').default);
 
 PluginManager.init();
+// Lifecycle changes of the plugin host go into the flight recorder (src/trace.ts).
+PluginManager.registerPluginLifeListener({
+  onMsg(msg) {
+    require('./src/trace').trace('life', {d: msg});
+  },
+});
 startLocaleTracking();
 
 const icon = Image.resolveAssetSource(require('./assets/icon.png')).uri;

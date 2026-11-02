@@ -9,6 +9,7 @@ import {
   type Rect,
 } from 'sn-plugin-lib';
 import {WAVE_MARKER_PREFIX, boundsOf, type Box} from './freeSpace';
+import {trace} from './trace';
 import type {InkStroke} from './protocol';
 
 export class SdkError extends Error {
@@ -32,10 +33,24 @@ export async function call<T>(
   api: string,
   pending: Promise<unknown>,
 ): Promise<T> {
-  const res = (await pending) as ApiResponse<T> | null | undefined;
-  if (!res?.success) {
-    throw new SdkError(api, res?.error?.code, res?.error?.message ?? 'failed');
+  const started = Date.now();
+  let res: ApiResponse<T> | null | undefined;
+  try {
+    res = (await pending) as ApiResponse<T> | null | undefined;
+  } catch (e) {
+    trace(api, {ms: Date.now() - started, err: (e as Error).message});
+    throw e;
   }
+  if (!res?.success) {
+    const error = new SdkError(
+      api,
+      res?.error?.code,
+      res?.error?.message ?? 'failed',
+    );
+    trace(api, {ms: Date.now() - started, err: error.message});
+    throw error;
+  }
+  trace(api, {ms: Date.now() - started});
   return res.result as T;
 }
 
@@ -347,8 +362,9 @@ export async function jumpToPageIn(
 }
 
 /**
- * Writes strokes to `page` of `filePath`, only while that note is open, and only after bringing
- * the user to that page (strokes written while another page is on screen have been lost).
+ * Writes strokes to `page` of `filePath`, only while that note is open. The page does not have
+ * to be the one on screen (the diagnostics showed that writing to another page works), so the
+ * user is never moved around.
  */
 export async function writeStrokesAt(
   filePath: string,
@@ -357,9 +373,7 @@ export async function writeStrokesAt(
   pen: PenStyle,
   userData?: string,
 ): Promise<void> {
-  if (!(await isOnPage(filePath, page))) {
-    await jumpToPageIn(filePath, page);
-  }
+  await ensureOpen(filePath);
   await writeStrokes(strokes, page, pen, undefined, userData);
 }
 
@@ -372,9 +386,7 @@ export async function deleteElementsAt(
   if (nums.length === 0) {
     return;
   }
-  if (!(await isOnPage(filePath, page))) {
-    await jumpToPageIn(filePath, page);
-  }
+  await ensureOpen(filePath);
   await call(
     'deletePageElements',
     PluginCommAPI.deletePageElements(

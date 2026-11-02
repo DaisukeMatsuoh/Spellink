@@ -77,6 +77,8 @@ func main() {
 	}
 }
 
+func clamp(v, lo, hi int) int { return max(lo, min(hi, v)) }
+
 func dir0() string {
 	d, _ := config.Dir()
 	return d
@@ -150,6 +152,8 @@ func serve() error {
 			defer settingsMu.Unlock()
 			return protocol.Settings{
 				ShowProgress: cfg.ShowProgress, LineTilt: cfg.LineTiltOn(), TiltDegrees: *cfg.TiltDegrees,
+				ThinkingAnimation: cfg.ThinkingAnimationOn(),
+				FullWidthSpacing:  cfg.FullSpacing(), HalfWidthSpacing: cfg.HalfSpacing(),
 			}
 		},
 		SetSettings: func(s protocol.Settings) error {
@@ -157,7 +161,12 @@ func serve() error {
 			defer settingsMu.Unlock()
 			cfg.ShowProgress = s.ShowProgress
 			cfg.LineTilt = &s.LineTilt
-			logger.Printf("settings changed: showProgress=%v lineTilt=%v", s.ShowProgress, s.LineTilt)
+			cfg.ThinkingAnimation = &s.ThinkingAnimation
+			full := clamp(s.FullWidthSpacing, protocol.SpacingMin, protocol.FullSpacingMax)
+			half := clamp(s.HalfWidthSpacing, protocol.SpacingMin, protocol.HalfSpacingMax)
+			cfg.FullWidthSpacing, cfg.HalfWidthSpacing = &full, &half
+			logger.Printf("settings changed: showProgress=%v lineTilt=%v animation=%v spacing=%d/%d",
+				s.ShowProgress, s.LineTilt, s.ThinkingAnimation, full, half)
 			return config.Save(cfg)
 		},
 	}

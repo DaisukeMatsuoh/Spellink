@@ -1,10 +1,17 @@
 import {PluginCommAPI} from 'sn-plugin-lib';
 import {connectFirst, type BridgeConnection} from './bridgeClient';
 import {freeLimit, type Box} from './freeSpace';
+import {flushTrace, setTraceSink, trace} from './trace';
 import {InkDrops} from './inkDrops';
 import {loadBridges} from './bridgeConfig';
 import {t} from './i18n';
-import type {BridgeMessage, InkStroke, Lang, LayoutParams} from './protocol';
+import type {
+  BridgeMessage,
+  InkStroke,
+  Lang,
+  LayoutParams,
+  Settings,
+} from './protocol';
 import {
   currentPen,
   ensurePermissions,
@@ -25,6 +32,19 @@ export function describeFailure(e: unknown): string {
   return e instanceof NoteMovedError
     ? t('noteMoved')
     : t('error', {message: (e as Error).message});
+}
+
+/** The settings last read from a bridge; the wave needs them before the first connection. */
+let lastSettings: Settings = {
+  showProgress: false,
+  lineTilt: true,
+  thinkingAnimation: true,
+};
+export function rememberSettings(s: Settings): void {
+  lastSettings = s;
+}
+export function knownSettings(): Settings {
+  return lastSettings;
 }
 
 export interface AskState {
@@ -86,17 +106,27 @@ export function answerLayout(
 export class AskFlow {
   private conn: BridgeConnection | null = null;
   private id = '';
+  private traceTimer: ReturnType<typeof setInterval> | null = null;
   private cancelled = false;
 
   constructor(private readonly report: Report) {}
 
+  /** Stops the answer. Always ends the running question, whatever state the connection is in. */
   cancel(): void {
     this.cancelled = true;
     if (this.conn && this.id) {
-      this.conn.send({type: 'cancel', id: this.id});
+      try {
+        this.conn.send({type: 'cancel', id: this.id});
+      } catch {
+        // The connection is already gone; nothing to tell the bridge.
+      }
     }
     this.conn?.close();
+    this.endQuestion?.(new Error('cancelled'));
   }
+
+  /** Settles the running question (set while one is waiting for the bridge). */
+  private endQuestion: ((e: Error) => void) | null = null;
 
   async run(): Promise<void> {
     const state: AskState = {message: t('permissions'), finished: false};
@@ -185,6 +215,7 @@ export class AskFlow {
       selection && !obviouslyFull
         ? await readPage(ctx.filePath, ctx.page).catch(() => null)
         : null;
+    trace('ask.start', {d: {page: ctx.page, y: layout.y, full: obviouslyFull}});
     let wave = this.startWave(ctx, layout, pen);
     const scan = snapshot
       ? boxesOf(snapshot, SCAN_BUDGET_MS).catch(() => [] as Box[])
@@ -199,6 +230,15 @@ export class AskFlow {
         return update({message: t('noBridge'), finished: true, failed: true});
       }
       update({showProgress: this.conn.settings.showProgress});
+      rememberSettings(this.conn.settings);
+      // Everything from here on is also reported to the bridge, so a failure on the device can
+      // be read afterwards on the computer.
+      const connection = this.conn;
+      setTraceSink(events =>
+        connection.send({type: 'report', data: {trace: events}}),
+      );
+      this.traceTimer = setInterval(flushTrace, 1500);
+      trace('ask.connected', {d: {url: connection.url, mode: connection.mode}});
       if (this.cancelled) {
         return;
       }
@@ -221,8 +261,17 @@ export class AskFlow {
         }
       }
       await this.converse(question, layout, ctx, pen, update, wave);
+    } catch (e) {
+      trace('ask.failed', {err: (e as Error).message});
+      throw e;
     } finally {
       await wave.stop();
+      trace('ask.end');
+      flushTrace();
+      if (this.traceTimer) {
+        clearInterval(this.traceTimer);
+      }
+      setTraceSink(null);
       this.conn?.close();
     }
   }
@@ -233,7 +282,8 @@ export class AskFlow {
     layout: LayoutParams,
     pen: Awaited<ReturnType<typeof currentPen>>,
   ): {stop: () => Promise<void>} {
-    if (this.cancelled) {
+    // The settings come from the bridge, which we are not connected to yet: use the ones seen last.
+    if (this.cancelled || !knownSettings().thinkingAnimation) {
       return {stop: async () => {}};
     }
     const drops = new InkDrops(
@@ -320,6 +370,7 @@ export class AskFlow {
     let abort: (e: Error) => void = () => {};
     return new Promise<void>((resolve, reject) => {
       abort = reject;
+      this.endQuestion = reject;
       conn.onClose = reason => reject(new Error(reason));
       conn.onMessage = (m: BridgeMessage) => {
         if ('id' in m && m.id !== this.id) {

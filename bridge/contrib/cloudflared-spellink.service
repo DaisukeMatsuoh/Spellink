@@ -1,0 +1,21 @@
+# systemd user service that keeps a Cloudflare Tunnel (made in the dashboard) connected.
+# The tunnel token goes in ~/.config/spellink-bridge/cloudflared.env (mode 0600):
+#     TUNNEL_TOKEN=eyJhIjoi...
+# Install:
+#   cp cloudflared-spellink.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now cloudflared-spellink
+#   loginctl enable-linger $USER      # keep it running while logged out
+# Guide: docs/guides/cloudflare-tunnel-setup.md
+[Unit]
+Description=Cloudflare Tunnel for Spellink
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/spellink-bridge/cloudflared.env
+ExecStart=%h/.local/bin/cloudflared tunnel --no-autoupdate run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

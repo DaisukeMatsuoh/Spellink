@@ -147,6 +147,12 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
   テスト: 全 9 スイート 75 件（直前に「70 件が 53 件に減った」のはスイートが 1 つ落ちていたため。合格数だけでなくスイート数も確認すること）。
   **次**: ユーザーが再度回答中にページを切り替えて再現するか。診断 10 の結果。正式な名前付きトンネル（クイックトンネルは切れやすい）か LAN 直結（ADR 0011）への移行。
 
+- 2026-11-03 **正式な名前付きトンネルへ移行する準備**: 手順書 `docs/guides/cloudflare-tunnel-setup.md`（ユーザーはアカウントとドメインを保有）。
+  事実: 無料プランは Full setup（ドメイン全体のネームサーバーを Cloudflare に移す）のみ。サブドメイン委任は Enterprise、CNAME 方式は Business 以上。→ ドメインを丸ごと移すか、この用途専用のドメインを別に取る（後者を推奨）。
+  用意済み: `~/.local/bin/cloudflared`（2026.10.7、チェックサム確認済み）、`bridge/contrib/cloudflared-spellink.service`（トークンは `~/.config/spellink-bridge/cloudflared.env`、0600）。
+  **ユーザー待ち**: どのドメインを使うか、トンネルの作成（トークンは本人が端末で設定。チャットに貼らない）、公開ホスト名 → `localhost:8765`。
+  その後のエージェント作業: `extraUrls` に `wss://<host>/v1`、ブリッジ再起動、`pair`、プラグイン再ビルド、トンネル経由の確認、クイックトンネル停止、ブリッジの systemd ユーザーサービス化。
+
 ## 未解決の質問・ユーザーの方針
 - 外出先: 利用者には何も求めない。**Spellink の中継サーバ（ADR 0010）を実装済み**。Go で運用する方針（ユーザー決定）。ホスティングはフェーズ 1 = この機械＋Cloudflare Tunnel を推奨（`docs/notes/research/2026-11-01-relay-hosting.md`）。ユーザーの Cloudflare 設定（ドメイン、`cloudflared tunnel login`）待ち。
 - 名前: **Spellink に決定**（2026-10-31）。リポジトリ内は置換済み。GitHub リポジトリ名と Go モジュールパス（`github.com/DaisukeMatsuoh/Spellink/bridge`）はユーザーが GitHub で改名した後に変更。開発機の設定は `~/.config/spellink-bridge/`、バイナリは `~/.local/bin/spellink-bridge`。

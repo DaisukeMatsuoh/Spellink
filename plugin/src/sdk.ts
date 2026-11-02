@@ -98,18 +98,22 @@ const RECOGNIZABLE = new Set([0, 500, 501, 502]); // strokes and text boxes
 
 /** Runs the firmware's handwriting recognition over the lassoed strokes / text boxes. */
 export async function recognizeLasso(size: Size): Promise<string> {
-  const elements = await call<Element[]>(
-    'getLassoElements',
-    PluginCommAPI.getLassoElements(),
-  );
+  const elements =
+    (await call<Element[] | null>(
+      'getLassoElements',
+      PluginCommAPI.getLassoElements(),
+    )) ?? [];
   try {
     const targets = elements.filter(e => RECOGNIZABLE.has(e.type));
     if (targets.length === 0) {
       return '';
     }
-    return await call<string>(
-      'recognizeElements',
-      PluginCommAPI.recognizeElements(targets, size),
+    // The recogniser returns null when it finds no text (a drawing, a music score…).
+    return (
+      (await call<string | null>(
+        'recognizeElements',
+        PluginCommAPI.recognizeElements(targets, size),
+      )) ?? ''
     );
   } finally {
     for (const e of elements) {

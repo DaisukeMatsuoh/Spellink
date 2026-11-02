@@ -62,6 +62,13 @@ export const fakeNote = {
   /** The document on screen. Comm-level APIs act on this one, whichever note the plugin means. */
   currentFile: '/note.note',
   /** What an unrelated document would receive: anything written while it is open lands here. */
+  /** The lasso selection and what the recogniser returns for it (null = nothing recognised). */
+  lasso: [] as Element[] | null,
+  ocrResult: '' as string | null,
+  /** Native dialogs shown, and plugin views opened (full screen). */
+  dialogs: [] as string[],
+  dialogFails: false,
+  panelsOpened: 0,
   strayWrites: 0,
   strayDeletes: 0,
   strayJumps: 0,
@@ -77,6 +84,11 @@ export const fakeNote = {
     this.deleted = [];
     this.currentPage = 0;
     this.currentFile = '/note.note';
+    this.lasso = [];
+    this.ocrResult = '';
+    this.dialogs = [];
+    this.dialogFails = false;
+    this.panelsOpened = 0;
     this.strayWrites = 0;
     this.strayDeletes = 0;
     this.strayJumps = 0;
@@ -183,6 +195,18 @@ export const PluginCommAPI = {
     fakeNote.currentPage = page;
     return ok(true);
   },
+  async getLassoElements() {
+    return ok(fakeNote.lasso);
+  },
+  async recognizeElements() {
+    return ok(fakeNote.ocrResult);
+  },
+  async getLassoRect() {
+    return ok({left: 100, top: 100, right: 500, bottom: 300});
+  },
+  async setLassoBoxState() {
+    return ok(true);
+  },
   async getCurrentFilePath() {
     return ok(fakeNote.currentFile);
   },
@@ -209,6 +233,9 @@ export const PluginFileAPI = {
   async getElementNumList(_path: string, page: number) {
     return ok((fakeNote.file.get(page) ?? []).map(e => e.numInPage));
   },
+  async getPageSize() {
+    return ok({width: 1404, height: 1872});
+  },
   async getNotePageTemplate() {
     return ok({name: 'style_blank', md5: '0'});
   },
@@ -225,7 +252,24 @@ export const PluginFileAPI = {
   },
 };
 
+export const NativeUIUtils = {
+  async showRattaDialog(tip: string) {
+    if (fakeNote.dialogFails) {
+      throw new Error('no activity');
+    }
+    fakeNote.dialogs.push(tip);
+    return true;
+  },
+};
+
 export const PluginManager = {
+  async showPluginView() {
+    fakeNote.panelsOpened++;
+    return true;
+  },
+  async closePluginView() {
+    return true;
+  },
   async hasPermission() {
     return 1;
   },

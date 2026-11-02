@@ -3,11 +3,13 @@
 // (Settings → show progress) or when something went wrong.
 import {PluginManager} from 'sn-plugin-lib';
 import {AskFlow, type AskState} from './askFlow';
+import {notify} from './notify';
 import {show} from './session';
 
 let state: AskState = {message: '', finished: true};
 let flow: AskFlow | null = null;
 let panelOpen = false;
+let alerted = false;
 const listeners = new Set<() => void>();
 
 function openPanel(): void {
@@ -21,8 +23,16 @@ function openPanel(): void {
 
 function report(next: AskState): void {
   state = next;
-  if (next.showProgress || next.failed) {
-    openPanel();
+  if (next.showProgress) {
+    openPanel(); // the user asked to watch progress
+  } else if (next.failed && !alerted) {
+    // A failure is told in a small dialog; the full-screen panel is only the fallback.
+    alerted = true;
+    notify(next.message).then(shown => {
+      if (!shown) {
+        openPanel();
+      }
+    });
   }
   listeners.forEach(l => l());
 }
@@ -32,6 +42,7 @@ export function startAsk(): void {
     return; // one question at a time
   }
   panelOpen = false;
+  alerted = false;
   state = {message: '', finished: false};
   flow = new AskFlow(report);
   flow.run();

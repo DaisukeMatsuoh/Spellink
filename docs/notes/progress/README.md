@@ -120,6 +120,11 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
   偽 SDK に「開いているドキュメント」を追加し、別ドキュメントへの書き込み・削除・移動が 0 件であることをテスト。ページを高速に切り替え続けても欠けないこともテスト（54 件）。
   **未確認**: 欠けた直接の原因は推定（別ページ表示中の書き込み）。別ドキュメントが開いた契機も不明（ユーザー操作か）。実機で再確認が必要。
 
+- 2026-11-02 **文字以外（楽譜）を囲むとクラッシュ**（ユーザー報告: `Cannot read property 'trim' of null`）。原因: 認識結果が `null`。`null` を空として扱い、「文字として読み取れない内容です」と通知。
+  通知は全画面パネルをやめ、**ネイティブの小さなダイアログ**（`NativeUIUtils.showRattaDialog`）に。パネルは進捗表示の設定が ON のとき、またはダイアログが出せないときだけ。
+  実機未確認: ダイアログが UI なしのボタンから出るか、ボタン表記（左: 閉じる / 右: OK）の見え方。
+  将来構想（文字以外の手書き、ストローク／画像を送る、楽譜）: `docs/notes/research/2026-11-02-non-text-input.md`。実装していない。
+
 ## 未解決の質問・ユーザーの方針
 - 外出先: 利用者には何も求めない。**Spellink の中継サーバ（ADR 0010）を実装済み**。Go で運用する方針（ユーザー決定）。ホスティングはフェーズ 1 = この機械＋Cloudflare Tunnel を推奨（`docs/notes/research/2026-11-01-relay-hosting.md`）。ユーザーの Cloudflare 設定（ドメイン、`cloudflared tunnel login`）待ち。
 - 名前: **Spellink に決定**（2026-10-31）。リポジトリ内は置換済み。GitHub リポジトリ名と Go モジュールパス（`github.com/DaisukeMatsuoh/Spellink/bridge`）はユーザーが GitHub で改名した後に変更。開発機の設定は `~/.config/spellink-bridge/`、バイナリは `~/.local/bin/spellink-bridge`。

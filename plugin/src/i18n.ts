@@ -7,7 +7,7 @@ const STRINGS = {
     permissions: 'Checking permissions…',
     permissionDenied: 'Permission not granted: {list}',
     recognizing: 'Reading your handwriting…',
-    noText: 'No handwriting found in the selection.',
+    noText: "This can't be read as text.",
     connecting: 'Connecting to the bridge…',
     noBridge:
       'No bridge reachable. Is spellink-bridge running on a computer on this network?',
@@ -42,7 +42,7 @@ const STRINGS = {
     permissions: '権限を確認しています…',
     permissionDenied: '権限が許可されていません: {list}',
     recognizing: '手書きを読み取っています…',
-    noText: '選択範囲に手書き文字が見つかりませんでした。',
+    noText: '文字として読み取れない内容です。',
     connecting: 'ブリッジに接続しています…',
     noBridge:
       'ブリッジに接続できません。同じネットワークのPCで spellink-bridge が動いているか確認してください。',

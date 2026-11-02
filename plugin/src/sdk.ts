@@ -29,6 +29,46 @@ type ApiResponse<T> = {
 };
 
 /** Unwraps the SDK's `{success, result, error}` envelope, throwing on failure. */
+/** Thrown when the host does not answer a call in time (the note app may be stuck). */
+export class CallTimeoutError extends Error {
+  constructor(readonly api: string) {
+    super(`${api} did not respond`);
+  }
+}
+
+// How long to wait for each kind of call. Saving or reading a big note is slow; the rest is quick.
+const SLOW_CALLS = new Set([
+  'saveCurrentNote',
+  'getElements',
+  'insertNotePage',
+  'recognizeElements',
+]);
+const QUICK_TIMEOUT_MS = 15000;
+const SLOW_TIMEOUT_MS = 60000;
+let timeoutScale = 1;
+/** Tests shorten the waits. */
+export function setTimeoutScaleForTests(scale: number): void {
+  timeoutScale = scale;
+}
+
+/** How long a call may take before it is given up on, in milliseconds. */
+export function timeoutFor(api: string): number {
+  return (
+    (SLOW_CALLS.has(api) ? SLOW_TIMEOUT_MS : QUICK_TIMEOUT_MS) * timeoutScale
+  );
+}
+
+/** Resolves with `pending`, or rejects once the host has been silent for too long. */
+function withTimeout<T>(api: string, pending: Promise<T>): Promise<T> {
+  const ms =
+    (SLOW_CALLS.has(api) ? SLOW_TIMEOUT_MS : QUICK_TIMEOUT_MS) * timeoutScale;
+  let timer: ReturnType<typeof setTimeout>;
+  const silence = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new CallTimeoutError(api)), ms);
+  });
+  return Promise.race([pending, silence]).finally(() => clearTimeout(timer));
+}
+
 export async function call<T>(
   api: string,
   pending: Promise<unknown>,
@@ -36,7 +76,10 @@ export async function call<T>(
   const started = Date.now();
   let res: ApiResponse<T> | null | undefined;
   try {
-    res = (await pending) as ApiResponse<T> | null | undefined;
+    res = (await withTimeout(api, pending)) as
+      | ApiResponse<T>
+      | null
+      | undefined;
   } catch (e) {
     trace(api, {ms: Date.now() - started, err: (e as Error).message});
     throw e;
@@ -221,6 +264,8 @@ export async function writeStrokes(
   timing?: WriteTiming,
   /** Stored on every created stroke (Element.userData); lets us recognise our own strokes later. */
   userData?: string,
+  /** Diagnostics only: leave the elements in the native cache (the caller recycles them). */
+  keepInCache = false,
 ): Promise<string[]> {
   const mode = await probeFillMode();
   const elements: Element[] = [];
@@ -267,8 +312,10 @@ export async function writeStrokes(
     }
     return elements.map(e => e.uuid);
   } finally {
-    for (const e of elements) {
-      PluginCommAPI.recycleElement(e.uuid);
+    if (!keepInCache) {
+      for (const e of elements) {
+        PluginCommAPI.recycleElement(e.uuid);
+      }
     }
   }
 }

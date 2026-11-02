@@ -39,7 +39,8 @@ type Config struct {
 	// TiltDegrees is this agent's handwriting slope (positive rises to the right), picked at
 	// random the first time so every agent has its own habit. Edit to taste.
 	TiltDegrees *float64 `json:"tiltDegrees,omitempty"`
-	// ThinkingAnimation defaults to on; nil means "not set".
+	// ThinkingAnimation defaults to off (it saves and re-reads the note, which can stall the note
+	// app on large notes); nil means "not set".
 	ThinkingAnimation *bool `json:"thinkingAnimation,omitempty"`
 	// Letter spacing in percent (see protocol.Settings); nil means the default.
 	FullWidthSpacing *int `json:"fullWidthSpacing,omitempty"`
@@ -64,9 +65,9 @@ const (
 	defaultHalfSpacing = 110
 )
 
-// ThinkingAnimationOn reports the animation setting, on unless turned off.
+// ThinkingAnimationOn reports the animation setting, off unless turned on.
 func (c *Config) ThinkingAnimationOn() bool {
-	return c.ThinkingAnimation == nil || *c.ThinkingAnimation
+	return c.ThinkingAnimation != nil && *c.ThinkingAnimation
 }
 
 func orDefault(v *int, def int) int {

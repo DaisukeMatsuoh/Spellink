@@ -54,3 +54,37 @@ describe('flight recorder', () => {
     expect(dumpTrace().some(e => e.k === 'y')).toBe(true);
   });
 });
+
+import {
+  CallTimeoutError,
+  setTimeoutScaleForTests,
+  timeoutFor,
+} from '../src/sdk';
+
+describe('a call the host never answers', () => {
+  afterEach(() => setTimeoutScaleForTests(1));
+
+  it('is given up on, recorded, and reported as a timeout', async () => {
+    resetTraceForTests();
+    setTimeoutScaleForTests(0.001); // 15 s → 15 ms
+    const never = new Promise(() => {});
+    await expect(call('createElement', never)).rejects.toBeInstanceOf(
+      CallTimeoutError,
+    );
+    const [e] = dumpTrace();
+    expect(e.k).toBe('createElement');
+    expect(e.err).toContain('did not respond');
+  });
+
+  it('allows saving and reading a big note far longer than a quick call', () => {
+    for (const api of [
+      'saveCurrentNote',
+      'getElements',
+      'insertNotePage',
+      'recognizeElements',
+    ]) {
+      expect(timeoutFor(api)).toBeGreaterThan(timeoutFor('createElement') * 3);
+    }
+    expect(timeoutFor('insertPageElements')).toBe(timeoutFor('createElement'));
+  });
+});

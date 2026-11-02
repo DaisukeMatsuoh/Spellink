@@ -468,3 +468,65 @@ beforeEach(() => {
   };
   rememberSettings({...mockBridgeSettings});
 });
+
+describe('the connection drops (e.g. the tunnel reconnects)', () => {
+  beforeEach(() => fakeNote.reset());
+
+  it('after the bridge sent everything: the rest is still written', async () => {
+    let conn: {onClose: (reason: string) => void} | null = null;
+    const bridge = require('../src/bridgeClient');
+    const real = bridge.connectFirst;
+    jest
+      .spyOn(bridge, 'connectFirst')
+      .mockImplementationOnce(async (...a: unknown[]) => {
+        conn = (await real(...a)) as never;
+        return conn;
+      });
+    mockScript = (send, id) => {
+      send(
+        line(
+          id,
+          0,
+          0,
+          Array.from({length: 60}, () => stroke()),
+        ),
+      );
+      send(done(id));
+      setTimeout(() => conn?.onClose('closed (1006)'), 0); // the tunnel drops right after `done`
+    };
+    const last = await run(layout);
+    expect(last.failed).toBeFalsy();
+    expect(answerStrokes(0)).toHaveLength(60);
+  });
+
+  it('before the bridge finished: the answer stops and says why', async () => {
+    let conn: {onClose: (reason: string) => void} | null = null;
+    const bridge = require('../src/bridgeClient');
+    const real = bridge.connectFirst;
+    jest
+      .spyOn(bridge, 'connectFirst')
+      .mockImplementationOnce(async (...a: unknown[]) => {
+        conn = (await real(...a)) as never;
+        return conn;
+      });
+    mockScript = (send, id) => {
+      send(line(id, 0, 0, [stroke()]));
+      setTimeout(() => conn?.onClose('closed (1006)'), 20);
+    };
+    const last = await run(layout);
+    expect(last.failed).toBe(true);
+    expect(last.message).toContain('1006');
+  });
+});
+
+describe('defaults', () => {
+  it('the thinking animation is off until the user turns it on', () => {
+    const {knownSettings} = require('../src/askFlow');
+    rememberSettings({
+      showProgress: false,
+      lineTilt: true,
+      thinkingAnimation: false,
+    });
+    expect(knownSettings().thinkingAnimation).toBe(false);
+  });
+});

@@ -17,6 +17,7 @@ import {
   ensurePermissions,
   insertPageAfter,
   jumpToPageIn,
+  CallTimeoutError,
   NoteMovedError,
   lassoRect,
   noteContext,
@@ -29,16 +30,20 @@ import {
 
 /** What the user reads when the answer could not be completed. */
 export function describeFailure(e: unknown): string {
-  return e instanceof NoteMovedError
-    ? t('noteMoved')
-    : t('error', {message: (e as Error).message});
+  if (e instanceof NoteMovedError) {
+    return t('noteMoved');
+  }
+  if (e instanceof CallTimeoutError) {
+    return t('hostBusy', {api: e.api});
+  }
+  return t('error', {message: (e as Error).message});
 }
 
 /** The settings last read from a bridge; the wave needs them before the first connection. */
 let lastSettings: Settings = {
   showProgress: false,
   lineTilt: true,
-  thinkingAnimation: true,
+  thinkingAnimation: false,
 };
 export function rememberSettings(s: Settings): void {
   lastSettings = s;
@@ -368,10 +373,17 @@ export class AskFlow {
     };
 
     let abort: (e: Error) => void = () => {};
+    let finished = false;
     return new Promise<void>((resolve, reject) => {
       abort = reject;
       this.endQuestion = reject;
-      conn.onClose = reason => reject(new Error(reason));
+      conn.onClose = reason => {
+        // The bridge already sent everything (`done`): the rest is writing what we hold. A
+        // dropped connection (e.g. a tunnel reconnecting) must not cut that short.
+        if (!finished) {
+          reject(new Error(reason));
+        }
+      };
       conn.onMessage = (m: BridgeMessage) => {
         if ('id' in m && m.id !== this.id) {
           return;
@@ -386,6 +398,7 @@ export class AskFlow {
             writeLine(m.strokes, m.text, m.page);
             break;
           case 'done':
+            finished = true;
             writes.then(() => {
               const notes = [t('done')];
               if (m.truncated) {

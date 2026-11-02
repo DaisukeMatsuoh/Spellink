@@ -195,7 +195,7 @@ export function connectFirst(
               showProgress: m.settings?.showProgress ?? false,
               lineTilt: m.settings?.lineTilt ?? true,
               tiltDegrees: m.settings?.tiltDegrees,
-              thinkingAnimation: m.settings?.thinkingAnimation ?? true,
+              thinkingAnimation: m.settings?.thinkingAnimation ?? false,
               fullWidthSpacing: m.settings?.fullWidthSpacing,
               halfWidthSpacing: m.settings?.halfWidthSpacing,
             }),

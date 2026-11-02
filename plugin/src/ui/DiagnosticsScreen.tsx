@@ -77,6 +77,11 @@ export function DiagnosticsScreen() {
         />
         <Button
           disabled={busy}
+          label="10. Cache number"
+          onPress={run('cache number', diag.cacheNumberTest)}
+        />
+        <Button
+          disabled={busy}
           label="Reload file"
           onPress={run('reload', diag.reloadFile)}
         />

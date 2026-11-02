@@ -10,6 +10,7 @@ import type {InkStroke} from './protocol';
 import {
   call,
   currentPen,
+  deleteElementsAt,
   ensurePermissions,
   insertPageAfter,
   jumpToPageIn,
@@ -262,6 +263,62 @@ export async function markerTest(log: Log): Promise<void> {
     }
   } catch (e) {
     log(`marker test: ERROR ${(e as Error).message}`);
+  }
+}
+
+/**
+ * Can an element's page number be read straight from the in-memory cache after inserting it,
+ * without saving the note and listing the page (which took 2-3 s on a big note)? Writes one
+ * marked stroke, asks the cache for it, compares with the saved page, then deletes it.
+ */
+export async function cacheNumberTest(log: Log): Promise<void> {
+  try {
+    const ctx = await noteContext();
+    const pen = await currentPen();
+    const marker = `spellink-test:${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+    const x = Math.round(ctx.size.width * 0.2);
+    const y = Math.round(ctx.size.height * 0.5);
+    const points = Array.from({length: 7}, (_, i) => ({x: x + i * 6, y}));
+    const [uuid] = await writeStrokes(
+      [{p: points.flatMap(p => [p.x, p.y]), w: points.map(() => 2500)}],
+      ctx.page,
+      pen,
+      undefined,
+      marker,
+      true, // keep it in the cache so it can be read back
+    );
+    const cached = await call<{numInPage?: number; userData?: string} | null>(
+      'getCacheElement',
+      PluginCommAPI.getCacheElement(uuid),
+    ).catch(() => null);
+    log(
+      `cache: numInPage=${cached?.numInPage} userData=${JSON.stringify(
+        cached?.userData,
+      )} (cache entry ${cached ? 'found' : 'missing'})`,
+    );
+    const t0 = Date.now();
+    const els = await readPage(ctx.filePath, ctx.page);
+    const saved = els.filter(e => e.userData === marker).map(e => e.numInPage);
+    log(
+      `saved page: numInPage=${JSON.stringify(saved)} (save+read took ${
+        Date.now() - t0
+      }ms of ${els.length} elements)`,
+    );
+    log(
+      cached?.numInPage !== undefined &&
+        saved.length === 1 &&
+        cached.numInPage === saved[0]
+        ? '→ the cache number matches: the wave could be removed without saving or listing the page'
+        : '→ the cache number cannot be used',
+    );
+    releaseElements(els);
+    PluginCommAPI.recycleElement(uuid);
+    await deleteElementsAt(ctx.filePath, ctx.page, saved);
+    log(`removed ${saved.length} test stroke(s)`);
+  } catch (e) {
+    log(`cache test: ERROR ${(e as Error).message}`);
   }
 }
 

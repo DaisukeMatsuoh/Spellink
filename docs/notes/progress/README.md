@@ -33,7 +33,7 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
 
 ## 次にやること（優先順）
 1. **名前を決める**（ユーザー判断待ち。製品名は未決定で、現行は Spellink）。ドメイン `spell-ink.com` はユーザーが取得済み（2026-11-03）。`spellink.com` が取得済みのため再検討中。候補とドメイン空き状況: `docs/notes/research/2026-11-03-naming-round2.md`。エージェントの推奨は `dancink`。決まったら改名を一括で行う（範囲は同ノート末尾。`pluginID` は変更禁止）。決定前に改名作業を始めない。
-2. **正式な名前付きトンネルへ移行**（ユーザー作業待ち）。ドメインは `spell-ink.com`（取得済み。Cloudflare への追加状況は未確認。Cloudflare Registrar か、ネームサーバーの切り替えが要る）。ホスト名の例: `bridge.spell-ink.com`。手順書: `docs/guides/cloudflare-tunnel-setup.md`。
+2. **正式な名前付きトンネルへ移行**（ユーザー作業待ち）。ドメインは `spell-ink.com`（取得済み。2026-11-03 時点でレジストラは GoDaddy＝NS `ns03/ns04.domaincontrol.com`、DNSSEC なし、A レコードは GoDaddy の駐車ページ。ネームサーバーを Cloudflare に切り替える手順をユーザーに案内済み）。ホスト名の例: `bridge.spell-ink.com`。手順書: `docs/guides/cloudflare-tunnel-setup.md`。
    - ユーザーがやること: ドメインを Cloudflare に追加（無料プランはドメイン丸ごと。専用ドメインを別に取る案を推奨。名前の件とは切り離せる）→ トンネル作成 → トークンを自分で `~/.config/spellink-bridge/cloudflared.env` に保存（**チャットに貼らない**）→ ホスト名を `localhost:8765` に割り当て。
    - その後エージェントが: `config.json` の `extraUrls` に `wss://<host>/v1` → ブリッジ再起動 → `spellink-bridge pair` → プラグイン再ビルド → トンネル経由で確認 → クイックトンネル停止 → ブリッジを systemd ユーザーサービス化（`bridge/contrib/`）。
 3. **NOTE アプリが回答中に固まる件の再検証**（ユーザーの再現待ち）。原因未特定。フライトレコーダーで「SDK 呼び出しが返らないまま止まる」ことまで分かっている。

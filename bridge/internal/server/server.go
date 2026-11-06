@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -96,10 +97,11 @@ type session struct {
 	requireEncryption bool
 	secure            *securechan.Channel // set once the Noise handshake succeeds
 
-	writeMu sync.Mutex
-	askMu   sync.Mutex
-	askID   string
-	cancel  context.CancelFunc
+	writeMu  sync.Mutex
+	writeErr atomic.Bool // the first failed write has been logged
+	askMu    sync.Mutex
+	askID    string
+	cancel   context.CancelFunc
 }
 
 func (s *session) send(ctx context.Context, v any) {
@@ -109,11 +111,17 @@ func (s *session) send(ctx context.Context, v any) {
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	var werr error
 	if s.secure != nil {
-		_ = s.secure.Write(ctx, b)
-		return
+		werr = s.secure.Write(ctx, b)
+	} else {
+		werr = s.conn.Write(ctx, websocket.MessageText, b)
 	}
-	_ = s.conn.Write(ctx, websocket.MessageText, b)
+	// A failed write means the plugin did not get this frame; "done" in the log must not be
+	// mistaken for "delivered" when the connection died underneath.
+	if werr != nil && s.writeErr.CompareAndSwap(false, true) {
+		s.deps.Log.Printf("write to %s failed: %v", s.peer, werr)
+	}
 }
 
 func (s *session) fail(ctx context.Context, code, msg string) {
@@ -194,6 +202,7 @@ func (s *session) run(parent context.Context) {
 	for {
 		m, err := s.read(ctx)
 		if err != nil {
+			s.deps.Log.Printf("disconnected: %s: %v", s.peer, err)
 			if websocket.CloseStatus(err) == -1 && ctx.Err() == nil && !errors.Is(err, context.Canceled) {
 				s.fail(ctx, "bad_request", err.Error())
 			}

@@ -33,9 +33,9 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
 
 ## 次にやること（優先順）
 1. **名前を決める**（ユーザー判断待ち。製品名は未決定で、現行は Spellink）。ドメインは `spellink.uk`（Cloudflare Registrar で取得。2026-11-03。先に取った `spell-ink.com` は使わない）。`spellink.com` が取得済みのため再検討中。候補とドメイン空き状況: `docs/notes/research/2026-11-03-naming-round2.md`。エージェントの推奨は `dancink`。決まったら改名を一括で行う（範囲は同ノート末尾。`pluginID` は変更禁止）。決定前に改名作業を始めない。
-2. **正式な名前付きトンネルへ移行**（ユーザー作業待ち）。手順書: `docs/guides/cloudflare-tunnel-setup.md`。ドメイン `spellink.uk` は Cloudflare Registrar で取得済みなので、手順書 §1（ドメインの追加）は不要。§2 から。ホスト名は `bridge.spellink.uk` を予定。
-   - ユーザーがやること: トンネル作成 → トークンを自分で `~/.config/spellink-bridge/cloudflared.env` に保存（**チャットに貼らない**）→ ホスト名を `localhost:8765` に割り当て。
-   - その後エージェントが: `config.json` の `extraUrls` に `wss://<host>/v1` → ブリッジ再起動 → `spellink-bridge pair` → プラグイン再ビルド → トンネル経由で確認 → クイックトンネル停止 → ブリッジを systemd ユーザーサービス化（`bridge/contrib/`）。
+2. **名前付きトンネル: 疎通済み**（2026-11-07）。`https://bridge.spellink.uk/health` が通る。Cloudflare 側のルートの Service は **HTTP**（HTTPS だと 502）、URL は `localhost:8765`。cloudflared は公式の `service install` 方式（`/etc/cloudflared/token`）で動いている。
+   `extraUrls` は `wss://bridge.spellink.uk/v1` に更新、`pair` 作り直し、プラグイン再ビルド済み（`plugin/build/outputs/Spellink.snplg`）。クイックトンネルは停止済み。
+   - **残り**: ①端末へ新しい `Spellink.snplg` を入れ、トンネル経由で質問が通るか確認（ユーザー）②ブリッジの自動起動（systemd ユーザーサービス）。後者は自動モードの権限判定で拒否されたため、**ユーザーが自分のターミナルで実行する**: `mkdir -p ~/.config/systemd/user && cp bridge/contrib/spellink-bridge.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now spellink-bridge && loginctl enable-linger $USER`（実行前に、手で起動中のブリッジを `pkill -f 'spellink-bridge serve'` で止める）。
 3. **NOTE アプリが回答中に固まる件の再検証**（ユーザーの再現待ち）。原因未特定。フライトレコーダーで「SDK 呼び出しが返らないまま止まる」ことまで分かっている。
    - ユーザーに頼むこと: 待機アニメーション OFF のまま、長い回答中にページを切り替えて再現するか。診断「10. Cache number」と「Send log to bridge」の実行。
    - エージェントがやること: `~/.config/spellink-bridge/reports.jsonl` の trace を読む。診断 10 でキャッシュから番号が読めるなら、波線の後始末から「保存＋ページ全体の読み取り」を除く。

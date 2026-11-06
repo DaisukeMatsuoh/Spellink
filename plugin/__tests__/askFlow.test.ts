@@ -129,6 +129,37 @@ describe('AskFlow', () => {
     ).toHaveLength(2);
   });
 
+  it('tells the bridge which note the question was written in, so it can continue the conversation', async () => {
+    const asks: {note: string; question: string}[] = [];
+    jest
+      .spyOn(require('../src/bridgeClient'), 'connectFirst')
+      .mockImplementationOnce(
+        async () =>
+          ({
+            name: 'fake',
+            settings: {
+              showProgress: false,
+              lineTilt: true,
+              thinkingAnimation: false,
+            },
+            onMessage: () => {},
+            onClose: () => {},
+            close: () => {},
+            send: (m: {type: string; note: string; question: string}) => {
+              if (m.type === 'ask') {
+                asks.push({note: m.note, question: m.question});
+              }
+            },
+          } as never),
+      );
+    const flow = new AskFlow(() => {});
+    void flow.runWithQuestion('それを3倍して', layout, ctx);
+    await pause(300);
+    flow.cancel();
+    await pause(50);
+    expect(asks).toEqual([{note: '/note.note', question: 'それを3倍して'}]);
+  });
+
   it('writes in steps of 15 strokes', async () => {
     const insertSpy = jest.spyOn(
       require('../__mocks__/sn-plugin-lib').PluginCommAPI,

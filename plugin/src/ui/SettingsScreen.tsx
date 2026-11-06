@@ -37,6 +37,8 @@ export function SettingsScreen() {
         if (m.type === 'settings') {
           setSettings(m.settings);
           setStatus(t('saved'));
+        } else if (m.type === 'historyCleared') {
+          setStatus(t('forgotten', {n: m.notes}));
         }
       };
       setConn(c);
@@ -116,6 +118,14 @@ export function SettingsScreen() {
         onCommit={v => change({halfWidthSpacing: v})}
       />
       <Text style={styles.small}>{t('spacingHelp')}</Text>
+      <View style={styles.row}>
+        <Button
+          disabled={!conn}
+          label={t('forgetHistory')}
+          onPress={() => conn?.send({type: 'clearHistory'})}
+        />
+      </View>
+      <Text style={styles.small}>{t('forgetHistoryHelp')}</Text>
       <View style={styles.row}>
         <Button label={t('diagButton')} onPress={() => show('diagnostics')} />
         <Button

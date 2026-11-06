@@ -24,6 +24,7 @@ import (
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/claude"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/config"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/glyphbuild"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/history"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/lantls"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
@@ -137,10 +138,18 @@ func serve() error {
 		return err
 	}
 	logger := log.New(os.Stdout, "", log.LstdFlags)
+	var notes *history.Store
+	if cfg.HistoryChars() > 0 {
+		histDir, err := config.HistoryDir()
+		if err != nil {
+			return err
+		}
+		notes = &history.Store{Dir: histDir}
+	}
 	var settingsMu sync.Mutex
 	deps := server.Deps{
 		Name: cfg.Name, Version: version, Token: cfg.Token, Font: font,
-		Ask: runner.Ask,
+		Ask: runner.Ask, History: notes, HistoryChars: cfg.HistoryChars(),
 		Report: func(peer string, data any) {
 			if err := config.AppendReport(peer, data); err != nil {
 				logger.Printf("report: %v", err)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/history"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
 )
@@ -21,12 +22,19 @@ var layout = ink.Layout{X: 10, Y: 10, Width: 400, PageHeight: 1000, BottomMargin
 
 func startTest(t *testing.T, ask AskFunc) string {
 	t.Helper()
+	return startTestWith(t, ask, func(*Deps) {})
+}
+
+func startTestWith(t *testing.T, ask AskFunc, tweak func(*Deps)) string {
+	t.Helper()
 	font := &ink.Font{Em: 100, Glyphs: map[rune]ink.Glyph{'あ': {Advance: 100, Strokes: [][]int16{{50, 0, 50, 100}}}}}
-	srv := httptest.NewServer(Handler(Deps{
+	d := Deps{
 		Name: "test", Version: "0", Token: "secret", Font: font, Ask: ask,
 		Report:   func(string, any) {},
 		Settings: func() protocol.Settings { return protocol.Settings{} }, SetSettings: func(protocol.Settings) error { return nil }, Log: log.New(io.Discard, "", 0),
-	}))
+	}
+	tweak(&d)
+	srv := httptest.NewServer(Handler(d))
 	t.Cleanup(srv.Close)
 	return "ws" + strings.TrimPrefix(srv.URL, "http") + "/v1"
 }
@@ -104,6 +112,84 @@ func TestStreamsLinesAndFinishes(t *testing.T) {
 	}
 	if !strings.Contains(prompt, "字以内") {
 		t.Fatalf("system prompt lacks a length budget: %q", prompt)
+	}
+}
+
+func finished(m msg) bool { return m["type"] == "done" || m["type"] == "error" }
+
+func ask(id, note, q string) map[string]any {
+	return map[string]any{"type": "ask", "id": id, "note": note, "question": q, "lang": "ja", "layout": layout}
+}
+
+func TestFollowUpInTheSameNoteSeesTheEarlierConversation(t *testing.T) {
+	var asked []string
+	url := startTestWith(t, func(_ context.Context, q, _ string, onText func(string)) (string, error) {
+		asked = append(asked, q)
+		onText("あ")
+		return "答え:" + q, nil
+	}, func(d *Deps) {
+		d.History, d.HistoryChars = &history.Store{Dir: t.TempDir()}, 1000
+	})
+	// separate connections: the memory belongs to the note, not to the socket
+	converse(t, url, []any{hello, ask("1", "/n/a.note", "1+1は？")}, finished)
+	converse(t, url, []any{hello, ask("2", "/n/a.note", "それを3倍して")}, finished)
+	converse(t, url, []any{hello, ask("3", "/n/other.note", "別の話")}, finished)
+
+	if asked[0] != "1+1は？" {
+		t.Fatalf("a first question is sent as is: %q", asked[0])
+	}
+	for _, want := range []string{"1+1は？", "答え:1+1は？", "それを3倍して"} {
+		if !strings.Contains(asked[1], want) {
+			t.Fatalf("follow-up lacks %q: %q", want, asked[1])
+		}
+	}
+	if asked[2] != "別の話" {
+		t.Fatalf("another note must not see it: %q", asked[2])
+	}
+}
+
+func TestFailedOrCancelledQuestionsAreNotRemembered(t *testing.T) {
+	store := &history.Store{Dir: t.TempDir()}
+	url := startTestWith(t, func(context.Context, string, string, func(string)) (string, error) {
+		return "", errors.New("boom")
+	}, func(d *Deps) { d.History, d.HistoryChars = store, 1000 })
+	converse(t, url, []any{hello, ask("1", "n", "q")}, finished)
+	if got, _ := store.Recent("n", 1000); len(got) != 0 {
+		t.Fatalf("remembered a failed question: %+v", got)
+	}
+}
+
+func TestNoteWithoutKeyOrWithMemoryOffIsStateless(t *testing.T) {
+	var asked []string
+	record := func(_ context.Context, q, _ string, onText func(string)) (string, error) {
+		asked = append(asked, q)
+		onText("あ")
+		return "a", nil
+	}
+	store := &history.Store{Dir: t.TempDir()}
+	on := startTestWith(t, record, func(d *Deps) { d.History, d.HistoryChars = store, 1000 })
+	converse(t, on, []any{hello, ask("1", "", "q1")}, finished)
+	converse(t, on, []any{hello, ask("2", "", "q2")}, finished)
+	off := startTestWith(t, record, func(d *Deps) { d.History, d.HistoryChars = store, 0 })
+	converse(t, off, []any{hello, ask("3", "n", "q3")}, finished)
+	converse(t, off, []any{hello, ask("4", "n", "q4")}, finished)
+	if asked[1] != "q2" || asked[3] != "q4" {
+		t.Fatalf("expected stateless questions, got %q", asked)
+	}
+}
+
+func TestClearHistoryForgetsAllNotes(t *testing.T) {
+	store := &history.Store{Dir: t.TempDir()}
+	_ = store.Append("a", history.Turn{Q: "q", A: "a"})
+	_ = store.Append("b", history.Turn{Q: "q", A: "a"})
+	url := startTestWith(t, nil, func(d *Deps) { d.History, d.HistoryChars = store, 1000 })
+	got := converse(t, url, []any{hello, map[string]any{"type": "clearHistory"}},
+		func(m msg) bool { return m["type"] == "historyCleared" })
+	if got[1]["notes"] != 2.0 {
+		t.Fatalf("got %v", got)
+	}
+	if r, _ := store.Recent("a", 1000); len(r) != 0 {
+		t.Fatalf("not cleared: %+v", r)
 	}
 }
 

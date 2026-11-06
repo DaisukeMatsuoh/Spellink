@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -91,5 +92,39 @@ func TestAppendReportWritesJSONLines(t *testing.T) {
 	b, _ := os.ReadFile(file)
 	if len(b) == 0 || b[len(b)-1] != '\n' {
 		t.Fatalf("expected one JSON line, got %q", b)
+	}
+}
+
+func TestHistoryDefaultsAndSwitches(t *testing.T) {
+	for _, tc := range []struct {
+		h    *History
+		want int
+	}{
+		{nil, 8000}, {&History{}, 8000}, {&History{ContextChars: 500}, 500}, {&History{ContextChars: -1}, 0},
+	} {
+		if got := (&Config{History: tc.h}).HistoryChars(); got != tc.want {
+			t.Errorf("%+v: got %d, want %d", tc.h, got, tc.want)
+		}
+	}
+}
+
+func TestUnsupportedCompactionIsRejectedByName(t *testing.T) {
+	dir := isolate(t)
+	file := filepath.Join(dir, "spellink-bridge", "config.json")
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for mode, ok := range map[string]bool{"none": true, "": true, "summarize": false} {
+		body := `{"token":"x","history":{"compaction":"` + mode + `"}}`
+		if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Load()
+		if ok && err != nil || !ok && err == nil {
+			t.Errorf("compaction %q: err=%v", mode, err)
+		}
+		if !ok && !strings.Contains(err.Error(), "config.json") {
+			t.Errorf("the error must name the file: %v", err)
+		}
 	}
 }

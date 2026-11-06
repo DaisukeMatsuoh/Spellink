@@ -36,6 +36,10 @@ const STRINGS = {
     halfWidthSpacing: 'Spacing: letters / digits',
     spacingHelp:
       '100% is the tightest. Widen it if characters touch; full-width and half-width are set separately.',
+    forgetHistory: 'Forget conversations',
+    forgetHistoryHelp:
+      'Claude remembers earlier questions written in the same note. This makes it forget them in every note.',
+    forgotten: 'Forgot the conversations of {n} note(s).',
     lineTilt: 'Writing slope',
     lineTiltHelp:
       "Like a person's handwriting habit, the whole answer is written at this agent's own angle: {angle}.",
@@ -80,6 +84,10 @@ const STRINGS = {
     halfWidthSpacing: '字間: 英字・数字',
     spacingHelp:
       '100% が最も詰まった状態です。文字が重なるときは広げてください。全角と半角は別々に設定できます。',
+    forgetHistory: '会話を忘れさせる',
+    forgetHistoryHelp:
+      '同じノートに続けて書いた質問は、前のやり取りを踏まえて答えます。これを押すと、すべてのノートの会話を忘れます。',
+    forgotten: '{n} 冊のノートの会話を忘れました。',
     lineTilt: '書き癖の傾き',
     lineTiltHelp:
       '人の書き癖のように、回答全体をこのエージェント固有の角度で書きます: {angle}',

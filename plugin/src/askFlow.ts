@@ -417,6 +417,7 @@ export class AskFlow {
         type: 'ask',
         id: this.id,
         question,
+        note: ctx.filePath,
         lang: questionLang(question),
         layout,
       });

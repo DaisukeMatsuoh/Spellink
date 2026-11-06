@@ -45,9 +45,42 @@ type Config struct {
 	// Letter spacing in percent (see protocol.Settings); nil means the default.
 	FullWidthSpacing *int `json:"fullWidthSpacing,omitempty"`
 	HalfWidthSpacing *int `json:"halfWidthSpacing,omitempty"`
+	// History controls what the bridge remembers of each note's conversation (ADR 0012).
+	History *History `json:"history,omitempty"`
 	// LAN enables direct wss:// at home with a Let's Encrypt certificate for a name that points
 	// at this machine's LAN address (internal/lantls). Empty disables it.
 	LAN *lantls.Config `json:"lan,omitempty"`
+}
+
+// History is how much of a note's earlier conversation is handed to the model with a new
+// question. Everything is kept on disk regardless; these only bound what is sent.
+type History struct {
+	// ContextChars is the size (characters of questions plus answers) of the most recent
+	// conversation sent along; 0 means the default, negative turns the memory off.
+	ContextChars int `json:"contextChars,omitempty"`
+	// Compaction is what happens to conversation older than ContextChars. Only "none" (it is
+	// simply not sent) exists so far; "summarize" is reserved for when long notes need it.
+	Compaction string `json:"compaction,omitempty"`
+}
+
+const defaultHistoryChars = 8000
+
+// HistoryChars is the size of conversation to send, or 0 when the memory is off.
+func (c *Config) HistoryChars() int {
+	switch {
+	case c.History == nil || c.History.ContextChars == 0:
+		return defaultHistoryChars
+	case c.History.ContextChars < 0:
+		return 0
+	}
+	return c.History.ContextChars
+}
+
+func (c *Config) validate(file string) error {
+	if h := c.History; h != nil && h.Compaction != "" && h.Compaction != "none" {
+		return fmt.Errorf("%s: history.compaction %q is not supported yet (only \"none\")", file, h.Compaction)
+	}
+	return nil
 }
 
 // ensureTilt gives a new agent its writing habit: mostly gentle, sometimes more pronounced.
@@ -117,6 +150,7 @@ func path(name string) (string, error) {
 	return filepath.Join(dir, name), nil
 }
 
+func HistoryDir() (string, error) { return path("history") }
 func GlyphFile() (string, error)  { return path("glyphs.bin") }
 func ReportFile() (string, error) { return path("reports.jsonl") }
 func ConfigFile() (string, error) { return path("config.json") }
@@ -132,6 +166,9 @@ func Load() (*Config, error) {
 		c := &Config{}
 		if err := json.Unmarshal(b, c); err != nil {
 			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		if err := c.validate(file); err != nil {
+			return nil, err
 		}
 		if c.Port == 0 {
 			c.Port = 8765

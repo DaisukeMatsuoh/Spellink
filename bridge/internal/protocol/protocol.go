@@ -11,16 +11,19 @@ const (
 
 // ClientMessage is any frame the plugin sends; Type selects which fields are set.
 //   - "hello":  Token, Client — must be the first frame
-//   - "ask":    ID, Question, Lang ("ja" | "en"), Layout
+//   - "ask":    ID, Question, Lang ("ja" | "en"), Layout, Note (key of the open note; earlier
+//     questions asked in the same note are handed to the model, ADR 0012)
 //   - "cancel": ID
 //   - "report": Data — free-form diagnostics appended to the bridge's report log
 //   - "setSettings": Settings — change user settings stored on the bridge
+//   - "clearHistory": forget the conversations of every note
 type ClientMessage struct {
 	Type     string      `json:"type"`
 	Token    string      `json:"token,omitempty"`
 	Client   string      `json:"client,omitempty"`
 	ID       string      `json:"id,omitempty"`
 	Question string      `json:"question,omitempty"`
+	Note     string      `json:"note,omitempty"`
 	Lang     string      `json:"lang,omitempty"`
 	Layout   *ink.Layout `json:"layout,omitempty"`
 	Data     any         `json:"data,omitempty"`
@@ -58,6 +61,12 @@ const (
 type SettingsReply struct {
 	Type     string   `json:"type"` // "settings"
 	Settings Settings `json:"settings"`
+}
+
+// HistoryCleared confirms a clearHistory.
+type HistoryCleared struct {
+	Type  string `json:"type"` // "historyCleared"
+	Notes int    `json:"notes"`
 }
 
 type Welcome struct {

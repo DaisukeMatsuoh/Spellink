@@ -20,6 +20,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/claude"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/history"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/securechan"
@@ -39,12 +40,17 @@ type Deps struct {
 	// Settings returns the stored user settings; SetSettings changes and persists them.
 	Settings    func() protocol.Settings
 	SetSettings func(protocol.Settings) error
+	// History remembers each note's conversation; nil (or HistoryChars 0) means every question
+	// stands alone. HistoryChars bounds how much earlier conversation is sent with a question.
+	History      *history.Store
+	HistoryChars int
 }
 
 const (
 	helloTimeout     = 5 * time.Second
 	maxFrameBytes    = 256 << 10
 	maxQuestionChars = 4000
+	maxNoteKeyChars  = 1024
 	maxPages         = 10
 )
 
@@ -202,6 +208,12 @@ func (s *session) run(parent context.Context) {
 				s.cancel()
 			}
 			s.askMu.Unlock()
+		case "clearHistory":
+			n, err := s.deps.History.Clear()
+			if err != nil {
+				s.deps.Log.Printf("history: clear: %v", err)
+			}
+			s.send(ctx, protocol.HistoryCleared{Type: "historyCleared", Notes: n})
 		case "report":
 			s.deps.Report(s.peer, m.Data)
 		case "setSettings":
@@ -282,11 +294,11 @@ func (s *session) startAsk(ctx context.Context, m *protocol.ClientMessage) {
 			s.askID, s.cancel = "", nil
 			s.askMu.Unlock()
 		}()
-		s.answer(ctx, askCtx, cancel, id, q, lang, *m.Layout)
+		s.answer(ctx, askCtx, cancel, id, q, lang, m.Note, *m.Layout)
 	}()
 }
 
-func (s *session) answer(ctx, askCtx context.Context, stop context.CancelFunc, id, q, lang string, layout ink.Layout) {
+func (s *session) answer(ctx, askCtx context.Context, stop context.CancelFunc, id, q, lang, note string, layout ink.Layout) {
 	started := time.Now()
 	st := s.deps.Settings()
 	if st.LineTilt {
@@ -305,7 +317,15 @@ func (s *session) answer(ctx, askCtx context.Context, stop context.CancelFunc, i
 	s.deps.Log.Printf("ask %s: %.80s", id, strings.Join(strings.Fields(q), " "))
 	s.send(ctx, protocol.Status{Type: "status", ID: id, Stage: "thinking"})
 
-	text, err := s.deps.Ask(askCtx, q, claude.SystemPrompt(lang, budget(layout)), func(delta string) {
+	if len([]rune(note)) > maxNoteKeyChars {
+		note = "" // not a real note key: ask without memory rather than guess
+	}
+	earlier, err := s.deps.History.Recent(note, s.deps.HistoryChars)
+	if err != nil {
+		s.deps.Log.Printf("history: read: %v", err) // the question is still worth answering
+	}
+
+	text, err := s.deps.Ask(askCtx, history.Transcript(earlier, q, lang), claude.SystemPrompt(lang, budget(layout)), func(delta string) {
 		if !writing {
 			writing = true
 			s.send(ctx, protocol.Status{Type: "status", ID: id, Stage: "writing"})
@@ -328,6 +348,11 @@ func (s *session) answer(ctx, askCtx context.Context, stop context.CancelFunc, i
 		return
 	}
 	emit(composer.Finish())
+	if s.deps.HistoryChars > 0 && strings.TrimSpace(text) != "" {
+		if err := s.deps.History.Append(note, history.Turn{At: time.Now().UTC(), Q: q, A: text}); err != nil {
+			s.deps.Log.Printf("history: write: %v", err)
+		}
+	}
 	missing := make([]string, 0, len(composer.Missing))
 	for r := range composer.Missing {
 		missing = append(missing, string(r))

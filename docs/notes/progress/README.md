@@ -32,6 +32,7 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
 - ADR: 0001・0005・0008 が Accepted。0002・0003・0006・0007・0009・0011 は Proposed（実機の結果で確定させる）。
 
 ## 次にやること（優先順）
+0. **会話の引き継ぎ（ADR 0012）を実機で確認**（ユーザー）。同じノートで「1+1は？」→「それを3倍して」と続けて書き、前を踏まえて答えるか。実装済み: ブリッジ（`internal/history`、`ask.note`、`clearHistory`、`config.history`）とプラグイン（`note` 送信、設定画面の「会話を忘れさせる」）。**新しい `Spellink.snplg` の入れ直しが必要**。未実装: 圧縮（`history.compaction: "summarize"`）、ノート単位の削除。
 1. **名前を決める**（ユーザー判断待ち。製品名は未決定で、現行は Spellink）。ドメインは `spellink.uk`（Cloudflare Registrar で取得。2026-11-03。先に取った `spell-ink.com` は使わない）。`spellink.com` が取得済みのため再検討中。候補とドメイン空き状況: `docs/notes/research/2026-11-03-naming-round2.md`。エージェントの推奨は `dancink`。決まったら改名を一括で行う（範囲は同ノート末尾。`pluginID` は変更禁止）。決定前に改名作業を始めない。
 2. **名前付きトンネル: 疎通済み**（2026-11-07）。`https://bridge.spellink.uk/health` が通る。Cloudflare 側のルートの Service は **HTTP**（HTTPS だと 502）、URL は `localhost:8765`。cloudflared は公式の `service install` 方式（`/etc/cloudflared/token`）で動いている。
    `extraUrls` は `wss://bridge.spellink.uk/v1` に更新、`pair` 作り直し、プラグイン再ビルド済み（`plugin/build/outputs/Spellink.snplg`）。クイックトンネルは停止済み。

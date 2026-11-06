@@ -46,12 +46,15 @@ export type ClientMessage =
       type: 'ask';
       id: string;
       question: string;
+      /** Key of the open note: the bridge hands earlier questions of the same note to Claude. */
+      note: string;
       lang: Lang;
       layout: LayoutParams;
     }
   | {type: 'cancel'; id: string}
   | {type: 'report'; data: unknown}
-  | {type: 'setSettings'; settings: Settings};
+  | {type: 'setSettings'; settings: Settings}
+  | {type: 'clearHistory'};
 
 export type BridgeMessage =
   | {
@@ -62,6 +65,7 @@ export type BridgeMessage =
       settings?: Settings;
     }
   | {type: 'settings'; settings: Settings}
+  | {type: 'historyCleared'; notes: number}
   | {type: 'status'; id: string; stage: 'thinking' | 'writing'}
   | {
       type: 'line';

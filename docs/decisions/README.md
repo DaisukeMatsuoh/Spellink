@@ -17,3 +17,4 @@
 | [0010](0010-rendezvous-relay.md) | 外出先からの接続は Spellink の中継サーバ（ランデブー）で受け持つ | Proposed |
 | [0011](0011-lan-direct-wss.md) | 家の中は Let's Encrypt 証明書つきの wss:// で直接つなぐ | Proposed |
 | [0012](0012-note-conversation-memory.md) | 同じノートでの質問は、前のやり取りを踏まえて答える（ブリッジが会話を記憶する） | Proposed |
+| [0013](0013-resumable-answers.md) | 回答は接続から切り離し、番号つきのフレームで再開できるようにする | Proposed |

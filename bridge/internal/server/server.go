@@ -3,6 +3,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -45,6 +46,11 @@ type Deps struct {
 	// stands alone. HistoryChars bounds how much earlier conversation is sent with a question.
 	History      *history.Store
 	HistoryChars int
+	// Runs holds the answers in flight; share one between the direct and the relay entrance so
+	// a plugin can resume on either. Nil gets a private table per Handler/ServeConn call.
+	Runs *Runs
+	// OrphanGrace is how long an answer is still produced with no plugin connected (0: default).
+	OrphanGrace time.Duration
 }
 
 const (
@@ -57,6 +63,9 @@ const (
 
 // Handler serves GET /health (unauthenticated liveness probe) and the WebSocket at /v1.
 func Handler(d Deps) http.Handler {
+	if d.Runs == nil {
+		d.Runs = NewRuns()
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -80,6 +89,9 @@ func Handler(d Deps) http.Handler {
 // the LAN or through the relay. With requireEncryption (relay sessions) only the Noise
 // handshake is accepted; on the LAN the legacy plaintext hello still works for now.
 func ServeConn(ctx context.Context, d Deps, c *websocket.Conn, peer string, requireEncryption bool) {
+	if d.Runs == nil {
+		d.Runs = NewRuns()
+	}
 	c.SetReadLimit(maxFrameBytes)
 	s := &session{
 		deps: d, conn: c, peer: peer, expected: sha256.Sum256([]byte(d.Token)),
@@ -100,8 +112,8 @@ type session struct {
 	writeMu  sync.Mutex
 	writeErr atomic.Bool // the first failed write has been logged
 	askMu    sync.Mutex
-	askID    string
-	cancel   context.CancelFunc
+	current  *run   // the answer this connection is waiting for, if any
+	attached []*run // every run this connection received frames of, to detach on close
 }
 
 func (s *session) send(ctx context.Context, v any) {
@@ -109,6 +121,10 @@ func (s *session) send(ctx context.Context, v any) {
 	if err != nil {
 		return
 	}
+	s.sendRaw(ctx, b)
+}
+
+func (s *session) sendRaw(ctx context.Context, b []byte) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	var werr error
@@ -186,6 +202,7 @@ func (s *session) run(parent context.Context) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	defer s.conn.CloseNow()
+	defer s.detachAll()
 
 	helloCtx, helloCancel := context.WithTimeout(ctx, helloTimeout)
 	client, ok := s.authenticate(helloCtx)
@@ -212,11 +229,11 @@ func (s *session) run(parent context.Context) {
 		case "ask":
 			s.startAsk(ctx, m)
 		case "cancel":
-			s.askMu.Lock()
-			if s.askID == m.ID && s.cancel != nil {
-				s.cancel()
+			if r := s.deps.Runs.get(m.ID); r != nil {
+				r.cancel()
 			}
-			s.askMu.Unlock()
+		case "resume":
+			s.resume(ctx, m.ID, m.Next)
 		case "clearHistory":
 			n, err := s.deps.History.Clear()
 			if err != nil {
@@ -238,6 +255,19 @@ func (s *session) run(parent context.Context) {
 			s.fail(ctx, "bad_request", "unknown message type")
 			return
 		}
+	}
+}
+
+// detachAll is called when the connection ends: its answers keep being produced for a while
+// so the plugin can reconnect and fetch them (ADR 0013).
+func (s *session) detachAll() {
+	s.askMu.Lock()
+	runs := s.attached
+	s.attached = nil
+	s.askMu.Unlock()
+	grace := cmp.Or(s.deps.OrphanGrace, defaultOrphanGrace)
+	for _, r := range runs {
+		r.detach(s, grace)
 	}
 }
 
@@ -287,27 +317,59 @@ func (s *session) startAsk(ctx context.Context, m *protocol.ClientMessage) {
 	}
 
 	s.askMu.Lock()
-	if s.cancel != nil {
+	if s.current != nil {
 		s.askMu.Unlock()
 		s.send(ctx, protocol.Error{Type: "error", ID: id, Code: "busy", Message: "another question is in progress"})
 		return
 	}
-	askCtx, cancel := context.WithCancel(ctx)
-	s.askID, s.cancel = id, cancel
+	// The answer must not die with this connection: a dropped tunnel would otherwise lose it.
+	// It stops on an explicit cancel, or when nobody comes back for it (orphanGrace).
+	askCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	r, ok := s.deps.Runs.start(id, cancel)
+	if !ok {
+		s.askMu.Unlock()
+		cancel()
+		s.send(ctx, protocol.Error{Type: "error", ID: id, Code: "bad_request", Message: "duplicate id"})
+		return
+	}
+	s.current = r
+	s.attached = append(s.attached, r)
 	s.askMu.Unlock()
+	r.attach(ctx, s, 0)
 
 	go func() {
 		defer func() {
+			r.finish()
 			cancel()
 			s.askMu.Lock()
-			s.askID, s.cancel = "", nil
+			if s.current == r {
+				s.current = nil
+			}
 			s.askMu.Unlock()
 		}()
-		s.answer(ctx, askCtx, cancel, id, q, lang, m.Note, *m.Layout)
+		s.answer(askCtx, r, id, q, lang, m.Note, *m.Layout)
 	}()
 }
 
-func (s *session) answer(ctx, askCtx context.Context, stop context.CancelFunc, id, q, lang, note string, layout ink.Layout) {
+// resume hands a reconnected plugin the frames of answer `id` from number `next` on, and
+// keeps sending the rest live.
+func (s *session) resume(ctx context.Context, id string, next int) {
+	r := s.deps.Runs.get(id)
+	if r == nil {
+		s.send(ctx, protocol.Error{Type: "error", ID: id, Code: "unknown_ask", Message: "this answer is no longer kept"})
+		return
+	}
+	s.askMu.Lock()
+	s.attached = append(s.attached, r)
+	if !r.isFinished() {
+		s.current = r
+	}
+	s.askMu.Unlock()
+	s.deps.Log.Printf("resume %s from frame %d for %s", id, next, s.peer)
+	r.attach(ctx, s, next)
+}
+
+func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note string, layout ink.Layout) {
 	started := time.Now()
 	st := s.deps.Settings()
 	if st.LineTilt {
@@ -319,12 +381,12 @@ func (s *session) answer(ctx, askCtx context.Context, stop context.CancelFunc, i
 	composer := ink.NewComposer(s.deps.Font, layout, seedFrom(id))
 	emit := func(lines []ink.Line) {
 		for _, l := range lines {
-			s.send(ctx, protocol.Line{Type: "line", ID: id, Line: l})
+			r.publish(func(seq int) any { return protocol.Line{Type: "line", ID: id, Seq: seq, Line: l} })
 		}
 	}
 	writing := false
 	s.deps.Log.Printf("ask %s: %.80s", id, strings.Join(strings.Fields(q), " "))
-	s.send(ctx, protocol.Status{Type: "status", ID: id, Stage: "thinking"})
+	r.notify(protocol.Status{Type: "status", ID: id, Stage: "thinking"})
 
 	if len([]rune(note)) > maxNoteKeyChars {
 		note = "" // not a real note key: ask without memory rather than guess
@@ -337,11 +399,11 @@ func (s *session) answer(ctx, askCtx context.Context, stop context.CancelFunc, i
 	text, err := s.deps.Ask(askCtx, history.Transcript(earlier, q, lang), claude.SystemPrompt(lang, budget(layout)), func(delta string) {
 		if !writing {
 			writing = true
-			s.send(ctx, protocol.Status{Type: "status", ID: id, Stage: "writing"})
+			r.notify(protocol.Status{Type: "status", ID: id, Stage: "writing"})
 		}
 		emit(composer.Push(delta))
 		if composer.Truncated {
-			stop() // stop paying for tokens that can no longer fit
+			r.cancel() // stop paying for tokens that can no longer fit
 		}
 	})
 	if err != nil && !composer.Truncated {
@@ -353,7 +415,9 @@ func (s *session) answer(ctx, askCtx context.Context, stop context.CancelFunc, i
 			msg = msg[:500]
 		}
 		s.deps.Log.Printf("ask %s %s: %s", id, code, msg)
-		s.send(ctx, protocol.Error{Type: "error", ID: id, Code: code, Message: msg})
+		r.publish(func(seq int) any {
+			return protocol.Error{Type: "error", ID: id, Seq: &seq, Code: code, Message: msg}
+		})
 		return
 	}
 	emit(composer.Finish())
@@ -363,15 +427,17 @@ func (s *session) answer(ctx, askCtx context.Context, stop context.CancelFunc, i
 		}
 	}
 	missing := make([]string, 0, len(composer.Missing))
-	for r := range composer.Missing {
-		missing = append(missing, string(r))
+	for m := range composer.Missing {
+		missing = append(missing, string(m))
 	}
 	sort.Strings(missing)
 	elapsed := time.Since(started).Milliseconds()
 	s.deps.Log.Printf("ask %s done in %d ms, %d page(s)%s", id, elapsed, composer.Pages,
 		map[bool]string{true: " (truncated)"}[composer.Truncated])
-	s.send(ctx, protocol.Done{
-		Type: "done", ID: id, Text: text, Missing: missing, Truncated: composer.Truncated,
-		Pages: composer.Pages, ElapsedMs: elapsed,
+	r.publish(func(seq int) any {
+		return protocol.Done{
+			Type: "done", ID: id, Seq: seq, Text: text, Missing: missing, Truncated: composer.Truncated,
+			Pages: composer.Pages, ElapsedMs: elapsed,
+		}
 	})
 }

@@ -160,6 +160,69 @@ describe('AskFlow', () => {
     expect(asks).toEqual([{note: '/note.note', question: 'それを3倍して'}]);
   });
 
+  it('a connection that drops mid-answer reconnects, asks for the missing frames and writes each line once', async () => {
+    const connect = jest.spyOn(require('../src/bridgeClient'), 'connectFirst');
+    const settings = {
+      showProgress: false,
+      lineTilt: true,
+      thinkingAnimation: false,
+    };
+    const resumes: {id: string; next: number}[] = [];
+    let first: Record<string, unknown>;
+    first = {
+      name: 'fake',
+      settings,
+      onMessage: () => {},
+      onClose: () => {},
+      close: () => {},
+      send: (m: {type: string; id: string}) => {
+        if (m.type === 'ask') {
+          setTimeout(() => {
+            (first.onMessage as (x: BridgeMessage) => void)({
+              ...line(m.id, 0, 0, [stroke(), stroke()]),
+              seq: 0,
+            } as BridgeMessage);
+            (first.onClose as (r: string) => void)('closed (1006)'); // before `done`
+          }, 0);
+        }
+      },
+    };
+    let second: Record<string, unknown>;
+    second = {
+      name: 'fake',
+      settings,
+      onMessage: () => {},
+      onClose: () => {},
+      close: () => {},
+      send: (m: {type: string; id: string; next: number}) => {
+        if (m.type === 'resume') {
+          resumes.push({id: m.id, next: m.next});
+          const send = (x: BridgeMessage) =>
+            (second.onMessage as (x: BridgeMessage) => void)(x);
+          // the bridge replays from `next`; a frame we already handled is also tolerated
+          setTimeout(() => {
+            send({
+              ...line(m.id, 0, 0, [stroke(), stroke()]),
+              seq: 0,
+            } as BridgeMessage);
+            send({...line(m.id, 1, 0, [stroke()]), seq: 1} as BridgeMessage);
+            send({...done(m.id), seq: 2} as BridgeMessage);
+          }, 0);
+        }
+      },
+    };
+    connect.mockImplementationOnce(async () => first as never);
+    connect.mockImplementationOnce(async () => second as never);
+
+    const last = await run(layout);
+
+    expect(last.failed).toBeFalsy();
+    expect(last.finished).toBe(true);
+    expect(resumes).toHaveLength(1);
+    expect(resumes[0].next).toBe(1); // frame 0 had been handled
+    expect(answerStrokes(0)).toHaveLength(3); // 2 + 1: nothing written twice
+  });
+
   it('writes in steps of 15 strokes', async () => {
     const insertSpy = jest.spyOn(
       require('../__mocks__/sn-plugin-lib').PluginCommAPI,
@@ -530,7 +593,7 @@ describe('the connection drops (e.g. the tunnel reconnects)', () => {
     expect(answerStrokes(0)).toHaveLength(60);
   });
 
-  it('before the bridge finished: the answer stops and says why', async () => {
+  it('dropped before the bridge finished and the bridge cannot be reached again: stops and says why', async () => {
     let conn: {onClose: (reason: string) => void} | null = null;
     const bridge = require('../src/bridgeClient');
     const real = bridge.connectFirst;
@@ -538,6 +601,10 @@ describe('the connection drops (e.g. the tunnel reconnects)', () => {
       .spyOn(bridge, 'connectFirst')
       .mockImplementationOnce(async (...a: unknown[]) => {
         conn = (await real(...a)) as never;
+        // queued only now: `real` is the spy itself, so a second queued mock would be taken by it
+        bridge.connectFirst.mockImplementationOnce(async () => {
+          throw new Error('no bridge reachable'); // the one reconnection attempt fails
+        });
         return conn;
       });
     mockScript = (send, id) => {

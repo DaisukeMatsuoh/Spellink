@@ -14,6 +14,8 @@ const (
 //   - "ask":    ID, Question, Lang ("ja" | "en"), Layout, Note (key of the open note; earlier
 //     questions asked in the same note are handed to the model, ADR 0012)
 //   - "cancel": ID
+//   - "resume": ID, Next — after a dropped connection: send the answer's frames from number
+//     Next on (every line/done/error frame of an answer carries Seq, counting from 0; ADR 0013)
 //   - "report": Data — free-form diagnostics appended to the bridge's report log
 //   - "setSettings": Settings — change user settings stored on the bridge
 //   - "clearHistory": forget the conversations of every note
@@ -24,6 +26,7 @@ type ClientMessage struct {
 	ID       string      `json:"id,omitempty"`
 	Question string      `json:"question,omitempty"`
 	Note     string      `json:"note,omitempty"`
+	Next     int         `json:"next,omitempty"`
 	Lang     string      `json:"lang,omitempty"`
 	Layout   *ink.Layout `json:"layout,omitempty"`
 	Data     any         `json:"data,omitempty"`
@@ -86,12 +89,14 @@ type Status struct {
 type Line struct {
 	Type string `json:"type"` // "line"
 	ID   string `json:"id"`
+	Seq  int    `json:"seq"`
 	ink.Line
 }
 
 type Done struct {
 	Type      string   `json:"type"` // "done"
 	ID        string   `json:"id"`
+	Seq       int      `json:"seq"`
 	Text      string   `json:"text"`
 	Missing   []string `json:"missing"`
 	Truncated bool     `json:"truncated"`
@@ -99,10 +104,11 @@ type Done struct {
 	ElapsedMs int64    `json:"elapsedMs"`
 }
 
-// Error codes: unauthorized, bad_request, busy, claude_failed, cancelled.
+// Error codes: unauthorized, bad_request, busy, claude_failed, cancelled, unknown_ask.
 type Error struct {
 	Type    string `json:"type"` // "error"
 	ID      string `json:"id,omitempty"`
+	Seq     *int   `json:"seq,omitempty"` // set when the error ends an answer, like line and done
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }

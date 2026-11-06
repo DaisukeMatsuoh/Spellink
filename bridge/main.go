@@ -149,7 +149,7 @@ func serve() error {
 	var settingsMu sync.Mutex
 	deps := server.Deps{
 		Name: cfg.Name, Version: version, Token: cfg.Token, Font: font,
-		Ask: runner.Ask, History: notes, HistoryChars: cfg.HistoryChars(),
+		Ask: runner.Ask, History: notes, HistoryChars: cfg.HistoryChars(), Runs: server.NewRuns(),
 		Report: func(peer string, data any) {
 			if err := config.AppendReport(peer, data); err != nil {
 				logger.Printf("report: %v", err)

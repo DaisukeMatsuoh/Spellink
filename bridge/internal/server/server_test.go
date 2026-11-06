@@ -308,3 +308,143 @@ func TestSettingsAreClampedAndPersistedTogether(t *testing.T) {
 		t.Fatalf("got %v", s)
 	}
 }
+
+// dial opens a connection, says hello and returns it with a reader of the next frame.
+func dial(t *testing.T, url string) (*websocket.Conn, func() msg) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	c, _, err := websocket.Dial(ctx, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.CloseNow() })
+	write := func(v any) {
+		b, _ := json.Marshal(v)
+		if err := c.Write(ctx, websocket.MessageText, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(hello)
+	_, _, _ = c.Read(ctx) // welcome
+	read := func() msg {
+		_, b, err := c.Read(ctx)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		var m msg
+		_ = json.Unmarshal(b, &m)
+		return m
+	}
+	return c, read
+}
+
+func send(t *testing.T, c *websocket.Conn, v any) {
+	t.Helper()
+	b, _ := json.Marshal(v)
+	if err := c.Write(context.Background(), websocket.MessageText, b); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDroppedConnectionCanFetchTheRestOfTheAnswer(t *testing.T) {
+	release := make(chan struct{})
+	url := startTest(t, func(_ context.Context, _, _ string, onText func(string)) (string, error) {
+		onText("あああ\n") // one whole line before the connection drops
+		<-release
+		onText("あ\nあ")
+		return "あああ\nあ\nあ", nil
+	})
+	c, read := dial(t, url)
+	send(t, c, ask("a1", "", "q"))
+	var first msg
+	for first = read(); first["type"] != "line"; first = read() {
+	}
+	if first["seq"] != 0.0 {
+		t.Fatalf("first frame must be number 0: %v", first)
+	}
+	c.CloseNow() // the tunnel drops while Claude is still answering
+	close(release)
+
+	c2, read2 := dial(t, url)
+	send(t, c2, map[string]any{"type": "resume", "id": "a1", "next": 1})
+	var seqs []float64
+	for m := read2(); ; m = read2() {
+		if m["type"] == "status" {
+			continue
+		}
+		seqs = append(seqs, m["seq"].(float64))
+		if m["type"] == "done" {
+			break
+		}
+		if m["type"] == "error" {
+			t.Fatalf("unexpected error: %v", m)
+		}
+	}
+	if len(seqs) < 2 || seqs[0] != 1 {
+		t.Fatalf("must continue at frame 1 without repeating frame 0, got %v", seqs)
+	}
+	for i := 1; i < len(seqs); i++ {
+		if seqs[i] != seqs[i-1]+1 {
+			t.Fatalf("frames must be consecutive: %v", seqs)
+		}
+	}
+}
+
+func TestResumeOfAnUnknownAnswerSaysSo(t *testing.T) {
+	c, read := dial(t, startTest(t, nil))
+	send(t, c, map[string]any{"type": "resume", "id": "never", "next": 0})
+	if m := read(); m["type"] != "error" || m["code"] != "unknown_ask" {
+		t.Fatalf("got %v", m)
+	}
+}
+
+func TestAnswerNobodyComesBackForIsCancelled(t *testing.T) {
+	stopped := make(chan struct{})
+	url := startTestWith(t, func(ctx context.Context, _, _ string, onText func(string)) (string, error) {
+		onText("あ")
+		<-ctx.Done()
+		close(stopped)
+		return "", ctx.Err()
+	}, func(d *Deps) { d.OrphanGrace = 50 * time.Millisecond })
+	c, read := dial(t, url)
+	send(t, c, ask("o1", "", "q"))
+	for m := read(); m["type"] != "status" || m["stage"] != "writing"; m = read() {
+	}
+	c.CloseNow()
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("an answer with no plugin attached must stop spending Claude usage")
+	}
+}
+
+func TestResumingBeforeTheGraceEndsKeepsTheAnswerAlive(t *testing.T) {
+	release := make(chan struct{})
+	url := startTestWith(t, func(ctx context.Context, _, _ string, onText func(string)) (string, error) {
+		onText("あ")
+		select {
+		case <-release:
+			return "あ", nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}, func(d *Deps) { d.OrphanGrace = 300 * time.Millisecond })
+	c, read := dial(t, url)
+	send(t, c, ask("k1", "", "q"))
+	for m := read(); m["type"] != "status" || m["stage"] != "writing"; m = read() {
+	}
+	c.CloseNow()
+	c2, read2 := dial(t, url)
+	send(t, c2, map[string]any{"type": "resume", "id": "k1", "next": 0})
+	time.Sleep(600 * time.Millisecond) // well past the grace
+	close(release)
+	for m := read2(); ; m = read2() {
+		if m["type"] == "done" {
+			return
+		}
+		if m["type"] == "error" {
+			t.Fatalf("the resumed answer was cancelled: %v", m)
+		}
+	}
+}

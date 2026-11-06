@@ -69,11 +69,23 @@ function withTimeout<T>(api: string, pending: Promise<T>): Promise<T> {
   return Promise.race([pending, silence]).finally(() => clearTimeout(timer));
 }
 
+/** Calls that can take long or stall the note app: also recorded when they start, so a stall shows. */
+const HEAVY_CALLS = new Set([
+  'saveCurrentNote',
+  'getNotePageTemplate',
+  'insertNotePage',
+  'jumpToPage',
+  'getElements',
+]);
+
 export async function call<T>(
   api: string,
   pending: Promise<unknown>,
 ): Promise<T> {
   const started = Date.now();
+  if (HEAVY_CALLS.has(api)) {
+    trace(`${api}.begin`);
+  }
   let res: ApiResponse<T> | null | undefined;
   try {
     res = (await withTimeout(api, pending)) as

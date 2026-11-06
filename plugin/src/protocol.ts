@@ -52,6 +52,8 @@ export type ClientMessage =
       layout: LayoutParams;
     }
   | {type: 'cancel'; id: string}
+  /** After a dropped connection: send the answer's frames from number `next` on. */
+  | {type: 'resume'; id: string; next: number}
   | {type: 'report'; data: unknown}
   | {type: 'setSettings'; settings: Settings}
   | {type: 'clearHistory'};
@@ -71,6 +73,8 @@ export type BridgeMessage =
       type: 'line';
       id: string;
       index: number;
+      /** Number of this frame within the answer (line, done and error frames count together). */
+      seq?: number;
       /** Page relative to the page the question was asked on (0, 1, …). */
       page: number;
       text: string;
@@ -79,6 +83,7 @@ export type BridgeMessage =
   | {
       type: 'done';
       id: string;
+      seq?: number;
       text: string;
       missing: string[];
       truncated: boolean;
@@ -86,4 +91,10 @@ export type BridgeMessage =
       pages: number;
       elapsedMs: number;
     }
-  | {type: 'error'; id?: string; code: string; message: string};
+  | {
+      type: 'error';
+      id?: string;
+      seq?: number;
+      code: string;
+      message: string;
+    };

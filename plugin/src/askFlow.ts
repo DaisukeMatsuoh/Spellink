@@ -70,6 +70,9 @@ const LASSO_REMOVE = 2;
 const STROKES_PER_STEP = 15;
 /** Working out where existing content is stops after this long (big pages hold thousands of strokes). */
 const SCAN_BUDGET_MS = 2500;
+/** How many times one answer may reconnect after the connection dropped before it is given up. */
+const MAX_RESUMES = 3;
+
 /** Long answers continue on up to this many freshly inserted pages after the current one. */
 const MAX_EXTRA_PAGES = 2;
 
@@ -374,19 +377,54 @@ export class AskFlow {
 
     let abort: (e: Error) => void = () => {};
     let finished = false;
+    let nextSeq = 0;
+    let resumes = 0;
     return new Promise<void>((resolve, reject) => {
       abort = reject;
       this.endQuestion = reject;
-      conn.onClose = reason => {
-        // The bridge already sent everything (`done`): the rest is writing what we hold. A
-        // dropped connection (e.g. a tunnel reconnecting) must not cut that short.
-        if (!finished) {
+      const attach = (c: BridgeConnection) => {
+        c.onClose = reason => {
+          // The bridge already sent everything (`done`): the rest is writing what we hold. A
+          // dropped connection (e.g. a tunnel reconnecting) must not cut that short.
+          if (!finished && !this.cancelled) {
+            void resume(reason);
+          }
+        };
+        c.onMessage = handle;
+      };
+      // The connection dropped before the answer was complete. The bridge keeps numbered
+      // frames, so reconnect once and ask for the ones after the last we handled (ADR 0013).
+      const resume = async (reason: string) => {
+        if (++resumes > MAX_RESUMES) {
+          return reject(new Error(reason));
+        }
+        trace('ask.resume', {d: {next: nextSeq, reason}});
+        try {
+          const {endpoints} = await loadBridges();
+          const c = await connectFirst(endpoints);
+          if (finished || this.cancelled) {
+            return c.close();
+          }
+          this.conn = c;
+          setTraceSink(events =>
+            c.send({type: 'report', data: {trace: events}}),
+          );
+          attach(c);
+          c.send({type: 'resume', id: this.id, next: nextSeq});
+        } catch {
           reject(new Error(reason));
         }
       };
-      conn.onMessage = (m: BridgeMessage) => {
+      const handle = (m: BridgeMessage) => {
         if ('id' in m && m.id !== this.id) {
           return;
+        }
+        // A resumed connection replays from the number we asked for; never handle a frame twice.
+        if ('seq' in m && typeof m.seq === 'number') {
+          if (m.seq < nextSeq) {
+            return;
+          }
+          nextSeq = m.seq + 1;
         }
         switch (m.type) {
           case 'status':
@@ -413,6 +451,7 @@ export class AskFlow {
             break;
         }
       };
+      attach(conn);
       conn.send({
         type: 'ask',
         id: this.id,

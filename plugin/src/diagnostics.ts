@@ -8,6 +8,7 @@ import {randomSource} from './noise';
 import {dumpTrace} from './trace';
 import type {InkStroke} from './protocol';
 import {
+  callChecked,
   call,
   currentPen,
   deleteElementsAt,
@@ -56,10 +57,14 @@ export async function environment(log: Log): Promise<void> {
     await safe(p, () => PluginManager.hasPermission(p), log);
   }
   await safe('note', () => noteContext(), log);
-  await safe('pen', () => call('getPenInfo', PluginCommAPI.getPenInfo()), log);
+  await safe(
+    'pen',
+    () => call('getPenInfo', () => PluginCommAPI.getPenInfo()),
+    log,
+  );
   await safe(
     'canHandwrite',
-    () => call('canHandwrite', PluginCommAPI.canHandwrite()),
+    () => call('canHandwrite', () => PluginCommAPI.canHandwrite()),
     log,
   );
 }
@@ -181,8 +186,7 @@ export async function textBoxTest(log: Log): Promise<void> {
   await safe(
     'insertText',
     () =>
-      call(
-        'insertText',
+      call('insertText', () =>
         PluginNoteAPI.insertText({
           textContentFull: 'Spellink text box test / テキストボックスのテスト',
           textRect: {
@@ -253,8 +257,7 @@ export async function markerTest(log: Log): Promise<void> {
     const nums = ours.map(e => e.numInPage);
     releaseElements(els);
     if (nums.length > 0) {
-      await call(
-        'deletePageElements',
+      await callChecked('deletePageElements', () =>
         PluginCommAPI.deletePageElements(nums, ctx.page),
       );
       log(`removed ${nums.length} test stroke(s) by marker`);
@@ -291,7 +294,7 @@ export async function cacheNumberTest(log: Log): Promise<void> {
     );
     const cached = await call<{numInPage?: number; userData?: string} | null>(
       'getCacheElement',
-      PluginCommAPI.getCacheElement(uuid),
+      () => PluginCommAPI.getCacheElement(uuid),
     ).catch(() => null);
     log(
       `cache: numInPage=${cached?.numInPage} userData=${JSON.stringify(

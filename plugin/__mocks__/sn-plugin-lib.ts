@@ -80,6 +80,12 @@ export const fakeNote = {
   ignoreNextDelete: false,
   /** Simulate a device that does not keep Element.userData. */
   dropUserData: false,
+  /** Pages in the note (the file's page count). */
+  totalPages: 1,
+  /** APIs that answer `success: true` with `result: false` — the SDK's way of saying "refused". */
+  refuse: new Set<string>(),
+  /** insertNotePage that answers `result: true` but adds no page. */
+  silentInsertPage: false,
   reset() {
     this.pages = new Map();
     this.file = new Map();
@@ -98,6 +104,9 @@ export const fakeNote = {
     this.inserted = [];
     this.saves = 0;
     this.ignoreNextDelete = false;
+    this.totalPages = 1;
+    this.refuse = new Set();
+    this.silentInsertPage = false;
     this.dropUserData = false;
     nextUuid = 1;
   },
@@ -151,6 +160,9 @@ export const PluginCommAPI = {
         error: {code: 105, message: 'No note-related app is bound!'},
       };
     }
+    if (fakeNote.refuse.has('insertPageElements')) {
+      return ok(false);
+    }
     const list = fakeNote.pages.get(page) ?? [];
     for (const e of elements) {
       if (fakeNote.dropUserData) {
@@ -174,6 +186,9 @@ export const PluginCommAPI = {
         error: {code: 105, message: 'No note-related app is bound!'},
       };
     }
+    if (fakeNote.refuse.has('deletePageElements')) {
+      return ok(false);
+    }
     fakeNote.deleted.push(...nums);
     if (fakeNote.ignoreNextDelete) {
       fakeNote.ignoreNextDelete = false;
@@ -194,6 +209,9 @@ export const PluginCommAPI = {
   async jumpToPage(page: number) {
     if (fakeNote.currentFile !== '/note.note') {
       fakeNote.strayJumps++;
+    }
+    if (fakeNote.refuse.has('jumpToPage')) {
+      return ok(false);
     }
     fakeNote.currentPage = page;
     return ok(true);
@@ -223,6 +241,9 @@ export const PluginCommAPI = {
 
 export const PluginNoteAPI = {
   async saveCurrentNote() {
+    if (fakeNote.refuse.has('saveCurrentNote')) {
+      return ok(false); // nothing was saved
+    }
     fakeNote.saves++;
     fakeNote.file = copyPages(fakeNote.pages);
     return ok(true);
@@ -236,6 +257,9 @@ export const PluginFileAPI = {
   async getElementNumList(_path: string, page: number) {
     return ok((fakeNote.file.get(page) ?? []).map(e => e.numInPage));
   },
+  async getNoteTotalPageNum() {
+    return ok(fakeNote.totalPages);
+  },
   async getPageSize() {
     return ok({width: 1404, height: 1872});
   },
@@ -244,6 +268,13 @@ export const PluginFileAPI = {
   },
   /** A file-level write: pages shift in the file, then the cache is reloaded from it. */
   async insertNotePage(params: {page: number}) {
+    if (fakeNote.refuse.has('insertNotePage')) {
+      return ok(false);
+    }
+    if (fakeNote.silentInsertPage) {
+      return ok(true);
+    }
+    fakeNote.totalPages++;
     const moved = new Map<number, Element[]>();
     for (const [i, list] of fakeNote.file) {
       moved.set(i >= params.page ? i + 1 : i, list);

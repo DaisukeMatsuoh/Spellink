@@ -13,6 +13,7 @@ import type {
   Settings,
 } from './protocol';
 import {
+  call,
   currentPen,
   ensurePermissions,
   insertPageAfter,
@@ -70,6 +71,21 @@ const LASSO_REMOVE = 2;
 const STROKES_PER_STEP = 15;
 /** Working out where existing content is stops after this long (big pages hold thousands of strokes). */
 const SCAN_BUDGET_MS = 2500;
+/**
+ * For work that is nice to have (reading the page for free space): a failure is recorded and the
+ * answer goes on without it, but a note app that has stopped answering ends the answer, because
+ * everything after would stall too.
+ */
+function unlessStalled<T>(what: string, fallback: T) {
+  return (e: unknown): T => {
+    if (e instanceof CallTimeoutError) {
+      throw e;
+    }
+    trace(`${what}.failed`, {err: (e as Error).message});
+    return fallback;
+  };
+}
+
 /** How many times one answer may reconnect after the connection dropped before it is given up. */
 const MAX_RESUMES = 3;
 
@@ -161,7 +177,9 @@ export class AskFlow {
         return update({message: t('noText'), finished: true, failed: true});
       }
       update({question});
-      await PluginCommAPI.setLassoBoxState(LASSO_REMOVE);
+      await call('setLassoBoxState', () =>
+        PluginCommAPI.setLassoBoxState(LASSO_REMOVE),
+      );
 
       await this.answer(question, answerLayout(ctx.size, rect), ctx, update);
     } catch (e) {
@@ -221,12 +239,16 @@ export class AskFlow {
     // is drawn; the boxes are worked out while we connect.
     const snapshot =
       selection && !obviouslyFull
-        ? await readPage(ctx.filePath, ctx.page).catch(() => null)
+        ? await readPage(ctx.filePath, ctx.page).catch(
+            unlessStalled('readPage', null),
+          )
         : null;
     trace('ask.start', {d: {page: ctx.page, y: layout.y, full: obviouslyFull}});
     let wave = this.startWave(ctx, layout, pen);
     const scan = snapshot
-      ? boxesOf(snapshot, SCAN_BUDGET_MS).catch(() => [] as Box[])
+      ? boxesOf(snapshot, SCAN_BUDGET_MS).catch(
+          unlessStalled('boxesOf', [] as Box[]),
+        )
       : Promise.resolve([] as Box[]);
 
     try {

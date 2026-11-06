@@ -11,10 +11,9 @@ describe('flight recorder', () => {
   beforeEach(resetTraceForTests);
 
   it('records every SDK call with its duration, and failures with their error', async () => {
-    await call('okCall', Promise.resolve({success: true, result: 1}));
+    await call('okCall', () => Promise.resolve({success: true, result: 1}));
     await expect(
-      call(
-        'badCall',
+      call('badCall', () =>
         Promise.resolve({
           success: false,
           error: {code: 105, message: 'No note-related app is bound!'},
@@ -57,17 +56,21 @@ describe('flight recorder', () => {
 
 import {
   CallTimeoutError,
+  resetHostQueueForTests,
   setTimeoutScaleForTests,
   timeoutFor,
 } from '../src/sdk';
 
 describe('a call the host never answers', () => {
-  afterEach(() => setTimeoutScaleForTests(1));
+  afterEach(() => {
+    setTimeoutScaleForTests(1);
+    resetHostQueueForTests();
+  });
 
   it('is given up on, recorded, and reported as a timeout', async () => {
     resetTraceForTests();
     setTimeoutScaleForTests(0.001); // 15 s → 15 ms
-    const never = new Promise(() => {});
+    const never = () => new Promise(() => {});
     await expect(call('createElement', never)).rejects.toBeInstanceOf(
       CallTimeoutError,
     );

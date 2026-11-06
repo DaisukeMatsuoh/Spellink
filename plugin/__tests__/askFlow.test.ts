@@ -261,6 +261,33 @@ describe('AskFlow', () => {
     expect(fakeNote.strokes(1).some(e => e.uuid.startsWith('new-'))).toBe(true);
   });
 
+  it('when the note app refuses to save, the next page is not inserted and the first page keeps what was written', async () => {
+    mockScript = (send, id) => {
+      send(line(id, 0, 0, [stroke()]));
+      send(line(id, 1, 1, [stroke()]));
+      send(done(id));
+    };
+    fakeNote.refuse.add('saveCurrentNote');
+    const last = await run(layout);
+    expect(last.failed).toBe(true);
+    expect(last.message).toContain('saveCurrentNote');
+    expect(fakeNote.inserted).toEqual([]); // no page was inserted over unsaved writing
+    expect(answerStrokes(0)).toHaveLength(1); // the first line is still on its page
+  });
+
+  it('when the page count does not grow after inserting, the answer stops instead of writing on a page that is not there', async () => {
+    mockScript = (send, id) => {
+      send(line(id, 0, 0, [stroke()]));
+      send(line(id, 1, 1, [stroke()]));
+      send(done(id));
+    };
+    fakeNote.silentInsertPage = true;
+    const last = await run(layout);
+    expect(last.failed).toBe(true);
+    expect(last.message).toContain('page count did not grow');
+    expect(answerStrokes(1)).toHaveLength(0);
+  });
+
   it('shows an error when the bridge reports one', async () => {
     mockScript = (send, id) =>
       send({type: 'error', id, code: 'claude_failed', message: 'boom'});

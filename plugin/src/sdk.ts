@@ -59,12 +59,18 @@ export function timeoutFor(api: string): number {
 }
 
 /** Resolves with `pending`, or rejects once the host has been silent for too long. */
-function withTimeout<T>(api: string, pending: Promise<T>): Promise<T> {
-  const ms =
-    (SLOW_CALLS.has(api) ? SLOW_TIMEOUT_MS : QUICK_TIMEOUT_MS) * timeoutScale;
+function withTimeout<T>(
+  api: string,
+  pending: Promise<T>,
+  onTimeout: () => void,
+): Promise<T> {
+  const ms = timeoutFor(api);
   let timer: ReturnType<typeof setTimeout>;
   const silence = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new CallTimeoutError(api)), ms);
+    timer = setTimeout(() => {
+      onTimeout();
+      reject(new CallTimeoutError(api));
+    }, ms);
   });
   return Promise.race([pending, silence]).finally(() => clearTimeout(timer));
 }
@@ -73,25 +79,79 @@ function withTimeout<T>(api: string, pending: Promise<T>): Promise<T> {
 const HEAVY_CALLS = new Set([
   'saveCurrentNote',
   'getNotePageTemplate',
+  'getNoteTotalPageNum',
   'insertNotePage',
   'jumpToPage',
   'getElements',
 ]);
 
+/** Tail of the line of requests waiting for the note app (see `native`). */
+let hostQueue: Promise<void> = Promise.resolve();
+
+/** Tests that abandon a call which never settles must not block the next test. */
+export function resetHostQueueForTests(): void {
+  hostQueue = Promise.resolve();
+}
+
+/**
+ * Every request to the note app goes through here, strictly one at a time, in order. The next
+ * request starts only once the previous one has *settled* — including one we gave up waiting
+ * for, which may still be running inside the note app. Waiting in line counts towards the
+ * timeout, so while the host is stuck requests fail with CallTimeoutError instead of piling up,
+ * and a request whose caller already gave up is never sent late.
+ */
+export function native<T>(api: string, start: () => Promise<T>): Promise<T> {
+  const previous = hostQueue;
+  let release!: () => void;
+  hostQueue = new Promise<void>(r => (release = r));
+  let abandoned = false;
+  const run = (async (): Promise<T> => {
+    await previous;
+    if (abandoned) {
+      release();
+      throw new CallTimeoutError(api);
+    }
+    if (HEAVY_CALLS.has(api)) {
+      trace(`${api}.begin`);
+    }
+    try {
+      const pending = start();
+      pending.then(release, release);
+      return await pending;
+    } catch (e) {
+      release();
+      throw e;
+    }
+  })();
+  run.catch(() => {}); // the caller has stopped listening after a timeout
+  return withTimeout(api, run, () => {
+    abandoned = true;
+  });
+}
+
+/** A request whose answer is a plain value (accessors on elements), not an SDK envelope. */
+export async function raw<T>(api: string, start: () => Promise<T>): Promise<T> {
+  const started = Date.now();
+  try {
+    return await native(api, start);
+  } catch (e) {
+    trace(api, {ms: Date.now() - started, err: (e as Error).message});
+    throw e;
+  }
+}
+
+/**
+ * A request answered with the SDK's `{success, result, error}` envelope. Throws unless the host
+ * says it succeeded; returns `result`.
+ */
 export async function call<T>(
   api: string,
-  pending: Promise<unknown>,
+  start: () => Promise<unknown>,
 ): Promise<T> {
   const started = Date.now();
-  if (HEAVY_CALLS.has(api)) {
-    trace(`${api}.begin`);
-  }
   let res: ApiResponse<T> | null | undefined;
   try {
-    res = (await withTimeout(api, pending)) as
-      | ApiResponse<T>
-      | null
-      | undefined;
+    res = (await native(api, start)) as ApiResponse<T> | null | undefined;
   } catch (e) {
     trace(api, {ms: Date.now() - started, err: (e as Error).message});
     throw e;
@@ -105,8 +165,27 @@ export async function call<T>(
     trace(api, {ms: Date.now() - started, err: error.message});
     throw error;
   }
-  trace(api, {ms: Date.now() - started});
+  // Booleans are recorded: they say whether the host really did it (SDK docs: "false = failed").
+  trace(api, {
+    ms: Date.now() - started,
+    ...(typeof res.result === 'boolean' ? {d: {result: res.result}} : {}),
+  });
   return res.result as T;
+}
+
+/**
+ * For calls whose `result` says whether the host really did it (save, insert page, insert or
+ * delete elements). `success: true` only means the call was understood; `result: false` is a
+ * refusal and must stop the work, not be ignored.
+ */
+export async function callChecked(
+  api: string,
+  start: () => Promise<unknown>,
+): Promise<void> {
+  if ((await call<boolean | undefined>(api, start)) === false) {
+    trace(`${api}.refused`);
+    throw new SdkError(api, undefined, 'the note app refused (result: false)');
+  }
 }
 
 export const PERMISSIONS = [
@@ -145,23 +224,20 @@ export interface NoteContext {
 }
 
 export async function noteContext(): Promise<NoteContext> {
-  const filePath = await call<string>(
-    'getCurrentFilePath',
+  const filePath = await call<string>('getCurrentFilePath', () =>
     PluginCommAPI.getCurrentFilePath(),
   );
-  const page = await call<number>(
-    'getCurrentPageNum',
+  const page = await call<number>('getCurrentPageNum', () =>
     PluginCommAPI.getCurrentPageNum(),
   );
-  const size = await call<Size>(
-    'getPageSize',
+  const size = await call<Size>('getPageSize', () =>
     PluginFileAPI.getPageSize(filePath, page),
   );
   return {filePath, page, size};
 }
 
 export function lassoRect(): Promise<Rect> {
-  return call<Rect>('getLassoRect', PluginCommAPI.getLassoRect());
+  return call<Rect>('getLassoRect', () => PluginCommAPI.getLassoRect());
 }
 
 const RECOGNIZABLE = new Set([0, 500, 501, 502]); // strokes and text boxes
@@ -169,8 +245,7 @@ const RECOGNIZABLE = new Set([0, 500, 501, 502]); // strokes and text boxes
 /** Runs the firmware's handwriting recognition over the lassoed strokes / text boxes. */
 export async function recognizeLasso(size: Size): Promise<string> {
   const elements =
-    (await call<Element[] | null>(
-      'getLassoElements',
+    (await call<Element[] | null>('getLassoElements', () =>
       PluginCommAPI.getLassoElements(),
     )) ?? [];
   try {
@@ -180,8 +255,7 @@ export async function recognizeLasso(size: Size): Promise<string> {
     }
     // The recogniser returns null when it finds no text (a drawing, a music score…).
     return (
-      (await call<string | null>(
-        'recognizeElements',
+      (await call<string | null>('recognizeElements', () =>
         PluginCommAPI.recognizeElements(targets, size),
       )) ?? ''
     );
@@ -204,9 +278,14 @@ const PEN_MARKER = 11;
 /** The user's current pen, except a marker (too wide for text) becomes a fineliner. */
 export async function currentPen(): Promise<PenStyle> {
   try {
-    const pen = await call<PenStyle>('getPenInfo', PluginCommAPI.getPenInfo());
+    const pen = await call<PenStyle>('getPenInfo', () =>
+      PluginCommAPI.getPenInfo(),
+    );
     return {...pen, type: pen.type === PEN_MARKER ? PEN_FINELINER : pen.type};
-  } catch {
+  } catch (e) {
+    if (e instanceof CallTimeoutError) {
+      throw e; // a stuck note app is not "no pen info"
+    }
     return {type: PEN_FINELINER, color: 0, width: 200};
   }
 }
@@ -223,8 +302,7 @@ export async function probeFillMode(): Promise<FillMode> {
   if (fillMode) {
     return fillMode;
   }
-  const el = await call<Element>(
-    'createElement',
+  const el = await call<Element>('createElement', () =>
     PluginCommAPI.createElement(Element.TYPE_STROKE),
   );
   try {
@@ -233,10 +311,18 @@ export async function probeFillMode(): Promise<FillMode> {
       {x: 2, y: 2},
       {x: 3, y: 3},
     ];
-    const ok = await el.stroke!.points.setRange(0, pts.length, pts);
+    const ok = await raw('points.setRange', () =>
+      el.stroke!.points.setRange(0, pts.length, pts),
+    );
     fillMode =
-      ok && (await el.stroke!.points.size()) === pts.length ? 'bulk' : 'single';
-  } catch {
+      ok &&
+      (await raw('points.size', () => el.stroke!.points.size())) === pts.length
+        ? 'bulk'
+        : 'single';
+  } catch (e) {
+    if (e instanceof CallTimeoutError) {
+      throw e; // not an answer to "does bulk work?"
+    }
     fillMode = 'single';
   } finally {
     PluginCommAPI.recycleElement(el.uuid);
@@ -250,13 +336,17 @@ async function fill<T extends Point | number>(
   mode: FillMode,
 ): Promise<void> {
   if (mode === 'bulk') {
-    if (!(await acc.setRange(0, values.length, values))) {
+    if (
+      !(await raw('points.setRange', () =>
+        acc.setRange(0, values.length, values),
+      ))
+    ) {
       throw new Error('bulk point write failed');
     }
     return;
   }
   for (let i = 0; i < values.length; i++) {
-    if (!(await acc.add(i, values[i]))) {
+    if (!(await raw('points.add', () => acc.add(i, values[i])))) {
       throw new Error(`point write failed at ${i}`);
     }
   }
@@ -284,8 +374,7 @@ export async function writeStrokes(
   try {
     for (const s of strokes) {
       let t = Date.now();
-      const el = await call<Element>(
-        'createElement',
+      const el = await call<Element>('createElement', () =>
         PluginCommAPI.createElement(Element.TYPE_STROKE),
       );
       elements.push(el);
@@ -315,8 +404,7 @@ export async function writeStrokes(
       }
     }
     const t = Date.now();
-    await call<boolean>(
-      'insertPageElements',
+    await callChecked('insertPageElements', () =>
       PluginCommAPI.insertPageElements(elements, page),
     );
     if (timing) {
@@ -338,7 +426,7 @@ export async function writeStrokes(
  * the unsaved edits or reads stale data (SDK docs: saveCurrentNote). Save before every one.
  */
 export async function saveNote(): Promise<void> {
-  await call<boolean>('saveCurrentNote', PluginNoteAPI.saveCurrentNote());
+  await callChecked('saveCurrentNote', () => PluginNoteAPI.saveCurrentNote());
 }
 
 const BLANK_TEMPLATE = 'style_blank';
@@ -352,23 +440,50 @@ export async function insertPageAfter(
   page: number,
   likePage: number,
 ): Promise<void> {
-  await saveNote();
+  await saveNote(); // throws when the save was refused: never insert with unsaved edits
+  const before = await totalPages(filePath);
   let template = BLANK_TEMPLATE;
   try {
     const t = await call<{name: string; md5: string}>(
       'getNotePageTemplate',
-      PluginFileAPI.getNotePageTemplate(filePath, likePage),
+      () => PluginFileAPI.getNotePageTemplate(filePath, likePage),
     );
     if (t.name && (!t.md5 || t.md5 === '0')) {
       template = t.name;
     }
-  } catch {
-    // keep the blank template
+  } catch (e) {
+    if (e instanceof CallTimeoutError) {
+      throw e;
+    }
+    // any other failure: the blank template (already recorded by call())
   }
-  await call<boolean>(
-    'insertNotePage',
+  await callChecked('insertNotePage', () =>
     PluginFileAPI.insertNotePage({notePath: filePath, page, template}),
   );
+  // "Inserted" is only believed once the note really has one more page.
+  const after = await totalPages(filePath);
+  if (after <= before) {
+    trace('insertNotePage.notGrown', {d: {before, after}});
+    throw new SdkError(
+      'insertNotePage',
+      undefined,
+      `the page count did not grow (${before} → ${after})`,
+    );
+  }
+}
+
+async function totalPages(filePath: string): Promise<number> {
+  const n = await call<number>('getNoteTotalPageNum', () =>
+    PluginFileAPI.getNoteTotalPageNum(filePath),
+  );
+  if (!Number.isInteger(n)) {
+    throw new SdkError(
+      'getNoteTotalPageNum',
+      undefined,
+      `unexpected answer: ${String(n)}`,
+    );
+  }
+  return n;
 }
 
 /** Thrown when the note we are working on is no longer the open one. */
@@ -386,11 +501,13 @@ export class NoteMovedError extends Error {
 export async function ensureOpen(filePath: string): Promise<void> {
   let open: string | null = null;
   try {
-    open = await call<string>(
-      'getCurrentFilePath',
+    open = await call<string>('getCurrentFilePath', () =>
       PluginCommAPI.getCurrentFilePath(),
     );
-  } catch {
+  } catch (e) {
+    if (e instanceof CallTimeoutError) {
+      throw e; // a stuck note app is not "the note was closed"
+    }
     // The note app is not bound: it is not open.
   }
   if (open !== filePath) {
@@ -405,8 +522,7 @@ export async function isOnPage(
 ): Promise<boolean> {
   await ensureOpen(filePath);
   return (
-    (await call<number>(
-      'getCurrentPageNum',
+    (await call<number>('getCurrentPageNum', () =>
       PluginCommAPI.getCurrentPageNum(),
     )) === page
   );
@@ -417,7 +533,15 @@ export async function jumpToPageIn(
   page: number,
 ): Promise<void> {
   await ensureOpen(filePath);
-  await call<boolean>('jumpToPage', PluginCommAPI.jumpToPage(page));
+  // Turning the user's view is not needed to write (strokes name their page), so a refusal is
+  // recorded but does not stop the answer; a failure or silence still does.
+  if (
+    (await call<boolean | undefined>('jumpToPage', () =>
+      PluginCommAPI.jumpToPage(page),
+    )) === false
+  ) {
+    trace('jumpToPage.refused', {d: {page}});
+  }
 }
 
 /**
@@ -446,8 +570,7 @@ export async function deleteElementsAt(
     return;
   }
   await ensureOpen(filePath);
-  await call(
-    'deletePageElements',
+  await callChecked('deletePageElements', () =>
     PluginCommAPI.deletePageElements(
       [...nums].sort((a, b) => b - a),
       page,
@@ -455,20 +578,19 @@ export async function deleteElementsAt(
   );
 }
 
-const SCAN_CONCURRENCY = 16;
-
 /** The page's elements as saved. Saves first so writing the user just did is included. */
 export async function readPage(
   filePath: string,
   page: number,
 ): Promise<Element[]> {
   await saveNote();
-  return (
-    (await call<Element[] | null>(
-      'getElements',
-      PluginFileAPI.getElements(page, filePath),
-    )) ?? []
+  const elements = await call<Element[] | null>('getElements', () =>
+    PluginFileAPI.getElements(page, filePath),
   );
+  if (!elements) {
+    trace('getElements.null', {d: {page}}); // an empty page, or an answer we cannot read
+  }
+  return elements ?? [];
 }
 
 /**
@@ -506,23 +628,24 @@ export async function boxesOf(
         strokes.push(e);
       }
     }
-    for (
-      let i = 0;
-      i < strokes.length && Date.now() < deadline;
-      i += SCAN_CONCURRENCY
-    ) {
-      const found = await Promise.all(
-        strokes.slice(i, i + SCAN_CONCURRENCY).map(async e => {
-          const n = await e.stroke!.points.size();
-          return boundsOf(n > 0 ? await e.stroke!.points.getRange(0, n) : []);
-        }),
-      );
-      for (const b of found) {
-        if (b) {
-          boxes.push(b);
-        }
+    // One stroke at a time, like every other request to the note app (see `native`).
+    let scanned = 0;
+    for (const e of strokes) {
+      if (Date.now() >= deadline) {
+        break;
       }
+      const n = await raw('points.size', () => e.stroke!.points.size());
+      const b = boundsOf(
+        n > 0
+          ? await raw('points.getRange', () => e.stroke!.points.getRange(0, n))
+          : [],
+      );
+      if (b) {
+        boxes.push(b);
+      }
+      scanned++;
     }
+    trace('scan', {d: {strokes: strokes.length, scanned}});
   } finally {
     releaseElements(elements);
   }

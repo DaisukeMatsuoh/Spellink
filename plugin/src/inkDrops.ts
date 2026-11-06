@@ -6,6 +6,7 @@
 // elements with this marker, delete them" — nothing is inferred from positions or numbers, so
 // nothing else can be matched.
 import {WAVE_MARKER_PREFIX} from './freeSpace';
+import {trace} from './trace';
 import {
   deleteElementsAt,
   isOnPage,
@@ -86,8 +87,15 @@ export class InkDrops {
     await this.clear().catch(e => this.giveUp(e));
   }
 
-  /** Whatever went wrong, the animation just ends; the answer itself does not depend on it. */
-  private giveUp(_error: unknown): void {
+  /**
+   * Whatever went wrong, the animation just ends; the answer itself does not depend on it. The
+   * error is recorded: if it was the removal that failed, strokes of the wave are left on the page.
+   */
+  private giveUp(error: unknown): void {
+    trace('wave.giveUp', {
+      err: (error as Error)?.message,
+      d: {drawnPieces: this.drawnPieces},
+    });
     this.stopped = true;
     if (this.timer) {
       clearInterval(this.timer);

@@ -13,6 +13,7 @@ let mockBridgeSettings = {
   showProgress: false,
   lineTilt: true,
   thinkingAnimation: true,
+  avoidOverwriting: false,
   busyNotice: true,
 };
 let mockScript: (
@@ -147,6 +148,7 @@ describe('AskFlow', () => {
               showProgress: false,
               lineTilt: true,
               thinkingAnimation: false,
+              avoidOverwriting: false,
               busyNotice: true,
             },
             onMessage: () => {},
@@ -173,6 +175,7 @@ describe('AskFlow', () => {
       showProgress: false,
       lineTilt: true,
       thinkingAnimation: false,
+      avoidOverwriting: false,
       busyNotice: true,
     };
     const resumes: {id: string; next: number}[] = [];
@@ -416,6 +419,7 @@ describe('AskFlow', () => {
               showProgress: false,
               lineTilt: true,
               thinkingAnimation: true,
+              avoidOverwriting: false,
               busyNotice: true,
             },
             onMessage: () => {},
@@ -595,6 +599,7 @@ beforeEach(() => {
     showProgress: false,
     lineTilt: true,
     thinkingAnimation: true,
+    avoidOverwriting: false,
     busyNotice: true,
   };
   rememberSettings({...mockBridgeSettings});
@@ -663,6 +668,7 @@ describe('defaults', () => {
       showProgress: false,
       lineTilt: true,
       thinkingAnimation: false,
+      avoidOverwriting: false,
       busyNotice: true,
     });
     expect(knownSettings().thinkingAnimation).toBe(false);
@@ -674,6 +680,7 @@ describe('reconnecting (docs/spec/ask-flow.md, S5)', () => {
     showProgress: false,
     lineTilt: true,
     thinkingAnimation: false,
+    avoidOverwriting: false,
     busyNotice: true,
   };
   type Sent = {type: string; id: string; next?: number};

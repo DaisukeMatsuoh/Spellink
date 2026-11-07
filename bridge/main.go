@@ -150,7 +150,7 @@ func serve() error {
 	var settingsMu sync.Mutex
 	deps := server.Deps{
 		Name: cfg.Name, Version: version, Token: cfg.Token, Font: font,
-		Ask: runner.Ask, History: notes, HistoryChars: cfg.HistoryChars(), Runs: server.NewRuns(),
+		Ask: runner.Ask, AskActive: runner.AskActive, History: notes, HistoryChars: cfg.HistoryChars(), Runs: server.NewRuns(),
 		FirstOutput: first, Gap: gap, Total: total,
 		Report: func(peer string, data any) {
 			if err := config.AppendReport(peer, data); err != nil {
@@ -165,7 +165,7 @@ func serve() error {
 				ShowProgress: cfg.ShowProgress, LineTilt: cfg.LineTiltOn(), TiltDegrees: *cfg.TiltDegrees,
 				ThinkingAnimation: cfg.ThinkingAnimationOn(),
 				FullWidthSpacing:  cfg.FullSpacing(), HalfWidthSpacing: cfg.HalfSpacing(),
-				BusyNotice: cfg.BusyNoticeOn(),
+				AvoidOverwriting: cfg.AvoidOverwriting, BusyNotice: cfg.BusyNoticeOn(),
 			}
 		},
 		SetSettings: func(s protocol.Settings) error {
@@ -178,6 +178,7 @@ func serve() error {
 			half := clamp(s.HalfWidthSpacing, protocol.SpacingMin, protocol.HalfSpacingMax)
 			cfg.FullWidthSpacing, cfg.HalfWidthSpacing = &full, &half
 			cfg.BusyNotice = &s.BusyNotice
+			cfg.AvoidOverwriting = s.AvoidOverwriting
 			logger.Printf("settings changed: showProgress=%v lineTilt=%v animation=%v spacing=%d/%d",
 				s.ShowProgress, s.LineTilt, s.ThinkingAnimation, full, half)
 			return config.Save(cfg)

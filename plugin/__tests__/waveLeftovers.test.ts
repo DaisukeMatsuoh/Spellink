@@ -1,5 +1,5 @@
 import {fakeNote} from '../__mocks__/sn-plugin-lib';
-import {AskFlow} from '../src/askFlow';
+import {AskFlow, rememberSettings} from '../src/askFlow';
 import {InkDrops, sweepLeftovers, waveNumsOn} from '../src/inkDrops';
 import {leftoversOn, resetLeftoversForTests} from '../src/leftovers';
 import {readPage, resetHostQueueForTests} from '../src/sdk';
@@ -121,8 +121,16 @@ describe('a failure while drawing removes what was drawn, right away', () => {
   });
 });
 
-describe('the lasso flow gives the page scan the selection', () => {
-  it('existing writing below the selection limits where the answer may go', async () => {
+describe('the lasso flow and reading the page', () => {
+  const settings = (avoidOverwriting: boolean) => ({
+    showProgress: false,
+    lineTilt: true,
+    thinkingAnimation: false,
+    avoidOverwriting,
+    busyNotice: true,
+  });
+  /** Runs the real lasso entry point until the question is sent, and returns the layout it sent. */
+  const askAndCapture = async () => {
     fakeNote.lasso = [{type: 0} as never];
     fakeNote.ocrResult = '質問';
     fakeNote.addUserStroke(
@@ -136,12 +144,7 @@ describe('the lasso flow gives the page scan the selection', () => {
         async () =>
           ({
             name: 'fake',
-            settings: {
-              showProgress: false,
-              lineTilt: true,
-              thinkingAnimation: false,
-              busyNotice: true,
-            },
+            settings: settings(false),
             onMessage: () => {},
             onClose: () => {},
             onBad: () => {},
@@ -158,8 +161,24 @@ describe('the lasso flow gives the page scan the selection', () => {
     await pause(400);
     flow.cancel();
     await pause(50);
+    return sent as {startLimit?: number} | null;
+  };
+  afterEach(() => rememberSettings(settings(false)));
+
+  it('turned on: existing writing below the selection limits where the answer may go', async () => {
+    rememberSettings(settings(true));
+    const sent = await askAndCapture();
     expect(sent).not.toBeNull();
     expect(sent!.startLimit).toBeDefined();
     expect(sent!.startLimit!).toBeLessThan(700);
+  });
+
+  it('turned off (the default): the page is not read at all — no save, no read, nothing slow', async () => {
+    rememberSettings(settings(false));
+    const savesBefore = fakeNote.saves;
+    const sent = await askAndCapture();
+    expect(sent).not.toBeNull();
+    expect(sent!.startLimit).toBeUndefined();
+    expect(fakeNote.saves).toBe(savesBefore);
   });
 });

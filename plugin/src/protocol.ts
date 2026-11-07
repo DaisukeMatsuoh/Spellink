@@ -38,6 +38,11 @@ export interface Settings {
   /** Letter spacing in percent of the glyph's own advance (100 = tightest). */
   fullWidthSpacing?: number;
   halfWidthSpacing?: number;
+  /**
+   * Read the page before answering so the answer keeps clear of existing writing. Costs a save
+   * and a read of the whole page for every question: off unless turned on.
+   */
+  avoidOverwriting: boolean;
   /** Tell the user, with a short notice, when they ask again while an answer is being written. */
   busyNotice: boolean;
 }

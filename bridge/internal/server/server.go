@@ -32,14 +32,20 @@ import (
 // AskFunc asks the model and streams text deltas through onText.
 type AskFunc func(ctx context.Context, question, systemPrompt string, onText func(string)) (string, error)
 
+// AskActiveFunc is AskFunc that also reports signs of life (see claude.Runner.AskActive). When a
+// provider has one, the silence limits count any activity, not only visible text.
+type AskActiveFunc func(ctx context.Context, question, systemPrompt string, onText func(string), onActivity func(model bool)) (string, error)
+
 type Deps struct {
 	Name    string
 	Version string
 	Token   string
 	Font    *ink.Font
 	Ask     AskFunc
-	Report  func(peer string, data any)
-	Log     *log.Logger
+	// AskActive, when set, is used instead of Ask.
+	AskActive AskActiveFunc
+	Report    func(peer string, data any)
+	Log       *log.Logger
 	// Settings returns the stored user settings; SetSettings changes and persists them.
 	Settings    func() protocol.Settings
 	SetSettings func(protocol.Settings) error
@@ -50,7 +56,7 @@ type Deps struct {
 	// Runs holds the answers in flight; share one between the direct and the relay entrance so
 	// a plugin can resume on either. Nil gets a private table per Handler/ServeConn call.
 	Runs *Runs
-	// FirstOutput, Gap and Total bound the AI's silence (0: defaults 30 s / 20 s / 120 s).
+	// FirstOutput, Gap and Total bound the AI's silence (0: defaults 10 s / 10 s / 90 s).
 	FirstOutput, Gap, Total time.Duration
 	// KeepaliveEvery is how often a running answer tells the plugin it is alive (0: 5 s).
 	KeepaliveEvery time.Duration
@@ -352,7 +358,8 @@ func (s *session) startAsk(ctx context.Context, m *protocol.ClientMessage) {
 			case <-askCtx.Done():
 				return
 			case <-t.C:
-				r.notify(protocol.Status{Type: "status", ID: id, Stage: "alive"})
+				phase, idle := r.vitals()
+				r.notify(protocol.Status{Type: "status", ID: id, Stage: "alive", Phase: phase, IdleMs: idle.Milliseconds()})
 			}
 		}
 	}()
@@ -416,9 +423,10 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 		s.deps.Log.Printf("history: read: %v", err) // the question is still worth answering
 	}
 
-	// The AI must not stay silent: a first output, then pieces without long pauses, all within a
-	// total (bridge-run spec, R13). Whichever limit hits first stops it.
-	first, gap, total := cmp.Or(s.deps.FirstOutput, 30*time.Second), cmp.Or(s.deps.Gap, 20*time.Second), cmp.Or(s.deps.Total, 120*time.Second)
+	// The AI must show it is working: the model has to begin soon after the process starts, then
+	// never be silent for long — thinking counts, only nothing at all does — all within a
+	// backstop total (bridge-run spec, R13). Whichever limit hits first stops it.
+	first, gap, total := cmp.Or(s.deps.FirstOutput, 10*time.Second), cmp.Or(s.deps.Gap, 10*time.Second), cmp.Or(s.deps.Total, 90*time.Second)
 	var timedOut atomic.Pointer[string]
 	expire := func(why string) func() {
 		return func() {
@@ -428,9 +436,9 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 		}
 	}
 	totalTimer := time.AfterFunc(total, expire(fmt.Sprintf("the AI did not finish within %d s", int(total.Seconds()))))
-	firstTimer := time.AfterFunc(first, expire(fmt.Sprintf("the AI gave no output within %d s", int(first.Seconds()))))
-	var gapTimer *time.Timer // from the first output on, replaces firstTimer
-	gapWhy := fmt.Sprintf("the AI paused for more than %d s", int(gap.Seconds()))
+	firstTimer := time.AfterFunc(first, expire(fmt.Sprintf("the AI showed no sign of working within %d s", int(first.Seconds()))))
+	var gapTimer *time.Timer // from the model's first sign on, replaces firstTimer
+	gapWhy := fmt.Sprintf("the AI stopped working for more than %d s", int(gap.Seconds()))
 	defer func() {
 		totalTimer.Stop()
 		firstTimer.Stop()
@@ -438,22 +446,46 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 			gapTimer.Stop()
 		}
 	}()
-
-	text, err := s.deps.Ask(askCtx, history.Transcript(earlier, q, lang), claude.SystemPrompt(lang, budget(layout)), func(delta string) {
-		if !writing {
-			writing = true
+	// Called from the one goroutine that reads the AI's output, so no locking is needed here.
+	onActivity := func(model bool) {
+		if !model && gapTimer == nil {
+			r.sign("") // the process runs; the model has not begun, the first limit keeps counting
+			return
+		}
+		if gapTimer == nil {
 			firstTimer.Stop()
 			gapTimer = time.AfterFunc(gap, expire(gapWhy))
+			r.sign("working")
+			s.deps.Log.Printf("ask %s model began after %d ms", id, time.Since(started).Milliseconds())
+			return
+		}
+		r.sign("")
+		if timedOut.Load() == nil {
+			gapTimer.Reset(gap) // a late sign must not revive an answer that was already stopped
+		}
+	}
+
+	onText := func(delta string) {
+		onActivity(true)
+		if !writing {
+			writing = true
+			r.sign("writing")
 			s.deps.Log.Printf("ask %s first output after %d ms", id, time.Since(started).Milliseconds())
 			r.notify(protocol.Status{Type: "status", ID: id, Stage: "writing"})
-		} else if timedOut.Load() == nil {
-			gapTimer.Reset(gap) // a late piece must not revive an answer that was already stopped
 		}
 		emit(composer.Push(delta))
 		if composer.Truncated {
 			r.cancel() // stop paying for tokens that can no longer fit
 		}
-	})
+	}
+
+	ask := s.deps.AskActive
+	if ask == nil { // a provider that only reports text: text is its only sign of life
+		ask = func(ctx context.Context, q, sys string, onText func(string), _ func(bool)) (string, error) {
+			return s.deps.Ask(ctx, q, sys, onText)
+		}
+	}
+	text, err := ask(askCtx, history.Transcript(earlier, q, lang), claude.SystemPrompt(lang, budget(layout)), onText, onActivity)
 	if err != nil && !composer.Truncated {
 		code, msg := "claude_failed", err.Error()
 		if why := timedOut.Load(); why != nil {

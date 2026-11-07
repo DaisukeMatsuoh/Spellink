@@ -46,6 +46,7 @@ let lastSettings: Settings = {
   showProgress: false,
   lineTilt: true,
   thinkingAnimation: false,
+  avoidOverwriting: false,
   busyNotice: true,
 };
 export function rememberSettings(s: Settings): void {
@@ -193,14 +194,23 @@ export class AskFlow {
         PluginCommAPI.setLassoBoxState(LASSO_REMOVE),
       );
 
-      // The selection is where the answer starts and what it must not run over: without it the
-      // page is never read and existing writing below would be written over.
-      await this.answer(question, answerLayout(ctx.size, rect), ctx, update, {
-        left: rect.left,
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom,
-      });
+      // The selection is where the answer starts and what it must not run over. Handing it over
+      // makes the page be read (a save and a read of the whole page); that is the user's choice.
+      const selection = knownSettings().avoidOverwriting
+        ? {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+          }
+        : undefined;
+      await this.answer(
+        question,
+        answerLayout(ctx.size, rect),
+        ctx,
+        update,
+        selection,
+      );
     } catch (e) {
       update({
         message: describeFailure(e),

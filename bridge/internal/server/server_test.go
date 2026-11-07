@@ -470,7 +470,7 @@ func TestAnAIThatNeverStartsIsStopped(t *testing.T) {
 	c, read := dial(t, url)
 	send(t, c, ask("t1", "", "q"))
 	m := lastFrame(read)
-	if m["type"] != "error" || m["code"] != "provider_timeout" || !strings.Contains(m["message"].(string), "no output") {
+	if m["type"] != "error" || m["code"] != "provider_timeout" || !strings.Contains(m["message"].(string), "no sign") {
 		t.Fatalf("got %v", m)
 	}
 	if _, ok := m["seq"]; !ok {
@@ -487,7 +487,7 @@ func TestAnAIThatStopsMidAnswerIsStopped(t *testing.T) {
 	c, read := dial(t, url)
 	send(t, c, ask("t2", "", "q"))
 	m := lastFrame(read)
-	if m["code"] != "provider_timeout" || !strings.Contains(m["message"].(string), "paused") {
+	if m["code"] != "provider_timeout" || !strings.Contains(m["message"].(string), "stopped working") {
 		t.Fatalf("got %v", m)
 	}
 }
@@ -545,5 +545,89 @@ func TestARunningAnswerSaysItIsAlive(t *testing.T) {
 	}
 	if alive < 3 {
 		t.Fatalf("expected several keep-alives while the AI is silent, got %d", alive)
+	}
+}
+
+// withActivity makes the test AI one that reports signs of life.
+func withActivity(f AskActiveFunc, tweak func(*Deps)) func(*Deps) {
+	return func(d *Deps) {
+		d.AskActive = f
+		if tweak != nil {
+			tweak(d)
+		}
+	}
+}
+
+func TestThinkingWithoutTextIsNotSilence(t *testing.T) {
+	url := startTestWith(t, nil, withActivity(func(ctx context.Context, _, _ string, onText func(string), onActivity func(bool)) (string, error) {
+		onActivity(false) // the process started
+		for i := 0; i < 10; i++ {
+			time.Sleep(25 * time.Millisecond)
+			onActivity(true) // the model is working, but there is no text yet (250 ms > the 80 ms limit)
+		}
+		onText("あ")
+		return "あ", nil
+	}, timeoutDeps(200*time.Millisecond, 80*time.Millisecond, 5*time.Second)))
+	c, read := dial(t, url)
+	send(t, c, ask("th1", "", "q"))
+	if m := lastFrame(read); m["type"] != "done" {
+		t.Fatalf("an AI that is thinking must not be cut: %v", m)
+	}
+}
+
+func TestAProcessWhoseModelNeverBeginsIsStopped(t *testing.T) {
+	url := startTestWith(t, nil, withActivity(func(ctx context.Context, _, _ string, _ func(string), onActivity func(bool)) (string, error) {
+		for {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(20 * time.Millisecond):
+				onActivity(false) // alive, but the model never answers (network down, service busy)
+			}
+		}
+	}, timeoutDeps(100*time.Millisecond, time.Second, 5*time.Second)))
+	c, read := dial(t, url)
+	send(t, c, ask("th2", "", "q"))
+	m := lastFrame(read)
+	if m["code"] != "provider_timeout" || !strings.Contains(m["message"].(string), "no sign") {
+		t.Fatalf("got %v", m)
+	}
+}
+
+func TestAModelThatWentQuietAfterWorkingIsStopped(t *testing.T) {
+	url := startTestWith(t, nil, withActivity(func(ctx context.Context, _, _ string, _ func(string), onActivity func(bool)) (string, error) {
+		onActivity(true)
+		<-ctx.Done()
+		return "", ctx.Err()
+	}, timeoutDeps(time.Second, 70*time.Millisecond, 5*time.Second)))
+	c, read := dial(t, url)
+	send(t, c, ask("th3", "", "q"))
+	m := lastFrame(read)
+	if m["code"] != "provider_timeout" || !strings.Contains(m["message"].(string), "stopped working") {
+		t.Fatalf("got %v", m)
+	}
+}
+
+func TestTheKeepAliveSaysWhereTheAIIs(t *testing.T) {
+	url := startTestWith(t, nil, withActivity(func(ctx context.Context, _, _ string, onText func(string), onActivity func(bool)) (string, error) {
+		time.Sleep(150 * time.Millisecond) // starting: nothing yet
+		onActivity(true)
+		time.Sleep(150 * time.Millisecond) // working: no text
+		onText("あ")
+		return "あ", nil
+	}, func(d *Deps) { d.KeepaliveEvery = 30 * time.Millisecond }))
+	c, read := dial(t, url)
+	send(t, c, ask("th4", "", "q"))
+	phases := map[string]bool{}
+	for m := read(); m["type"] != "done" && m["type"] != "error"; m = read() {
+		if m["type"] == "status" && m["stage"] == "alive" {
+			phases[m["phase"].(string)] = true
+			if _, ok := m["idleMs"]; !ok && m["phase"] == "starting" && len(phases) > 1 {
+				t.Fatalf("idleMs should accompany the keep-alive: %v", m)
+			}
+		}
+	}
+	if !phases["starting"] || !phases["working"] {
+		t.Fatalf("keep-alives should report starting and then working, got %v", phases)
 	}
 }

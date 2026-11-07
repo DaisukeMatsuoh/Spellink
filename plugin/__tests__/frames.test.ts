@@ -150,6 +150,7 @@ describe('settings from the bridge', () => {
       thinkingAnimation: false,
       fullWidthSpacing: undefined,
       halfWidthSpacing: undefined,
+      avoidOverwriting: false,
       busyNotice: true,
     });
   });

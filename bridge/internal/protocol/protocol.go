@@ -51,6 +51,10 @@ type Settings struct {
 	// the tightest the glyph data allows.
 	FullWidthSpacing int `json:"fullWidthSpacing"`
 	HalfWidthSpacing int `json:"halfWidthSpacing"`
+	// AvoidOverwriting reads the page before answering so the answer stays clear of existing
+	// writing (and moves to a new page when there is no room). It costs a save and a read of the
+	// whole page, so it is off unless turned on.
+	AvoidOverwriting bool `json:"avoidOverwriting"`
 	// BusyNotice shows a short notice when the user asks again while an answer is being written.
 	BusyNotice bool `json:"busyNotice"`
 }
@@ -86,6 +90,11 @@ type Status struct {
 	Type  string `json:"type"` // "status"
 	ID    string `json:"id"`
 	Stage string `json:"stage"` // "thinking" | "writing" | "alive" (a keep-alive: the answer is still being produced)
+	// Phase and IdleMs accompany a keep-alive: where the AI is ("starting": the process runs but
+	// the model has not begun; "working": it has begun, no text yet; "writing") and how long
+	// since it last showed a sign of life.
+	Phase  string `json:"phase,omitempty"`
+	IdleMs int64  `json:"idleMs,omitempty"`
 }
 
 type Line struct {

@@ -165,6 +165,7 @@ export function parseSettings(raw: unknown): Settings {
     thinkingAnimation: bool(s.thinkingAnimation, false),
     fullWidthSpacing: inRange(s.fullWidthSpacing, 100, 140),
     halfWidthSpacing: inRange(s.halfWidthSpacing, 100, 160),
+    avoidOverwriting: bool(s.avoidOverwriting, false),
     busyNotice: bool(s.busyNotice, true),
   };
 }

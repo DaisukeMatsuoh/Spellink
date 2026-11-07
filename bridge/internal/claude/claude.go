@@ -53,6 +53,15 @@ func SystemPrompt(lang string, budget int) string {
 
 // Ask runs `claude -p` and calls onText for every streamed text delta. It returns the full answer.
 func (r *Runner) Ask(ctx context.Context, question, systemPrompt string, onText func(string)) (string, error) {
+	return r.AskActive(ctx, question, systemPrompt, onText, func(bool) {})
+}
+
+// AskActive is Ask that also reports signs of life: onActivity(false) for anything the process
+// emits (it started), onActivity(true) once the model itself has begun (message and thinking
+// events, not only visible text). A process that has started but whose model never answers —
+// the network to the AI is down, the service is overloaded — is told apart from one that is
+// working, long before any text exists.
+func (r *Runner) AskActive(ctx context.Context, question, systemPrompt string, onText func(string), onActivity func(model bool)) (string, error) {
 	args := []string{
 		"-p",
 		"--output-format", "stream-json",
@@ -103,6 +112,7 @@ func (r *Runner) Ask(ctx context.Context, question, systemPrompt string, onText 
 		if json.Unmarshal(sc.Bytes(), &ev) != nil {
 			continue
 		}
+		onActivity(ev.Type == "stream_event" || ev.Type == "assistant" || ev.Type == "result")
 		switch {
 		case ev.Type == "stream_event" && ev.Event.Type == "content_block_delta" && ev.Event.Delta.Type == "text_delta":
 			answer.WriteString(ev.Event.Delta.Text)

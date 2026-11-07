@@ -42,6 +42,8 @@ type Config struct {
 	// ThinkingAnimation defaults to off (it saves and re-reads the note, which can stall the note
 	// app on large notes); nil means "not set".
 	ThinkingAnimation *bool `json:"thinkingAnimation,omitempty"`
+	// AvoidOverwriting defaults to off (it saves and reads the whole page for every question).
+	AvoidOverwriting bool `json:"avoidOverwriting,omitempty"`
 	// BusyNotice defaults to on; nil means "not set".
 	BusyNotice *bool `json:"busyNotice,omitempty"`
 	// Letter spacing in percent (see protocol.Settings); nil means the default.
@@ -59,18 +61,19 @@ type Config struct {
 
 // Timeouts are in seconds.
 type Timeouts struct {
-	// FirstOutputSec is how long to wait for the AI's first text (default 30).
+	// FirstOutputSec is how long the model may take to show its first sign of work after the
+	// process started (default 10; measured: about 1.5 s).
 	FirstOutputSec int `json:"firstOutputSec,omitempty"`
-	// GapSec is the longest pause between two pieces of text (default 20).
+	// GapSec is the longest silence once it works (default 10): nothing at all, thinking included.
 	GapSec int `json:"gapSec,omitempty"`
-	// TotalSec bounds the whole answer (default 120).
+	// TotalSec bounds the whole answer, a backstop (default 90).
 	TotalSec int `json:"totalSec,omitempty"`
 }
 
 const (
-	defaultFirstOutputSec = 30
-	defaultGapSec         = 20
-	defaultTotalSec       = 120
+	defaultFirstOutputSec = 10
+	defaultGapSec         = 10
+	defaultTotalSec       = 90
 	maxTimeoutSec         = 3600
 )
 

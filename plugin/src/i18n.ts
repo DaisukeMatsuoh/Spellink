@@ -15,6 +15,9 @@ const STRINGS = {
     reconnecting: 'Reconnecting ({n}/{max})…',
     badFrame: 'The bridge sent data that could not be used.',
     busy: 'An answer is already being written.',
+    avoidOverwritingLabel: 'Avoid existing writing',
+    avoidOverwritingHelp:
+      'Reads the page before answering so the answer does not run over what is written below (and moves to a new page when there is no room). Slower: the note is saved and read each time.',
     busyNoticeLabel: 'Notice when busy',
     busyNoticeHelp:
       'If you ask again while an answer is being written, show a short notice (it is otherwise ignored).',
@@ -69,6 +72,9 @@ const STRINGS = {
     reconnecting: '再接続中 ({n}/{max})…',
     badFrame: 'ブリッジから、使えないデータが届きました。',
     busy: '回答を書いている最中です。',
+    avoidOverwritingLabel: '既存の字を避ける',
+    avoidOverwritingHelp:
+      '回答の前にページを読み、下にある字に重ならないようにします（余白がなければ新しいページへ）。そのたびにノートを保存して読むので、少し遅くなります。',
     busyNoticeLabel: '回答中の通知',
     busyNoticeHelp:
       '回答を書いている最中にもう一度質問を始めたとき、短い通知を出します（オフのときは何も表示せず無視します）。',

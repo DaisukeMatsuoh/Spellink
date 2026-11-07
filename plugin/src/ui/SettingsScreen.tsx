@@ -56,7 +56,14 @@ export function SettingsScreen() {
     [conn, settings],
   );
   const toggle = useCallback(
-    (key: 'showProgress' | 'lineTilt' | 'thinkingAnimation' | 'busyNotice') => {
+    (
+      key:
+        | 'showProgress'
+        | 'lineTilt'
+        | 'thinkingAnimation'
+        | 'busyNotice'
+        | 'avoidOverwriting',
+    ) => {
       if (settings) {
         change({[key]: !settings[key]});
       }
@@ -98,6 +105,16 @@ export function SettingsScreen() {
         />
       </View>
       <Text style={styles.small}>{t('thinkingAnimationHelp')}</Text>
+      <View style={styles.row}>
+        <Button
+          disabled={!settings}
+          label={`${t('avoidOverwritingLabel')}: ${
+            settings?.avoidOverwriting ? 'ON' : 'OFF'
+          }`}
+          onPress={() => toggle('avoidOverwriting')}
+        />
+      </View>
+      <Text style={styles.small}>{t('avoidOverwritingHelp')}</Text>
       <View style={styles.row}>
         <Button
           disabled={!settings}

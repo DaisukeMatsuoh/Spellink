@@ -90,3 +90,40 @@ func TestSystemPromptCarriesTheLengthBudget(t *testing.T) {
 		t.Errorf("budget must have a floor: %q", p)
 	}
 }
+
+func TestAskActiveTellsTheProcessStartingFromTheModelWorking(t *testing.T) {
+	exe := fakeClaude(t, []string{
+		`{"type":"system","subtype":"init"}`,
+		`{"type":"system","subtype":"status"}`,
+		`{"type":"stream_event","event":{"type":"message_start"}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"hm"}}}`,
+		strings.Replace(delta, "%s", "答え", 1),
+		`{"type":"result","is_error":false}`,
+	}, 0)
+	r, _ := NewRunner(exe, "")
+	var signs []bool
+	if _, err := r.AskActive(context.Background(), "q", "sys", func(string) {}, func(model bool) { signs = append(signs, model) }); err != nil {
+		t.Fatal(err)
+	}
+	want := []bool{false, false, true, true, true, true}
+	if len(signs) != len(want) {
+		t.Fatalf("got %v", signs)
+	}
+	for i := range want {
+		if signs[i] != want[i] {
+			t.Fatalf("sign %d: got %v, want %v (all: %v)", i, signs[i], want[i], signs)
+		}
+	}
+}
+
+func TestAskActiveIgnoresLinesThatAreNotEvents(t *testing.T) {
+	exe := fakeClaude(t, []string{`not json at all`, `{"type":"system"}`, `{"type":"result","is_error":false}`}, 0)
+	r, _ := NewRunner(exe, "")
+	n := 0
+	if _, err := r.AskActive(context.Background(), "q", "sys", func(string) {}, func(bool) { n++ }); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("a line that is not JSON is no sign of life: got %d signs", n)
+	}
+}

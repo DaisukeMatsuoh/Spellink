@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"sync"
@@ -19,9 +20,34 @@ type run struct {
 	frames   [][]byte // line / done / error frames, in order; frame i carries "seq": i
 	finished bool
 	finishAt time.Time
-	to       *session // where new frames go now; nil while the plugin is disconnected
-	toCtx    context.Context
-	orphan   *time.Timer
+	// Signs of life from the AI (see sign / vitals): the keep-alive reports them.
+	vmu   sync.Mutex
+	phase string
+	last  time.Time
+
+	to     *session // where new frames go now; nil while the plugin is disconnected
+	toCtx  context.Context
+	orphan *time.Timer
+}
+
+// phaseRank orders the phases an answer goes through; it never goes back.
+var phaseRank = map[string]int{"starting": 0, "working": 1, "writing": 2}
+
+// sign records a sign of life; a non-empty phase moves the answer forward to it.
+func (r *run) sign(phase string) {
+	r.vmu.Lock()
+	defer r.vmu.Unlock()
+	r.last = time.Now()
+	if phase != "" && phaseRank[phase] > phaseRank[r.phase] {
+		r.phase = phase
+	}
+}
+
+// vitals is where the AI is and how long since it last showed a sign of life.
+func (r *run) vitals() (phase string, idle time.Duration) {
+	r.vmu.Lock()
+	defer r.vmu.Unlock()
+	return cmp.Or(r.phase, "starting"), time.Since(r.last)
 }
 
 // publish numbers a frame, keeps it and sends it to the plugin if one is attached.
@@ -120,7 +146,7 @@ func (rs *Runs) start(id string, cancel context.CancelFunc) (*run, bool) {
 			delete(rs.m, k)
 		}
 	}
-	r := &run{id: id, cancel: cancel}
+	r := &run{id: id, cancel: cancel, phase: "starting", last: time.Now()}
 	rs.m[id] = r
 	return r, true
 }

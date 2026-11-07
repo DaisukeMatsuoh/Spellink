@@ -19,3 +19,4 @@
 | [0012](0012-note-conversation-memory.md) | 同じノートでの質問は、前のやり取りを踏まえて答える（ブリッジが会話を記憶する） | Proposed |
 | [0013](0013-resumable-answers.md) | 回答は接続から切り離し、番号つきのフレームで再開できるようにする | Proposed |
 | [0014](0014-engineering-policy.md) | 開発ポリシー: 戻り値は必ず確認し、全ケースを表にしてから実装する | Accepted |
+| [0015](0015-ai-provider-abstraction.md) | 問い合わせ先の AI を差し替え可能な「プロバイダ」にし、利用者向けの呼称を中立にする | Proposed |

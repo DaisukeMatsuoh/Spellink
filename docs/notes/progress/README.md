@@ -32,6 +32,8 @@ Supernote のノートで、手書きをラッソで囲む → Claude に質問 
 - ADR: 0001・0005・0008 が Accepted。0002・0003・0006・0007・0009・0011 は Proposed（実機の結果で確定させる）。
 
 ## 次にやること（優先順）
+0000. **状態遷移表の確認と、表から出た穴の修正**（`docs/spec/`、ADR 0014）。表は初版。ユーザーの確認が要る項目（❓）: 二重押下の表示、無音の時間切れの値（端末 120/60 秒案、ブリッジ 180 秒案）、接続成立後・`ask` 送信前の切断の仕様、回答中のページ数の変化の扱い、波線の消し残しの通知、実行中の履歴削除の扱い、ホストのライフサイクルの意味。
+   確認が要らない穴（先に直す）: ブリッジ→プラグインのフレームの検証（`line.page` 範囲・`strokes` の形）、Claude への問い合わせの時間切れ、`insertPageAfter` の `ensureOpen`、SDK 戻り値の型検証、権限・パネル呼び出しを共通処理へ、設定値の範囲、診断ファイルの総量、未点検の境界（relay、lantls、glyphs.bin、bridges.json）。
 000. **SDK 呼び出しの点検（ADR 0014）の実機確認**: 保存・ページ挿入の `result` と、ページ数での確認、依頼の直列化。ページ追加が `getNoteTotalPageNum` の戻り値の違いで止まらないか見る（止まったらメッセージに `page count` / `unexpected answer`）。`reports.jsonl` の trace に、ブール値の `result` が記録される。
 00. **`closed (1006)` の再開機能（ADR 0013）を実機で確認**（ユーザー）。新しい `Spellink.snplg` の入れ直しが必要。ページをまたぐ長い回答を何度か。起きたら `/tmp/spellink-bridge.log`（`write ... failed` / `disconnected` / `resume`）と `reports.jsonl` の trace（`*.begin`＝重い呼び出しの開始）を読む。原因（ページ追加でホストが止まる？）は未解明。
 0. **会話の引き継ぎ（ADR 0012）を実機で確認**（ユーザー）。同じノートで「1+1は？」→「それを3倍して」と続けて書き、前を踏まえて答えるか。実装済み: ブリッジ（`internal/history`、`ask.note`、`clearHistory`、`config.history`）とプラグイン（`note` 送信、設定画面の「会話を忘れさせる」）。**新しい `Spellink.snplg` の入れ直しが必要**。未実装: 圧縮（`history.compaction: "summarize"`）、ノート単位の削除。

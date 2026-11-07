@@ -7,6 +7,18 @@ import {
 } from '../src/askFlow';
 import type {Box} from '../src/freeSpace';
 import type {BridgeMessage, InkStroke, LayoutParams} from '../src/protocol';
+import {dumpTrace, resetTraceForTests} from '../src/trace';
+
+// Whatever a test does, the table must have had a cell for it: an event the table calls
+// impossible, one it does not know, or a question that ended outside an end state is a hole in
+// the table or in the code, whichever test happened to find it.
+beforeEach(() => resetTraceForTests());
+afterEach(() => {
+  const holes = dumpTrace().filter(e =>
+    ['ask.never', 'ask.unknown', 'ask.notTerminal'].includes(e.k),
+  );
+  expect(holes).toEqual([]);
+});
 
 // The bridge connection is replaced by a script of messages.
 let mockBridgeSettings = {

@@ -4,7 +4,6 @@
 import {AskFlow, knownSettings, type AskState} from './askFlow';
 import {notify} from './notify';
 import {t} from './i18n';
-import {trace} from './trace';
 import {showView} from './sdk';
 import {show} from './session';
 
@@ -42,9 +41,8 @@ function report(next: AskState): void {
 export function startAsk(): void {
   if (flow && !state.finished) {
     // One question at a time. The person pressed the button, so something must answer them
-    // (docs/spec/ask-flow.md, A2); the short notice can be turned off in the settings.
-    trace('ask.pressedWhileBusy');
-    if (knownSettings().busyNotice) {
+    // (docs/spec/ask-flow.md, PRESS): the machine says so (A2); the notice can be turned off.
+    if (flow.press() && knownSettings().busyNotice) {
       void notify(t('busy'));
     }
     return;

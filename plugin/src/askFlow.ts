@@ -1,5 +1,6 @@
 import {PluginCommAPI} from 'sn-plugin-lib';
 import {connectFirst, type BridgeConnection} from './bridgeClient';
+import {AskMachine, type AskEvent, type Handlers} from './askMachine';
 import {freeLimit, type Box} from './freeSpace';
 import {MAX_EXTRA_PAGES} from './frames';
 import {flushTrace, setTraceSink, trace} from './trace';
@@ -74,21 +75,6 @@ const LASSO_REMOVE = 2;
 const STROKES_PER_STEP = 15;
 /** Working out where existing content is stops after this long (big pages hold thousands of strokes). */
 const SCAN_BUDGET_MS = 2500;
-/**
- * For work that is nice to have (reading the page for free space): a failure is recorded and the
- * answer goes on without it, but a note app that has stopped answering ends the answer, because
- * everything after would stall too.
- */
-function unlessStalled<T>(what: string, fallback: T) {
-  return (e: unknown): T => {
-    if (e instanceof CallTimeoutError) {
-      throw e;
-    }
-    trace(`${what}.failed`, {err: (e as Error).message});
-    return fallback;
-  };
-}
-
 /** Reconnection attempts in a row, without hearing from the bridge, before the answer is given up. */
 const MAX_RECONNECTS = 3;
 
@@ -134,65 +120,115 @@ export function answerLayout(
   };
 }
 
+type LineFrame = Extract<BridgeMessage, {type: 'line'}>;
+type DoneFrame = Extract<BridgeMessage, {type: 'done'}>;
+type StatusFrame = Extract<BridgeMessage, {type: 'status'}>;
+
+/** How a question ended. Set once, by the action that ended it. */
+type Outcome =
+  | {kind: 'ok'}
+  | {kind: 'cancel'}
+  | {kind: 'notext'}
+  /** `message` is what the user reads, already worded; otherwise the error is described. */
+  | {kind: 'fail'; error?: Error; message?: string};
+
+/** Thrown at a checkpoint once the machine has reached an end state: stop quietly. */
+const STOP = new Error('stopped');
+
+const toError = (v: unknown): Error =>
+  v instanceof Error ? v : new Error(typeof v === 'string' ? v : 'failed');
+
 /**
- * The whole "Ask Claude" gesture: read the lasso, recognise it on-device, ask the bridge, and
- * write each answer line into the note as soon as it arrives.
+ * The whole "Ask AI" gesture: read the lasso, recognise it on-device, ask the bridge, and write
+ * each answer line into the note as soon as it arrives.
+ *
+ * What happens when is decided by the table in docs/spec/ask-flow.md (src/askMachine.ts runs
+ * it). The code below does the work — each step reports what happened as an event, and each
+ * action in the table is one handler here.
  */
 export class AskFlow {
+  private readonly machine: AskMachine;
+  private outcome: Outcome | null = null;
+  private update: (patch: Partial<AskState>) => void = () => {};
+  private pressedWhileBusy = false;
+
   private conn: BridgeConnection | null = null;
   private id = '';
   private traceTimer: ReturnType<typeof setInterval> | null = null;
-  private cancelled = false;
   /** Set when the connection drops after it was made but before the question was sent. */
   private earlyClose: string | null = null;
+  private settle: {resolve: () => void; reject: (e: Error) => void} | null =
+    null;
 
-  constructor(private readonly report: Report) {}
+  private question = '';
+  private note!: NoteContext;
+  private layout!: LayoutParams;
+  private pen!: Awaited<ReturnType<typeof currentPen>>;
+  private wave: {stop: () => Promise<void>} = {stop: async () => {}};
 
-  /** Stops the answer. Always ends the running question, whatever state the connection is in. */
-  cancel(): void {
-    this.cancelled = true;
-    if (this.conn && this.id) {
-      try {
-        this.conn.send({type: 'cancel', id: this.id});
-      } catch {
-        // The connection is already gone; nothing to tell the bridge.
-      }
-    }
-    this.conn?.close();
-    this.endQuestion?.(new Error('cancelled'));
+  private writes: Promise<void> = Promise.resolve();
+  private stopWrites = false;
+  private written = 0;
+  private answerText = '';
+  private pagesReady = 1;
+
+  private nextSeq = 0;
+  private askSent = false;
+  /** Reconnection attempts in a row without hearing from the bridge. */
+  private streak = 0;
+  private recovering = false;
+  private quiet: ReturnType<typeof setTimeout> | null = null;
+  private doneFrame: DoneFrame | null = null;
+
+  constructor(private readonly report: Report) {
+    this.machine = new AskMachine(this.handlers(), (k, d) => trace(k, {d}));
   }
 
-  /** Settles the running question (set while one is waiting for the bridge). */
-  private endQuestion: ((e: Error) => void) | null = null;
+  // ------------------------------------------------------------------ entry points
 
+  /** The user pressed the button while this question is running; true = tell them (A2). */
+  press(): boolean {
+    this.pressedWhileBusy = false;
+    this.machine.dispatch('PRESS');
+    return this.pressedWhileBusy;
+  }
+
+  /** Stops the answer. Always ends the running question, whatever state it is in. */
+  cancel(): void {
+    this.machine.dispatch('CANCEL');
+  }
+
+  /** What a panel shows; the last state also says whether the question is over. */
   async run(): Promise<void> {
-    const state: AskState = {message: t('permissions'), finished: false};
-    const update = (patch: Partial<AskState>) => {
-      Object.assign(state, patch);
-      this.report({...state});
-    };
+    this.begin({message: t('permissions'), finished: false});
     try {
-      update({});
+      this.machine.dispatch('PRESS'); // IDLE → PERM
       const missing = await ensurePermissions();
+      this.checkpoint();
       if (missing.length > 0) {
-        return update({
+        this.machine.dispatch('DENIED', {
           message: t('permissionDenied', {list: missing.join(', ')}),
-          finished: true,
-          failed: true,
         });
+        return;
       }
-
-      update({message: t('recognizing')});
+      this.machine.dispatch('GRANTED'); // PERM → RECOG
+      this.update({message: t('recognizing')});
       const ctx = await noteContext();
+      this.checkpoint();
       const rect = await lassoRect();
+      this.checkpoint();
       const question = (await recognizeLasso(ctx.size)).trim();
+      this.checkpoint();
       if (!question) {
-        return update({message: t('noText'), finished: true, failed: true});
+        this.machine.dispatch('NOTEXT');
+        return;
       }
-      update({question});
+      this.update({question});
+      this.machine.dispatch('RECOGNIZED'); // RECOG → PREP
       await call('setLassoBoxState', () =>
         PluginCommAPI.setLassoBoxState(LASSO_REMOVE),
       );
+      this.checkpoint();
 
       // The selection is where the answer starts and what it must not run over. Handing it over
       // makes the page be read (a save and a read of the whole page); that is the user's choice.
@@ -204,97 +240,246 @@ export class AskFlow {
             bottom: rect.bottom,
           }
         : undefined;
-      await this.answer(
-        question,
-        answerLayout(ctx.size, rect),
-        ctx,
-        update,
-        selection,
-      );
+      await this.answer(question, answerLayout(ctx.size, rect), ctx, selection);
     } catch (e) {
-      update({
-        message: describeFailure(e),
-        finished: true,
-        failed: true,
-      });
+      this.fault(e);
+    } finally {
+      this.conclude();
     }
   }
 
-  /** Same as `run` but with a known question and position (used by diagnostics). */
+  /** Same as `run` but with a known question and position (used by diagnostics). Starts at PREP. */
   async runWithQuestion(
     question: string,
     layout: LayoutParams,
     ctx: NoteContext,
     selection?: Box,
   ): Promise<void> {
-    const state: AskState = {message: '', question, finished: false};
-    const update = (patch: Partial<AskState>) => {
-      Object.assign(state, patch);
-      this.report({...state});
-    };
+    this.begin({message: '', question, finished: false});
+    this.machine.state = 'PREP';
     try {
-      await this.answer(question, layout, ctx, update, selection);
+      await this.answer(question, layout, ctx, selection);
     } catch (e) {
-      update({
-        message: describeFailure(e),
-        finished: true,
-        failed: true,
-      });
+      this.fault(e);
+    } finally {
+      this.conclude();
     }
   }
 
+  private begin(state: AskState): void {
+    this.update = patch => {
+      Object.assign(state, patch);
+      this.report({...state});
+    };
+    this.update({});
+  }
+
+  // ------------------------------------------------------------------ events from the work
+
+  private terminal(): boolean {
+    return this.machine.terminal;
+  }
+
+  /** Between steps: once the machine has reached an end state, nothing more is done. */
+  private checkpoint(): void {
+    if (this.terminal()) {
+      throw STOP;
+    }
+  }
+
+  /** An error from a step becomes the event the table has a cell for. */
+  private fault(e: unknown): void {
+    if (e === STOP) {
+      return;
+    }
+    const event: AskEvent =
+      e instanceof NoteMovedError
+        ? 'MOVED'
+        : e instanceof CallTimeoutError
+        ? 'SILENT'
+        : 'REFUSED';
+    this.machine.dispatch(event, e);
+  }
+
+  /** Reports how it ended. By now the machine must be in an end state; if not, that is a bug. */
+  private conclude(): void {
+    if (!this.terminal()) {
+      trace('ask.notTerminal', {d: {state: this.machine.state}});
+      this.outcome ??= {kind: 'fail', error: new Error('did not finish')};
+    }
+    const o = this.outcome ?? {kind: 'ok'};
+    switch (o.kind) {
+      case 'ok':
+        this.update({finished: true});
+        break;
+      case 'notext':
+        this.update({message: t('noText'), finished: true, failed: true});
+        break;
+      case 'cancel':
+        this.update({
+          message: describeFailure(new Error('cancelled')),
+          finished: true,
+          failed: true,
+        });
+        break;
+      default:
+        this.update({
+          message: o.message ?? describeFailure(o.error),
+          finished: true,
+          failed: true,
+        });
+    }
+  }
+
+  // ------------------------------------------------------------------ the actions of the table
+
+  private handlers(): Handlers {
+    const fail = (arg: unknown): void => {
+      // Either an Error, or {message} already worded for the user (e.g. "no bridge reachable").
+      const worded =
+        !(arg instanceof Error) &&
+        typeof (arg as {message?: unknown} | null)?.message === 'string'
+          ? (arg as {message: string}).message
+          : undefined;
+      const error = worded === undefined ? toError(arg) : undefined;
+      this.outcome ??= {kind: 'fail', error, message: worded};
+      this.stopQuiet();
+      this.settle?.reject(error ?? new Error(worded));
+    };
+    return {
+      A1: () => this.update({message: t('permissions')}),
+      A2: () => {
+        this.pressedWhileBusy = true;
+        trace('ask.pressedWhileBusy');
+      },
+      A3: () => {
+        this.outcome ??= {kind: 'cancel'};
+        this.stopWrites = true;
+        this.cancelBridge();
+        this.conn?.close();
+        this.stopQuiet();
+        this.settle?.reject(new Error('cancelled'));
+      },
+      A4: arg => fail(arg),
+      A5: () => {
+        this.outcome ??= {kind: 'notext'};
+      },
+      A6: arg =>
+        trace('ask.softfail', {err: (arg as Error | undefined)?.message}),
+      A7: arg => {
+        this.stopWrites = true;
+        this.cancelBridge();
+        fail(new Error(`${t('badFrame')} (${String(arg)})`));
+      },
+      A8: arg => {
+        this.doneFrame = arg as DoneFrame;
+        this.stopQuiet();
+        this.writes.then(
+          () => this.machine.dispatch('DRAINED'),
+          e => this.fault(e),
+        );
+      },
+      A9: arg => void this.recover(String(arg)),
+      A9b: arg => void this.recover(String(arg)),
+      A10: arg => trace('ask.late', {d: describeEvent(arg)}),
+      A11: arg => trace('ask.duplicate', {d: describeEvent(arg)}),
+      A12: arg => {
+        this.stopWrites = true;
+        this.cancelBridge();
+        fail(arg);
+      },
+      A13: () => {},
+      A15: arg => this.writeLine(arg as LineFrame),
+      A16: () => {},
+      A17: () => {
+        this.outcome ??= {kind: 'ok'};
+        const notes = [t('done')];
+        if (this.doneFrame?.truncated) {
+          notes.push(t('truncated'));
+        }
+        this.update({message: notes.join('\n'), finished: true});
+        this.settle?.resolve();
+      },
+      A18: arg => {
+        if ((arg as StatusFrame).stage === 'thinking') {
+          this.update({message: t('thinking')});
+        }
+      },
+    };
+  }
+
+  /** Tells the bridge to stop, if it was ever asked. */
+  private cancelBridge(): void {
+    if (this.conn && this.id && this.askSent) {
+      try {
+        this.conn.send({type: 'cancel', id: this.id});
+      } catch {
+        // The connection is already gone; nothing to tell the bridge.
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ PREP: getting ready
+
   private async answer(
     question: string,
-    layout: LayoutParams,
-    ctx: NoteContext,
-    update: (patch: Partial<AskState>) => void,
+    layoutIn: LayoutParams,
+    ctxIn: NoteContext,
     selection?: Box,
   ): Promise<void> {
-    const pen = await currentPen();
-    const pageBottom = layout.pageHeight - layout.bottomMargin;
-    const newPage = async () => {
-      await insertPageAfter(ctx.filePath, ctx.page + 1, ctx.page);
-      await jumpToPageIn(ctx.filePath, ctx.page + 1);
-      ctx = {...ctx, page: ctx.page + 1};
-      layout = {...layout, y: layout.continueTop ?? layout.bottomMargin};
-    };
+    this.question = question;
+    this.layout = layoutIn;
+    this.note = ctxIn;
+    this.pen = await currentPen();
+    this.checkpoint();
+    const pageBottom = this.layout.pageHeight - this.layout.bottomMargin;
 
     // If there is plainly no room under the selection, start on a fresh page right away.
-    const obviouslyFull = layout.y + layout.charSize > pageBottom;
+    const obviouslyFull = this.layout.y + this.layout.charSize > pageBottom;
     if (obviouslyFull) {
-      await newPage();
+      await this.newPage();
+      this.checkpoint();
     }
     // Read the page (saved first, so the user's latest writing is in it) before anything of ours
     // is drawn; the boxes are worked out while we connect.
     const snapshot =
       selection && !obviouslyFull
-        ? await readPage(ctx.filePath, ctx.page).catch(
-            unlessStalled('readPage', null),
+        ? await readPage(this.note.filePath, this.note.page).catch(e =>
+            this.softFail(e, null),
           )
         : null;
+    this.checkpoint();
     // Wave strokes an earlier question left on this page (docs/spec/wave.md): taken from the same
     // read, before the scan below releases the elements.
     const stale = snapshot ? waveNumsOn(snapshot) : null;
-    trace('ask.start', {d: {page: ctx.page, y: layout.y, full: obviouslyFull}});
+    trace('ask.start', {
+      d: {page: this.note.page, y: this.layout.y, full: obviouslyFull},
+    });
     if (stale) {
-      await sweepLeftovers(ctx.filePath, ctx.page, stale);
+      await sweepLeftovers(this.note.filePath, this.note.page, stale);
+      this.checkpoint();
     }
-    let wave = this.startWave(ctx, layout, pen);
+    this.wave = this.startWave();
     const scan = snapshot
-      ? boxesOf(snapshot, SCAN_BUDGET_MS).catch(
-          unlessStalled('boxesOf', [] as Box[]),
+      ? boxesOf(snapshot, SCAN_BUDGET_MS).catch(e =>
+          this.softFail(e, [] as Box[]),
         )
       : Promise.resolve([] as Box[]);
 
     try {
-      update({message: t('connecting')});
+      this.update({message: t('connecting')});
       const {endpoints} = await loadBridges();
+      this.checkpoint();
       try {
         this.conn = await connectFirst(endpoints);
       } catch {
-        return update({message: t('noBridge'), finished: true, failed: true});
+        this.machine.dispatch('NOBRIDGE', {message: t('noBridge')});
+        return;
       }
-      update({showProgress: this.conn.settings.showProgress});
+      if (this.terminal()) {
+        return;
+      }
+      this.update({showProgress: this.conn.settings.showProgress});
       this.earlyClose = null;
       this.conn.onClose = reason => {
         this.earlyClose = reason; // the question has not been sent yet: converse() starts over
@@ -308,33 +493,32 @@ export class AskFlow {
       );
       this.traceTimer = setInterval(flushTrace, 1500);
       trace('ask.connected', {d: {url: connection.url, mode: connection.mode}});
-      if (this.cancelled) {
-        return;
-      }
       if (selection && !obviouslyFull) {
         const limit = freeLimit(
           await scan,
           selection,
-          {left: layout.x, right: layout.x + layout.width},
-          layout.y,
+          {left: this.layout.x, right: this.layout.x + this.layout.width},
+          this.layout.y,
           pageBottom,
-          layout.charSize * 0.4,
+          this.layout.charSize * 0.4,
         );
-        if (limit - layout.y < layout.charSize) {
+        this.checkpoint();
+        if (limit - this.layout.y < this.layout.charSize) {
           // Existing writing right below the selection: move the wave and the answer to a new page.
-          await wave.stop();
-          await newPage();
-          wave = this.startWave(ctx, layout, pen);
+          await this.wave.stop();
+          await this.newPage();
+          this.checkpoint();
+          this.wave = this.startWave();
         } else {
-          layout = {...layout, startLimit: Math.round(limit)};
+          this.layout = {...this.layout, startLimit: Math.round(limit)};
         }
       }
-      await this.converse(question, layout, ctx, pen, update, wave);
+      await this.converse();
     } catch (e) {
       trace('ask.failed', {err: (e as Error).message});
       throw e;
     } finally {
-      await wave.stop();
+      await this.wave.stop();
       trace('ask.end');
       flushTrace();
       if (this.traceTimer) {
@@ -345,261 +529,284 @@ export class AskFlow {
     }
   }
 
+  /**
+   * Reading the page is nice to have: a failure is an event the table handles (SOFTFAIL: go on
+   * without it). A note app that does not answer at all is not soft: it ends the answer.
+   */
+  private softFail<T>(e: unknown, fallback: T): T {
+    if (e instanceof CallTimeoutError) {
+      throw e;
+    }
+    this.machine.dispatch('SOFTFAIL', e);
+    return fallback;
+  }
+
+  private async newPage(): Promise<void> {
+    await insertPageAfter(
+      this.note.filePath,
+      this.note.page + 1,
+      this.note.page,
+    );
+    await jumpToPageIn(this.note.filePath, this.note.page + 1);
+    this.note = {...this.note, page: this.note.page + 1};
+    this.layout = {
+      ...this.layout,
+      y: this.layout.continueTop ?? this.layout.bottomMargin,
+    };
+  }
+
   /** A wavy line drawn where the answer will appear until its first line arrives. */
-  private startWave(
-    ctx: NoteContext,
-    layout: LayoutParams,
-    pen: Awaited<ReturnType<typeof currentPen>>,
-  ): {stop: () => Promise<void>} {
+  private startWave(): {stop: () => Promise<void>} {
     // The settings come from the bridge, which we are not connected to yet: use the ones seen last.
-    if (this.cancelled || !knownSettings().thinkingAnimation) {
+    if (this.terminal() || !knownSettings().thinkingAnimation) {
       return {stop: async () => {}};
     }
     const drops = new InkDrops(
-      ctx.filePath,
-      ctx.page,
-      layout.x,
-      layout.width,
-      Math.round(layout.y + layout.charSize * 0.8),
-      layout.charSize,
-      pen,
+      this.note.filePath,
+      this.note.page,
+      this.layout.x,
+      this.layout.width,
+      Math.round(this.layout.y + this.layout.charSize * 0.8),
+      this.layout.charSize,
+      this.pen,
     );
     drops.start();
     let stopped: Promise<void> | null = null;
     return {stop: () => (stopped ??= drops.stop())};
   }
 
-  /**
-   * Sends the question and writes lines strictly in order while more keep streaming in.
-   * When the answer reaches the bottom of the page, a new page is inserted right after and
-   * the view turns to it, so the writing carries on without scrolling.
-   */
-  private converse(
-    question: string,
-    layout: LayoutParams,
-    ctx: NoteContext,
-    pen: Awaited<ReturnType<typeof currentPen>>,
-    update: (patch: Partial<AskState>) => void,
-    wave: {stop: () => Promise<void>},
-  ): Promise<void> {
-    const conn = this.conn!;
-    this.id = `${Date.now().toString(36)}-${Math.random()
+  // ------------------------------------------------------------------ STREAM: the answer
+
+  private newId(): string {
+    return `${Date.now().toString(36)}-${Math.random()
       .toString(36)
       .slice(2, 8)}`;
-    let writes = Promise.resolve();
-    let written = 0;
-    let answer = '';
-    let pagesReady = 1;
-    const clearDrops = () => wave.stop();
-    const writeLine = (
-      strokesIn: InkStroke[] | null,
-      text: string,
-      pageOffset: number,
-    ) => {
-      const strokes = strokesIn ?? []; // a fragment may have no glyphs at all
-      writes = writes
-        .then(async () => {
-          await clearDrops();
-          if (this.cancelled) {
-            return;
-          }
-          // The first line past the bottom inserts the next page and turns to it.
-          while (pagesReady <= pageOffset) {
-            await insertPageAfter(
-              ctx.filePath,
-              ctx.page + pagesReady,
-              ctx.page,
-            );
-            await jumpToPageIn(ctx.filePath, ctx.page + pagesReady);
-            pagesReady++;
-          }
-          // A few strokes at a time, so the answer is seen being written, not appearing whole.
-          for (let i = 0; i < strokes.length; i += STROKES_PER_STEP) {
-            if (this.cancelled) {
-              return;
-            }
-            await writeStrokesAt(
-              ctx.filePath,
-              ctx.page + pageOffset,
-              strokes.slice(i, i + STROKES_PER_STEP),
-              pen,
-            );
-          }
-          written++;
-          answer += text;
-          update({message: t('writing', {lines: written}), answer});
-        })
-        .catch(e => {
-          // Could not write (e.g. the note is no longer open): stop here, do not carry on half-way.
-          abort(e as Error);
-          this.cancel();
-        });
-    };
+  }
 
-    let abort: (e: Error) => void = () => {};
-    let finished = false;
-    let nextSeq = 0;
-    let askSent = false;
-    // Reconnection attempts in a row without hearing anything (docs/spec/ask-flow.md, S5).
-    let streak = 0;
-    let recovering = false;
-    let quiet: ReturnType<typeof setTimeout> | null = null;
-    const stopQuiet = () => {
-      if (quiet) {
-        clearTimeout(quiet);
-        quiet = null;
-      }
-    };
+  private sendAsk(c: BridgeConnection): void {
+    c.send({
+      type: 'ask',
+      id: this.id,
+      question: this.question,
+      note: this.note.filePath,
+      lang: questionLang(this.question),
+      layout: this.layout,
+    });
+    this.askSent = true;
+  }
+
+  /**
+   * Sends the question and writes lines strictly in order while more keep streaming in. Resolves
+   * when the machine completes (A17), rejects when it fails or is cancelled.
+   */
+  private converse(): Promise<void> {
+    const conn = this.conn!;
+    this.id = this.newId();
+    this.writes = Promise.resolve();
+    this.nextSeq = 0;
+    this.askSent = false;
+    this.streak = 0;
     return new Promise<void>((resolve, reject) => {
-      abort = reject;
-      this.endQuestion = reject;
-      const fail = (e: Error) => {
-        // Could not go on (bad data, the note moved…): stop, do not carry on half-way.
-        abort(e);
-        this.cancel();
-      };
-      const sendAsk = (c: BridgeConnection) => {
-        c.send({
-          type: 'ask',
-          id: this.id,
-          question,
-          note: ctx.filePath,
-          lang: questionLang(question),
-          layout,
-        });
-        askSent = true;
-      };
-      // The connection carries traffic (frames or keep-alives) as long as it is alive. Silence
-      // means it is dead although the socket looks open: treat it like a drop.
-      const armQuiet = () => {
-        stopQuiet();
-        if (!finished && !this.cancelled) {
-          quiet = setTimeout(() => {
-            trace('ask.quiet', {d: {ms: quietMs}});
-            const dead = this.conn;
-            dead?.close();
-            if (dead === this.conn) {
-              void recover('no traffic');
-            }
-          }, quietMs);
-        }
-      };
-      const attach = (c: BridgeConnection) => {
-        c.onClose = reason => {
-          // The bridge already sent everything (`done`): the rest is writing what we hold. A
-          // dropped connection (e.g. a tunnel reconnecting) must not cut that short. A close
-          // of a connection we already replaced is not news.
-          if (c === this.conn && !finished && !this.cancelled) {
-            void recover(reason);
-          }
-        };
-        c.onBad = reason => fail(new Error(`${t('badFrame')} (${reason})`));
-        c.onMessage = handle;
-      };
-      // The connection dropped before the answer was complete (S5). Up to MAX_RECONNECTS
-      // attempts in a row, each waiting at most for the connection to be made; hearing from the
-      // bridge again resets the count. The bridge keeps numbered frames, so we ask only for the
-      // ones after the last we handled (ADR 0013) — or, if it never got the question, ask again.
-      const recover = async (reason: string) => {
-        if (recovering || finished || this.cancelled) {
-          return;
-        }
-        recovering = true;
-        stopQuiet();
-        try {
-          while (streak < MAX_RECONNECTS) {
-            streak++;
-            update({
-              message: t('reconnecting', {n: streak, max: MAX_RECONNECTS}),
-            });
-            trace('ask.resume', {
-              d: {n: streak, next: nextSeq, reason, askSent},
-            });
-            try {
-              const {endpoints} = await loadBridges();
-              const c = await connectFirst(endpoints);
-              if (finished || this.cancelled) {
-                c.close();
-                return;
-              }
-              const old = this.conn;
-              this.conn = c;
-              old?.close();
-              setTraceSink(events =>
-                c.send({type: 'report', data: {trace: events}}),
-              );
-              attach(c);
-              if (askSent) {
-                c.send({type: 'resume', id: this.id, next: nextSeq});
-              } else {
-                sendAsk(c);
-              }
-              armQuiet();
-              return;
-            } catch {
-              // this attempt failed; the loop decides whether there is another
-            }
-          }
-          reject(new Error(reason));
-        } finally {
-          recovering = false;
-        }
-      };
-      const handle = (m: BridgeMessage) => {
-        // Any frame, a keep-alive included, proves the connection works.
-        streak = 0;
-        armQuiet();
-        if ('id' in m && m.id !== this.id) {
-          return;
-        }
-        // A resumed connection replays from the number we asked for; never handle a frame twice.
-        if ('seq' in m && typeof m.seq === 'number') {
-          if (m.seq < nextSeq) {
-            return;
-          }
-          nextSeq = m.seq + 1;
-        }
-        switch (m.type) {
-          case 'status':
-            if (m.stage === 'thinking') {
-              update({message: t('thinking')});
-            }
-            break;
-          case 'line':
-            writeLine(m.strokes, m.text, m.page);
-            break;
-          case 'done':
-            finished = true;
-            stopQuiet();
-            writes.then(() => {
-              const notes = [t('done')];
-              if (m.truncated) {
-                notes.push(t('truncated'));
-              }
-              update({message: notes.join('\n'), finished: true});
-              resolve();
-            }, reject);
-            break;
-          case 'error':
-            reject(new Error(m.message));
-            break;
-        }
-      };
-      attach(conn);
+      this.settle = {resolve, reject};
+      this.attach(conn);
       if (this.earlyClose) {
         // It dropped between connecting and asking: connect again and ask (nothing was sent yet).
-        void recover(this.earlyClose);
-      } else {
-        try {
-          sendAsk(conn);
-          armQuiet();
-        } catch (e) {
-          void recover((e as Error).message);
-        }
+        this.machine.dispatch('CLOSE', this.earlyClose);
+        return;
       }
+      try {
+        this.sendAsk(conn);
+      } catch (e) {
+        this.machine.dispatch('CLOSE', (e as Error).message);
+        return;
+      }
+      this.machine.dispatch('ASKED'); // PREP → STREAM
+      this.armQuiet();
     }).finally(() => {
-      stopQuiet();
-      return clearDrops();
+      this.stopQuiet();
+      return this.wave.stop();
     });
   }
+
+  private attach(c: BridgeConnection): void {
+    c.onClose = reason => {
+      // A close of a connection we already replaced is not news.
+      if (c === this.conn) {
+        this.machine.dispatch('CLOSE', reason);
+      }
+    };
+    c.onBad = reason => this.machine.dispatch('BAD', reason);
+    c.onMessage = m => this.receive(m);
+  }
+
+  /** Every frame comes in here: shared bookkeeping, then the event the table has a cell for. */
+  private receive(m: BridgeMessage): void {
+    // Any frame, a keep-alive included, proves the connection works.
+    this.streak = 0;
+    this.armQuiet();
+    if ('id' in m && m.id !== this.id) {
+      return;
+    }
+    // A resumed connection replays from the number we asked for; never handle a frame twice.
+    if ('seq' in m && typeof m.seq === 'number') {
+      if (m.seq < this.nextSeq) {
+        this.machine.dispatch(
+          'DONE' === m.type.toUpperCase() ? 'DONE' : 'LATE',
+          m,
+        );
+        return;
+      }
+      this.nextSeq = m.seq + 1;
+    }
+    switch (m.type) {
+      case 'status':
+        this.machine.dispatch('STATUS', m);
+        break;
+      case 'line':
+        this.machine.dispatch('LINE', m);
+        break;
+      case 'done':
+        this.machine.dispatch('DONE', m);
+        break;
+      case 'error':
+        this.machine.dispatch('ERR', new Error(m.message));
+        break;
+    }
+  }
+
+  // No traffic at all from the bridge for quietMs means the connection is dead although the
+  // socket looks open (the bridge sends keep-alives while it works). Only watched while STREAM.
+  private armQuiet(): void {
+    this.stopQuiet();
+    if (this.machine.state === 'STREAM') {
+      this.quiet = setTimeout(() => {
+        trace('ask.quiet', {d: {ms: quietMs}});
+        this.machine.dispatch('QUIET', 'no traffic');
+      }, quietMs);
+    }
+  }
+
+  private stopQuiet(): void {
+    if (this.quiet) {
+      clearTimeout(this.quiet);
+      this.quiet = null;
+    }
+  }
+
+  /**
+   * The connection dropped before the answer was complete (state RESUME). Up to MAX_RECONNECTS
+   * attempts in a row, each waiting at most for the connection to be made; hearing from the bridge
+   * again resets the count. The bridge keeps numbered frames, so we ask only for the ones after
+   * the last we handled (ADR 0013) — or, if it never got the question, ask again.
+   */
+  private async recover(reason: string): Promise<void> {
+    if (this.recovering) {
+      return; // the loop below is already at it
+    }
+    this.recovering = true;
+    this.stopQuiet();
+    const dead = this.conn;
+    if (dead) {
+      dead.onClose = () => {};
+      dead.onMessage = () => {};
+      dead.onBad = () => {};
+      dead.close();
+    }
+    try {
+      while (this.machine.state === 'RESUME') {
+        this.streak++;
+        this.update({
+          message: t('reconnecting', {n: this.streak, max: MAX_RECONNECTS}),
+        });
+        trace('ask.resume', {
+          d: {
+            n: this.streak,
+            next: this.nextSeq,
+            reason,
+            askSent: this.askSent,
+          },
+        });
+        try {
+          const {endpoints} = await loadBridges();
+          const c = await connectFirst(endpoints);
+          if (this.terminal()) {
+            c.close();
+            return;
+          }
+          this.conn = c;
+          setTraceSink(events =>
+            c.send({type: 'report', data: {trace: events}}),
+          );
+          this.attach(c);
+          if (this.askSent) {
+            c.send({type: 'resume', id: this.id, next: this.nextSeq});
+          } else {
+            this.sendAsk(c);
+          }
+          this.machine.dispatch('RESUMED'); // RESUME → STREAM
+          this.armQuiet();
+          return;
+        } catch {
+          this.machine.dispatch(
+            'RESUME_NG',
+            reason,
+            this.streak < MAX_RECONNECTS ? 'more' : 'spent',
+          );
+        }
+      }
+    } finally {
+      this.recovering = false;
+    }
+  }
+
+  // ------------------------------------------------------------------ writing the lines
+
+  /** A15: queue one line; the first line past the bottom inserts the next page and turns to it. */
+  private writeLine(m: LineFrame): void {
+    const strokes = m.strokes ?? []; // a line may have no glyphs at all
+    this.writes = this.writes
+      .then(async () => {
+        await this.wave.stop();
+        if (this.stopWrites || this.terminal()) {
+          return;
+        }
+        while (this.pagesReady <= m.page) {
+          await insertPageAfter(
+            this.note.filePath,
+            this.note.page + this.pagesReady,
+            this.note.page,
+          );
+          await jumpToPageIn(
+            this.note.filePath,
+            this.note.page + this.pagesReady,
+          );
+          this.pagesReady++;
+        }
+        // A few strokes at a time, so the answer is seen being written, not appearing whole.
+        for (let i = 0; i < strokes.length; i += STROKES_PER_STEP) {
+          if (this.stopWrites || this.terminal()) {
+            return;
+          }
+          await writeStrokesAt(
+            this.note.filePath,
+            this.note.page + m.page,
+            strokes.slice(i, i + STROKES_PER_STEP),
+            this.pen,
+          );
+        }
+        this.written++;
+        this.answerText += m.text;
+        this.update({
+          message: t('writing', {lines: this.written}),
+          answer: this.answerText,
+        });
+      })
+      .catch(e => this.fault(e));
+  }
+}
+
+/** What goes in the record about an event that was ignored. */
+function describeEvent(arg: unknown): unknown {
+  const a = arg as {event?: string; state?: string} | undefined;
+  return a?.event ? {event: a.event, state: a.state} : undefined;
 }

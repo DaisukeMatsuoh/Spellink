@@ -10,7 +10,8 @@
     "test": "jest",
     "build": "node scripts/prepare-local-config.js && bash buildPlugin.sh",
     "typecheck": "node scripts/prepare-local-config.js && tsc --noEmit",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "spec": "node scripts/gen-ask-table.js && prettier --write src/askTable.generated.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

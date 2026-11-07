@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http/httptest"
@@ -629,5 +630,188 @@ func TestTheKeepAliveSaysWhereTheAIIs(t *testing.T) {
 	}
 	if !phases["starting"] || !phases["working"] {
 		t.Fatalf("keep-alives should report starting and then working, got %v", phases)
+	}
+}
+
+// terminals counts the frames that end an answer, and says where each one came after the other.
+func terminals(frames []msg) (n int, last string) {
+	for _, m := range frames {
+		if m["type"] == "done" || (m["type"] == "error" && m["seq"] != nil) {
+			n++
+			last = m["type"].(string) + ":" + fmt.Sprint(m["code"])
+		}
+	}
+	return
+}
+
+func TestALateResultAfterACancelIsIgnored(t *testing.T) {
+	release := make(chan struct{})
+	url := startTest(t, func(ctx context.Context, _, _ string, onText func(string)) (string, error) {
+		onText("あ\n")
+		<-release
+		onText("い")      // after the cancel: must never reach the plugin
+		return "あい", nil // …and a successful finish must not add a second ending
+	})
+	c, read := dial(t, url)
+	send(t, c, ask("lc1", "", "q"))
+	var got []msg
+	for m := read(); m["type"] != "line"; m = read() {
+		got = append(got, m)
+	}
+	send(t, c, map[string]any{"type": "cancel", "id": "lc1"})
+	for m := read(); ; m = read() {
+		got = append(got, m)
+		if m["type"] == "error" && m["code"] == "cancelled" {
+			break
+		}
+	}
+	close(release) // the AI now "finishes" anyway
+	time.Sleep(150 * time.Millisecond)
+	// Everything the run kept, from the first frame: it ends once, with the cancel, and nothing
+	// follows that ending.
+	c2, _ := dial(t, url)
+	send(t, c2, map[string]any{"type": "resume", "id": "lc1", "next": 0})
+	var all []msg
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	defer cancel()
+	for {
+		_, b, err := c2.Read(ctx)
+		if err != nil {
+			break
+		}
+		var m msg
+		_ = json.Unmarshal(b, &m)
+		all = append(all, m)
+	}
+	n, last := terminals(all)
+	if n != 1 || last != "error:cancelled" {
+		t.Fatalf("an answer ends exactly once, with the cancel: %d, %s\n%v", n, last, all)
+	}
+	if end := all[len(all)-1]; end["seq"] == nil || end["type"] != "error" {
+		t.Fatalf("no frame may follow the ending: %v", all)
+	}
+}
+
+func TestTheSameIdTwiceAndASecondQuestionAreAnsweredNotStarted(t *testing.T) {
+	release := make(chan struct{})
+	started := 0
+	url := startTest(t, func(ctx context.Context, _, _ string, onText func(string)) (string, error) {
+		started++
+		onText("あ\n")
+		<-release
+		return "あ", nil
+	})
+	defer close(release)
+	c, read := dial(t, url)
+	send(t, c, ask("d1", "", "q"))
+	for m := read(); m["type"] != "line"; m = read() {
+	}
+	send(t, c, ask("d2", "", "another while d1 runs"))
+	var busy msg
+	for m := read(); ; m = read() {
+		if m["type"] == "error" {
+			busy = m
+			break
+		}
+	}
+	if busy["code"] != "busy" || busy["id"] != "d2" {
+		t.Fatalf("a second question on a busy connection gets busy: %v", busy)
+	}
+	c2, read2 := dial(t, url)
+	send(t, c2, ask("d1", "", "same id again"))
+	var dup msg
+	for m := read2(); ; m = read2() {
+		if m["type"] == "error" {
+			dup = m
+			break
+		}
+	}
+	if dup["code"] != "bad_request" || dup["message"] != "duplicate id" {
+		t.Fatalf("a repeated id is refused: %v", dup)
+	}
+	if started != 1 {
+		t.Fatalf("neither refused question may reach the AI, started %d times", started)
+	}
+}
+
+func TestTheNewestConnectionReceivesTheAnswer(t *testing.T) {
+	release := make(chan struct{})
+	url := startTest(t, func(ctx context.Context, _, _ string, onText func(string)) (string, error) {
+		onText("あ\n")
+		<-release
+		onText("い\n")
+		return "あい", nil
+	})
+	c1, read1 := dial(t, url)
+	send(t, c1, ask("n1", "", "q"))
+	for m := read1(); m["type"] != "line"; m = read1() {
+	}
+	c2, read2 := dial(t, url) // a second connection takes the answer over while the first is still open
+	send(t, c2, map[string]any{"type": "resume", "id": "n1", "next": 1})
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	var seqs []float64
+	for m := read2(); ; m = read2() {
+		if m["type"] == "line" || m["type"] == "done" {
+			seqs = append(seqs, m["seq"].(float64))
+		}
+		if m["type"] == "done" {
+			break
+		}
+	}
+	if len(seqs) < 2 || seqs[0] != 1 {
+		t.Fatalf("the new connection gets the rest from frame 1: %v", seqs)
+	}
+	// the first connection is no longer the receiver: nothing more arrives for it
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	for {
+		_, b, err := c1.Read(ctx)
+		if err != nil {
+			break
+		}
+		var m msg
+		_ = json.Unmarshal(b, &m)
+		if m["type"] == "line" || m["type"] == "done" {
+			t.Fatalf("the replaced connection still receives frames: %v", m)
+		}
+	}
+}
+
+func TestFinishedAnswersAreForgottenAfterTheirRetention(t *testing.T) {
+	rs := NewRuns()
+	rs.Retention = 30 * time.Millisecond
+	quiet := log.New(io.Discard, "", 0)
+	first, _ := rs.start("old", func() {}, quiet, 0)
+	first.fire(reProviderFail, failInfo{"claude_failed", "x"}) // ends it: FA or FD
+	if !first.isFinished() {
+		t.Fatal("a failure ends the run")
+	}
+	time.Sleep(60 * time.Millisecond)
+	if _, _ = rs.start("new", func() {}, quiet, 0); rs.get("old") != nil {
+		t.Fatal("a finished run past its retention is forgotten by the next start")
+	}
+	running, _ := rs.start("running", func() {}, quiet, 0)
+	time.Sleep(60 * time.Millisecond)
+	rs.start("another", func() {}, quiet, 0)
+	if rs.get("running") == nil || running.isFinished() {
+		t.Fatal("a run that is still working is never forgotten")
+	}
+}
+
+func TestAKeepAliveIsNotSentToANobody(t *testing.T) {
+	// RD × KEEPALIVE is an ignore cell: a run with nobody attached sends nothing and stays RD.
+	quiet := log.New(io.Discard, "", 0)
+	r := newRun("k", func() {}, rsRa, quiet, time.Hour)
+	r.disconnect(&session{}) // a connection that is not the one receiving: not news
+	if r.state() != rsRa {
+		t.Fatalf("a disconnect from nobody changes nothing, state %s", r.state())
+	}
+	r.mu.Lock()
+	r.m.state = rsRd
+	r.mu.Unlock()
+	r.fire(reKeepalive, nil)
+	if r.state() != rsRd {
+		t.Fatal("a keep-alive does not change the state")
 	}
 }

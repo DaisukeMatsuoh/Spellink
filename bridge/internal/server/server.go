@@ -132,10 +132,11 @@ func (s *session) send(ctx context.Context, v any) {
 	if err != nil {
 		return
 	}
-	s.sendRaw(ctx, b)
+	_ = s.sendRaw(ctx, b)
 }
 
-func (s *session) sendRaw(ctx context.Context, b []byte) {
+// sendRaw writes one frame and reports whether it failed (a run turns that into SEND_FAIL).
+func (s *session) sendRaw(ctx context.Context, b []byte) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	var werr error
@@ -149,6 +150,7 @@ func (s *session) sendRaw(ctx context.Context, b []byte) {
 	if werr != nil && s.writeErr.CompareAndSwap(false, true) {
 		s.deps.Log.Printf("write to %s failed: %v", s.peer, werr)
 	}
+	return werr
 }
 
 func (s *session) fail(ctx context.Context, code, msg string) {
@@ -240,8 +242,9 @@ func (s *session) run(parent context.Context) {
 		case "ask":
 			s.startAsk(ctx, m)
 		case "cancel":
+			// N × CANCEL: an id nobody knows is ignored (docs/spec/bridge-run.md).
 			if r := s.deps.Runs.get(m.ID); r != nil {
-				r.cancel()
+				r.fire(reCancel, nil)
 			}
 		case "resume":
 			s.resume(ctx, m.ID, m.Next)
@@ -276,9 +279,8 @@ func (s *session) detachAll() {
 	runs := s.attached
 	s.attached = nil
 	s.askMu.Unlock()
-	grace := cmp.Or(s.deps.OrphanGrace, defaultOrphanGrace)
 	for _, r := range runs {
-		r.detach(s, grace)
+		r.disconnect(s)
 	}
 }
 
@@ -326,27 +328,28 @@ func (s *session) startAsk(ctx context.Context, m *protocol.ClientMessage) {
 	if m.Lang == "en" {
 		lang = "en"
 	}
+	to := reply{ctx: ctx, s: s, id: id}
 
 	s.askMu.Lock()
-	if s.current != nil {
+	if cur := s.current; cur != nil && !cur.isFinished() {
 		s.askMu.Unlock()
-		s.send(ctx, protocol.Error{Type: "error", ID: id, Code: "busy", Message: "another question is in progress"})
+		cur.fire(reBusy, to) // E3
 		return
 	}
 	// The answer must not die with this connection: a dropped tunnel would otherwise lose it.
-	// It stops on an explicit cancel, or when nobody comes back for it (orphanGrace).
+	// It stops on an explicit cancel, or when nobody comes back for it (the run's grace).
 	askCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	r, ok := s.deps.Runs.start(id, cancel)
-	if !ok {
+	r, existing := s.deps.Runs.start(id, cancel, s.deps.Log, s.deps.OrphanGrace)
+	if existing != nil {
 		s.askMu.Unlock()
 		cancel()
-		s.send(ctx, protocol.Error{Type: "error", ID: id, Code: "bad_request", Message: "duplicate id"})
+		existing.fire(reDup, to) // E2
 		return
 	}
 	s.current = r
 	s.attached = append(s.attached, r)
 	s.askMu.Unlock()
-	r.attach(ctx, s, 0)
+	r.attachFirst(ctx, s)
 
 	// While the answer is being produced, say so: the plugin takes "nothing at all for a while"
 	// to mean the connection is dead.
@@ -358,15 +361,16 @@ func (s *session) startAsk(ctx context.Context, m *protocol.ClientMessage) {
 			case <-askCtx.Done():
 				return
 			case <-t.C:
-				phase, idle := r.vitals()
-				r.notify(protocol.Status{Type: "status", ID: id, Stage: "alive", Phase: phase, IdleMs: idle.Milliseconds()})
+				r.fire(reKeepalive, nil)
 			}
 		}
 	}()
 
 	go func() {
 		defer func() {
-			r.finish()
+			if !r.isFinished() { // an answer must end in a frame, whatever happened
+				r.fire(reProviderFail, failInfo{"claude_failed", "the answer ended without a result"})
+			}
 			cancel()
 			s.askMu.Lock()
 			if s.current == r {
@@ -383,7 +387,10 @@ func (s *session) startAsk(ctx context.Context, m *protocol.ClientMessage) {
 func (s *session) resume(ctx context.Context, id string, next int) {
 	r := s.deps.Runs.get(id)
 	if r == nil {
-		s.send(ctx, protocol.Error{Type: "error", ID: id, Code: "unknown_ask", Message: "this answer is no longer kept"})
+		// N × RESUME (docs/spec/bridge-run.md): the answer is not kept.
+		if ruleN(reResume).action == raE1 {
+			s.send(ctx, protocol.Error{Type: "error", ID: id, Code: "unknown_ask", Message: "this answer is no longer kept"})
+		}
 		return
 	}
 	s.askMu.Lock()
@@ -393,7 +400,7 @@ func (s *session) resume(ctx context.Context, id string, next int) {
 	}
 	s.askMu.Unlock()
 	s.deps.Log.Printf("resume %s from frame %d for %s", id, next, s.peer)
-	r.attach(ctx, s, next)
+	r.fire(reResume, resumeArg{ctx: ctx, s: s, next: next})
 }
 
 func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note string, layout ink.Layout) {
@@ -407,8 +414,8 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 	layout.SpacingHalf = float64(st.HalfWidthSpacing) / 100
 	composer := ink.NewComposer(s.deps.Font, layout, seedFrom(id))
 	emit := func(lines []ink.Line) {
-		for _, l := range lines {
-			r.publish(func(seq int) any { return protocol.Line{Type: "line", ID: id, Seq: seq, Line: l} })
+		if len(lines) > 0 {
+			r.fire(reDelta, lines)
 		}
 	}
 	writing := false
@@ -424,19 +431,12 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 	}
 
 	// The AI must show it is working: the model has to begin soon after the process starts, then
-	// never be silent for long — thinking counts, only nothing at all does — all within a
-	// backstop total (bridge-run spec, R13). Whichever limit hits first stops it.
+	// never be silent for long — thinking counts, only nothing at all does — all within a total
+	// (bridge-run spec: HANG). Whichever limit hits first stops it.
 	first, gap, total := cmp.Or(s.deps.FirstOutput, 10*time.Second), cmp.Or(s.deps.Gap, 10*time.Second), cmp.Or(s.deps.Total, 30*time.Second)
-	var timedOut atomic.Pointer[string]
-	expire := func(why string) func() {
-		return func() {
-			if timedOut.CompareAndSwap(nil, &why) {
-				r.cancel()
-			}
-		}
-	}
-	totalTimer := time.AfterFunc(total, expire(fmt.Sprintf("the AI did not finish within %d s", int(total.Seconds()))))
-	firstTimer := time.AfterFunc(first, expire(fmt.Sprintf("the AI showed no sign of working within %d s", int(first.Seconds()))))
+	hang := func(why string) func() { return func() { r.fire(reHang, why) } }
+	totalTimer := time.AfterFunc(total, hang(fmt.Sprintf("the AI did not finish within %d s", int(total.Seconds()))))
+	firstTimer := time.AfterFunc(first, hang(fmt.Sprintf("the AI showed no sign of working within %d s", int(first.Seconds()))))
 	var gapTimer *time.Timer // from the model's first sign on, replaces firstTimer
 	gapWhy := fmt.Sprintf("the AI stopped working for more than %d s", int(gap.Seconds()))
 	defer func() {
@@ -454,14 +454,14 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 		}
 		if gapTimer == nil {
 			firstTimer.Stop()
-			gapTimer = time.AfterFunc(gap, expire(gapWhy))
+			gapTimer = time.AfterFunc(gap, hang(gapWhy))
 			r.sign("working")
 			s.deps.Log.Printf("ask %s model began after %d ms", id, time.Since(started).Milliseconds())
 			return
 		}
 		r.sign("")
-		if timedOut.Load() == nil {
-			gapTimer.Reset(gap) // a late sign must not revive an answer that was already stopped
+		if !r.isFinished() {
+			gapTimer.Reset(gap) // a late sign must not revive an answer that already ended
 		}
 	}
 
@@ -488,26 +488,19 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 	text, err := ask(askCtx, history.Transcript(earlier, q, lang), claude.SystemPrompt(lang, budget(layout)), onText, onActivity)
 	if err != nil && !composer.Truncated {
 		code, msg := "claude_failed", err.Error()
-		if why := timedOut.Load(); why != nil {
-			code, msg = "provider_timeout", *why
-		} else if askCtx.Err() != nil {
+		if askCtx.Err() != nil {
 			code, msg = "cancelled", "cancelled"
 		}
 		if len(msg) > 500 {
 			msg = msg[:500]
 		}
 		s.deps.Log.Printf("ask %s %s: %s", id, code, msg)
-		r.publish(func(seq int) any {
-			return protocol.Error{Type: "error", ID: id, Seq: &seq, Code: code, Message: msg}
-		})
+		// A run that already ended (cancelled, timed out) ignores this late result: PROVIDER_FAIL
+		// in FA / FD is an "ignore" cell.
+		r.fire(reProviderFail, failInfo{code, msg})
 		return
 	}
 	emit(composer.Finish())
-	if s.deps.HistoryChars > 0 && strings.TrimSpace(text) != "" {
-		if err := s.deps.History.Append(note, history.Turn{At: time.Now().UTC(), Q: q, A: text}); err != nil {
-			s.deps.Log.Printf("history: write: %v", err)
-		}
-	}
 	missing := make([]string, 0, len(composer.Missing))
 	for m := range composer.Missing {
 		missing = append(missing, string(m))
@@ -516,10 +509,19 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 	elapsed := time.Since(started).Milliseconds()
 	s.deps.Log.Printf("ask %s done in %d ms, %d page(s)%s", id, elapsed, composer.Pages,
 		map[bool]string{true: " (truncated)"}[composer.Truncated])
-	r.publish(func(seq int) any {
-		return protocol.Done{
-			Type: "done", ID: id, Seq: seq, Text: text, Missing: missing, Truncated: composer.Truncated,
-			Pages: composer.Pages, ElapsedMs: elapsed,
-		}
-	})
+	info := doneInfo{
+		text: text, missing: missing, truncated: composer.Truncated, pages: composer.Pages, elapsedMs: elapsed,
+		remember: func() {
+			if s.deps.HistoryChars > 0 && strings.TrimSpace(text) != "" {
+				if err := s.deps.History.Append(note, history.Turn{At: time.Now().UTC(), Q: q, A: text}); err != nil {
+					s.deps.Log.Printf("history: write: %v", err)
+				}
+			}
+		},
+	}
+	if composer.Truncated {
+		r.fire(reFull, info)
+	} else {
+		r.fire(reProviderDone, info)
+	}
 }

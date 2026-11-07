@@ -33,7 +33,15 @@
 - 表が「起こりえない」としたことが起きたら、記録（`ask.never`）して何も変えない。テストは、この記録が 1 件でもあれば失敗する（どのシナリオでも）。
 - テスト（`askMachine.test`）が、文書とコードの表の一致、250 マスすべての動作、遷移の形（終了状態から出ない、全状態に到達できる、全状態から終了できる）を確かめる。
 - 手順: ①文書の表（状態・イベント・マス・処理）を直す → ②`npm run spec` → ③足りないハンドラを書く → ④テスト。
-- ブリッジの run（`bridge-run.md`）、波線（`wave.md`）、ページ追加（`page-turn.md`）の表は、まだ文書だけ。同じ方法で、順にコードの表にする。
+- **4 つの表が、コードの表になっている**（2026-11-07）:
+  | 文書 | 生成されるコード | 実行 | テスト |
+  |---|---|---|---|
+  | `ask-flow.md` | `plugin/src/askTable.generated.ts` | `askMachine.ts`（`stm.ts`）、`AskFlow` | `askMachine.test`、`askFlow.test` |
+  | `wave.md` | `plugin/src/waveTable.generated.ts` | `inkDrops.ts`（`stm.ts`） | `specTables.test`、`inkDrops.test`、`waveLeftovers.test` |
+  | `page-turn.md`（挿入・書き込み） | `plugin/src/insertTable.generated.ts`、`writeTable.generated.ts` | `procedure.ts`、`sdk.ts` | `specTables.test`、`sdkSafety.test` |
+  | `bridge-run.md` | `bridge/internal/server/runtable_gen.go` | `runs.go`（`runMachine`）、`server.go` | `runtable_test.go`、`server_test.go` |
+  - 生成は `npm run spec`（`plugin/` で。Go のファイルも作る）。文書とコードの一致は、各言語のテストが、全マスで確かめる。
+  - 「起こりえない」マスに当たると、記録（`*.never`）して何も変えない。端末側のテストは、この記録が 1 件でもあれば失敗する。
 
 ## 運用ルール
 1. 機能追加・不具合修正は、まず該当の表に、新しい状態・イベント・マスを足して、**仕様として確認してから**コードを書く。

@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -49,6 +50,10 @@ type Deps struct {
 	// Runs holds the answers in flight; share one between the direct and the relay entrance so
 	// a plugin can resume on either. Nil gets a private table per Handler/ServeConn call.
 	Runs *Runs
+	// FirstOutput, Gap and Total bound the AI's silence (0: defaults 30 s / 20 s / 120 s).
+	FirstOutput, Gap, Total time.Duration
+	// KeepaliveEvery is how often a running answer tells the plugin it is alive (0: 5 s).
+	KeepaliveEvery time.Duration
 	// OrphanGrace is how long an answer is still produced with no plugin connected (0: default).
 	OrphanGrace time.Duration
 }
@@ -337,6 +342,21 @@ func (s *session) startAsk(ctx context.Context, m *protocol.ClientMessage) {
 	s.askMu.Unlock()
 	r.attach(ctx, s, 0)
 
+	// While the answer is being produced, say so: the plugin takes "nothing at all for a while"
+	// to mean the connection is dead.
+	go func() {
+		t := time.NewTicker(cmp.Or(s.deps.KeepaliveEvery, 5*time.Second))
+		defer t.Stop()
+		for {
+			select {
+			case <-askCtx.Done():
+				return
+			case <-t.C:
+				r.notify(protocol.Status{Type: "status", ID: id, Stage: "alive"})
+			}
+		}
+	}()
+
 	go func() {
 		defer func() {
 			r.finish()
@@ -396,10 +416,38 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 		s.deps.Log.Printf("history: read: %v", err) // the question is still worth answering
 	}
 
+	// The AI must not stay silent: a first output, then pieces without long pauses, all within a
+	// total (bridge-run spec, R13). Whichever limit hits first stops it.
+	first, gap, total := cmp.Or(s.deps.FirstOutput, 30*time.Second), cmp.Or(s.deps.Gap, 20*time.Second), cmp.Or(s.deps.Total, 120*time.Second)
+	var timedOut atomic.Pointer[string]
+	expire := func(why string) func() {
+		return func() {
+			if timedOut.CompareAndSwap(nil, &why) {
+				r.cancel()
+			}
+		}
+	}
+	totalTimer := time.AfterFunc(total, expire(fmt.Sprintf("the AI did not finish within %d s", int(total.Seconds()))))
+	firstTimer := time.AfterFunc(first, expire(fmt.Sprintf("the AI gave no output within %d s", int(first.Seconds()))))
+	var gapTimer *time.Timer // from the first output on, replaces firstTimer
+	gapWhy := fmt.Sprintf("the AI paused for more than %d s", int(gap.Seconds()))
+	defer func() {
+		totalTimer.Stop()
+		firstTimer.Stop()
+		if gapTimer != nil {
+			gapTimer.Stop()
+		}
+	}()
+
 	text, err := s.deps.Ask(askCtx, history.Transcript(earlier, q, lang), claude.SystemPrompt(lang, budget(layout)), func(delta string) {
 		if !writing {
 			writing = true
+			firstTimer.Stop()
+			gapTimer = time.AfterFunc(gap, expire(gapWhy))
+			s.deps.Log.Printf("ask %s first output after %d ms", id, time.Since(started).Milliseconds())
 			r.notify(protocol.Status{Type: "status", ID: id, Stage: "writing"})
+		} else if timedOut.Load() == nil {
+			gapTimer.Reset(gap) // a late piece must not revive an answer that was already stopped
 		}
 		emit(composer.Push(delta))
 		if composer.Truncated {
@@ -408,7 +456,9 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 	})
 	if err != nil && !composer.Truncated {
 		code, msg := "claude_failed", err.Error()
-		if askCtx.Err() != nil {
+		if why := timedOut.Load(); why != nil {
+			code, msg = "provider_timeout", *why
+		} else if askCtx.Err() != nil {
 			code, msg = "cancelled", "cancelled"
 		}
 		if len(msg) > 500 {

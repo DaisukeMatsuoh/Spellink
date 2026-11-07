@@ -83,7 +83,7 @@ type Welcome struct {
 type Status struct {
 	Type  string `json:"type"` // "status"
 	ID    string `json:"id"`
-	Stage string `json:"stage"` // "thinking" | "writing"
+	Stage string `json:"stage"` // "thinking" | "writing" | "alive" (a keep-alive: the answer is still being produced)
 }
 
 type Line struct {
@@ -104,7 +104,7 @@ type Done struct {
 	ElapsedMs int64    `json:"elapsedMs"`
 }
 
-// Error codes: unauthorized, bad_request, busy, claude_failed, cancelled, unknown_ask.
+// Error codes: unauthorized, bad_request, busy, claude_failed, cancelled, unknown_ask, provider_timeout.
 type Error struct {
 	Type    string `json:"type"` // "error"
 	ID      string `json:"id,omitempty"`

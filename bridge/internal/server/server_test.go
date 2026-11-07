@@ -448,3 +448,102 @@ func TestResumingBeforeTheGraceEndsKeepsTheAnswerAlive(t *testing.T) {
 		}
 	}
 }
+
+func timeoutDeps(first, gap, total time.Duration) func(*Deps) {
+	return func(d *Deps) { d.FirstOutput, d.Gap, d.Total = first, gap, total }
+}
+
+// lastFrame reads frames until the answer ends and returns the terminating one.
+func lastFrame(read func() msg) msg {
+	for m := read(); ; m = read() {
+		if m["type"] == "done" || m["type"] == "error" {
+			return m
+		}
+	}
+}
+
+func TestAnAIThatNeverStartsIsStopped(t *testing.T) {
+	url := startTestWith(t, func(ctx context.Context, _, _ string, _ func(string)) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}, timeoutDeps(60*time.Millisecond, time.Second, 5*time.Second))
+	c, read := dial(t, url)
+	send(t, c, ask("t1", "", "q"))
+	m := lastFrame(read)
+	if m["type"] != "error" || m["code"] != "provider_timeout" || !strings.Contains(m["message"].(string), "no output") {
+		t.Fatalf("got %v", m)
+	}
+	if _, ok := m["seq"]; !ok {
+		t.Fatalf("the error ends the answer, so it carries a sequence number: %v", m)
+	}
+}
+
+func TestAnAIThatStopsMidAnswerIsStopped(t *testing.T) {
+	url := startTestWith(t, func(ctx context.Context, _, _ string, onText func(string)) (string, error) {
+		onText("あ")
+		<-ctx.Done()
+		return "", ctx.Err()
+	}, timeoutDeps(time.Second, 60*time.Millisecond, 5*time.Second))
+	c, read := dial(t, url)
+	send(t, c, ask("t2", "", "q"))
+	m := lastFrame(read)
+	if m["code"] != "provider_timeout" || !strings.Contains(m["message"].(string), "paused") {
+		t.Fatalf("got %v", m)
+	}
+}
+
+func TestATotalLimitStopsAnAIThatKeepsTrickling(t *testing.T) {
+	url := startTestWith(t, func(ctx context.Context, _, _ string, onText func(string)) (string, error) {
+		for {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(10 * time.Millisecond):
+				onText("あ") // never silent for long, never finishes
+			}
+		}
+	}, timeoutDeps(time.Second, time.Second, 150*time.Millisecond))
+	c, read := dial(t, url)
+	send(t, c, ask("t3", "", "q"))
+	m := lastFrame(read)
+	if m["code"] != "provider_timeout" || !strings.Contains(m["message"].(string), "finish") {
+		t.Fatalf("got %v", m)
+	}
+}
+
+func TestASteadyAnswerWithinTheLimitsIsNotCut(t *testing.T) {
+	url := startTestWith(t, func(_ context.Context, _, _ string, onText func(string)) (string, error) {
+		for i := 0; i < 5; i++ {
+			time.Sleep(30 * time.Millisecond)
+			onText("あ")
+		}
+		return "あああああ", nil
+	}, timeoutDeps(500*time.Millisecond, 200*time.Millisecond, 2*time.Second))
+	c, read := dial(t, url)
+	send(t, c, ask("t4", "", "q"))
+	if m := lastFrame(read); m["type"] != "done" {
+		t.Fatalf("a normal answer must complete: %v", m)
+	}
+}
+
+func TestARunningAnswerSaysItIsAlive(t *testing.T) {
+	url := startTestWith(t, func(ctx context.Context, _, _ string, _ func(string)) (string, error) {
+		select {
+		case <-time.After(300 * time.Millisecond):
+			return "", nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}, func(d *Deps) { d.KeepaliveEvery = 30 * time.Millisecond })
+	c, read := dial(t, url)
+	send(t, c, ask("t5", "", "q"))
+	alive := 0
+	for m := read(); m["type"] != "done" && m["type"] != "error"; m = read() {
+		if m["type"] == "status" && m["stage"] == "alive" {
+			alive++
+		}
+	}
+	if alive < 3 {
+		t.Fatalf("expected several keep-alives while the AI is silent, got %d", alive)
+	}
+}

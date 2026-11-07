@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Each test gets its own config directory.
@@ -126,5 +127,58 @@ func TestUnsupportedCompactionIsRejectedByName(t *testing.T) {
 		if !ok && !strings.Contains(err.Error(), "config.json") {
 			t.Errorf("the error must name the file: %v", err)
 		}
+	}
+}
+
+func TestProviderTimeoutDefaultsAndOverrides(t *testing.T) {
+	first, gap, total := (&Config{}).ProviderTimeouts()
+	if first != 30*time.Second || gap != 20*time.Second || total != 120*time.Second {
+		t.Fatalf("defaults: %v %v %v", first, gap, total)
+	}
+	first, gap, total = (&Config{Timeouts: &Timeouts{FirstOutputSec: 5, TotalSec: 60}}).ProviderTimeouts()
+	if first != 5*time.Second || gap != 20*time.Second || total != 60*time.Second {
+		t.Fatalf("partial override: %v %v %v", first, gap, total)
+	}
+}
+
+func TestOutOfRangeSettingsAreRejectedByName(t *testing.T) {
+	dir := isolate(t)
+	file := filepath.Join(dir, "spellink-bridge", "config.json")
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for body, want := range map[string]string{
+		`{"token":"x","port":70000}`:                  "port",
+		`{"token":"x","port":-1}`:                     "port",
+		`{"token":"x","timeouts":{"gapSec":-5}}`:      "gapSec",
+		`{"token":"x","timeouts":{"totalSec":99999}}`: "totalSec",
+	} {
+		if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Load()
+		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "config.json") {
+			t.Errorf("%s: want an error naming %q and the file, got %v", body, want, err)
+		}
+	}
+}
+
+func TestTheReportLogIsMovedAsideWhenItGrowsTooLarge(t *testing.T) {
+	isolate(t)
+	file, _ := ReportFile()
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, make([]byte, maxReportBytes+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := AppendReport("peer", map[string]any{"k": "v"}); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(file + ".1"); err != nil || info.Size() <= maxReportBytes {
+		t.Fatalf("the old log must be kept as .1: %v %v", info, err)
+	}
+	if info, err := os.Stat(file); err != nil || info.Size() > 1000 {
+		t.Fatalf("a fresh log must start: %v %v", info, err)
 	}
 }

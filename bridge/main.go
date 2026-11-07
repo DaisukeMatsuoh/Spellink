@@ -138,6 +138,7 @@ func serve() error {
 		return err
 	}
 	logger := log.New(os.Stdout, "", log.LstdFlags)
+	first, gap, total := cfg.ProviderTimeouts()
 	var notes *history.Store
 	if cfg.HistoryChars() > 0 {
 		histDir, err := config.HistoryDir()
@@ -150,6 +151,7 @@ func serve() error {
 	deps := server.Deps{
 		Name: cfg.Name, Version: version, Token: cfg.Token, Font: font,
 		Ask: runner.Ask, History: notes, HistoryChars: cfg.HistoryChars(), Runs: server.NewRuns(),
+		FirstOutput: first, Gap: gap, Total: total,
 		Report: func(peer string, data any) {
 			if err := config.AppendReport(peer, data); err != nil {
 				logger.Printf("report: %v", err)

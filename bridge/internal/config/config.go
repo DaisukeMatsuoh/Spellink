@@ -45,11 +45,46 @@ type Config struct {
 	// Letter spacing in percent (see protocol.Settings); nil means the default.
 	FullWidthSpacing *int `json:"fullWidthSpacing,omitempty"`
 	HalfWidthSpacing *int `json:"halfWidthSpacing,omitempty"`
+	// Timeouts bound how long the AI may stay silent (bridge-run spec, R13). Zero fields use the
+	// defaults.
+	Timeouts *Timeouts `json:"timeouts,omitempty"`
 	// History controls what the bridge remembers of each note's conversation (ADR 0012).
 	History *History `json:"history,omitempty"`
 	// LAN enables direct wss:// at home with a Let's Encrypt certificate for a name that points
 	// at this machine's LAN address (internal/lantls). Empty disables it.
 	LAN *lantls.Config `json:"lan,omitempty"`
+}
+
+// Timeouts are in seconds.
+type Timeouts struct {
+	// FirstOutputSec is how long to wait for the AI's first text (default 30).
+	FirstOutputSec int `json:"firstOutputSec,omitempty"`
+	// GapSec is the longest pause between two pieces of text (default 20).
+	GapSec int `json:"gapSec,omitempty"`
+	// TotalSec bounds the whole answer (default 120).
+	TotalSec int `json:"totalSec,omitempty"`
+}
+
+const (
+	defaultFirstOutputSec = 30
+	defaultGapSec         = 20
+	defaultTotalSec       = 120
+	maxTimeoutSec         = 3600
+)
+
+// ProviderTimeouts returns the effective silence limits.
+func (c *Config) ProviderTimeouts() (first, gap, total time.Duration) {
+	t := c.Timeouts
+	if t == nil {
+		t = &Timeouts{}
+	}
+	pick := func(v, def int) time.Duration {
+		if v == 0 {
+			v = def
+		}
+		return time.Duration(v) * time.Second
+	}
+	return pick(t.FirstOutputSec, defaultFirstOutputSec), pick(t.GapSec, defaultGapSec), pick(t.TotalSec, defaultTotalSec)
 }
 
 // History is how much of a note's earlier conversation is handed to the model with a new
@@ -77,6 +112,16 @@ func (c *Config) HistoryChars() int {
 }
 
 func (c *Config) validate(file string) error {
+	if c.Port < 0 || c.Port > 65535 {
+		return fmt.Errorf("%s: port %d is not a valid port (1-65535)", file, c.Port)
+	}
+	if t := c.Timeouts; t != nil {
+		for name, v := range map[string]int{"firstOutputSec": t.FirstOutputSec, "gapSec": t.GapSec, "totalSec": t.TotalSec} {
+			if v < 0 || v > maxTimeoutSec {
+				return fmt.Errorf("%s: timeouts.%s %d must be between 0 (default) and %d seconds", file, name, v, maxTimeoutSec)
+			}
+		}
+	}
 	if h := c.History; h != nil && h.Compaction != "" && h.Compaction != "none" {
 		return fmt.Errorf("%s: history.compaction %q is not supported yet (only \"none\")", file, h.Compaction)
 	}
@@ -202,6 +247,9 @@ func Load() (*Config, error) {
 	return c, os.WriteFile(file, append(out, '\n'), 0o600)
 }
 
+// maxReportBytes is when reports.jsonl is moved aside to reports.jsonl.1 (one old copy is kept).
+const maxReportBytes = 5 << 20
+
 // AppendReport adds one diagnostics entry (from the plugin) to reports.jsonl.
 func AppendReport(peer string, data any) error {
 	file, err := ReportFile()
@@ -210,6 +258,12 @@ func AppendReport(peer string, data any) error {
 	}
 	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		return err
+	}
+	// The log is written by whoever holds the token: keep it from growing without bound.
+	if info, err := os.Stat(file); err == nil && info.Size() > maxReportBytes {
+		if err := os.Rename(file, file+".1"); err != nil {
+			return err
+		}
 	}
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {

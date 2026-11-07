@@ -60,6 +60,6 @@ PluginManager.registerConfigButton();
 PluginManager.registerConfigButtonListener({
   onClick() {
     show('settings');
-    PluginManager.showPluginView();
+    require('./src/sdk').showView();
   },
 });

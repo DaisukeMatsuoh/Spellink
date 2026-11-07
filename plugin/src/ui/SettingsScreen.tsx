@@ -1,11 +1,10 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {Text, View} from 'react-native';
-import {PluginManager} from 'sn-plugin-lib';
 import {connectFirst, type BridgeConnection} from '../bridgeClient';
 import {loadBridges} from '../bridgeConfig';
 import {t} from '../i18n';
 import type {Settings} from '../protocol';
-import {ensurePermissions} from '../sdk';
+import {closeView, ensurePermissions} from '../sdk';
 import {show} from '../session';
 import {Button, styles} from './common';
 import {Slider} from './Slider';
@@ -57,7 +56,7 @@ export function SettingsScreen() {
     [conn, settings],
   );
   const toggle = useCallback(
-    (key: 'showProgress' | 'lineTilt' | 'thinkingAnimation') => {
+    (key: 'showProgress' | 'lineTilt' | 'thinkingAnimation' | 'busyNotice') => {
       if (settings) {
         change({[key]: !settings[key]});
       }
@@ -99,6 +98,16 @@ export function SettingsScreen() {
         />
       </View>
       <Text style={styles.small}>{t('thinkingAnimationHelp')}</Text>
+      <View style={styles.row}>
+        <Button
+          disabled={!settings}
+          label={`${t('busyNoticeLabel')}: ${
+            settings?.busyNotice ? 'ON' : 'OFF'
+          }`}
+          onPress={() => toggle('busyNotice')}
+        />
+      </View>
+      <Text style={styles.small}>{t('busyNoticeHelp')}</Text>
       <Slider
         label={t('fullWidthSpacing')}
         value={settings?.fullWidthSpacing ?? 100}
@@ -128,10 +137,7 @@ export function SettingsScreen() {
       <Text style={styles.small}>{t('forgetHistoryHelp')}</Text>
       <View style={styles.row}>
         <Button label={t('diagButton')} onPress={() => show('diagnostics')} />
-        <Button
-          label={t('close')}
-          onPress={() => PluginManager.closePluginView()}
-        />
+        <Button label={t('close')} onPress={() => void closeView()} />
       </View>
     </View>
   );

@@ -165,6 +165,7 @@ func serve() error {
 				ShowProgress: cfg.ShowProgress, LineTilt: cfg.LineTiltOn(), TiltDegrees: *cfg.TiltDegrees,
 				ThinkingAnimation: cfg.ThinkingAnimationOn(),
 				FullWidthSpacing:  cfg.FullSpacing(), HalfWidthSpacing: cfg.HalfSpacing(),
+				BusyNotice: cfg.BusyNoticeOn(),
 			}
 		},
 		SetSettings: func(s protocol.Settings) error {
@@ -176,6 +177,7 @@ func serve() error {
 			full := clamp(s.FullWidthSpacing, protocol.SpacingMin, protocol.FullSpacingMax)
 			half := clamp(s.HalfWidthSpacing, protocol.SpacingMin, protocol.HalfSpacingMax)
 			cfg.FullWidthSpacing, cfg.HalfWidthSpacing = &full, &half
+			cfg.BusyNotice = &s.BusyNotice
 			logger.Printf("settings changed: showProgress=%v lineTilt=%v animation=%v spacing=%d/%d",
 				s.ShowProgress, s.LineTilt, s.ThinkingAnimation, full, half)
 			return config.Save(cfg)

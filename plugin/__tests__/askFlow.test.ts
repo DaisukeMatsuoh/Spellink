@@ -1,5 +1,10 @@
 import {fakeNote} from '../__mocks__/sn-plugin-lib';
-import {AskFlow, rememberSettings, type AskState} from '../src/askFlow';
+import {
+  AskFlow,
+  rememberSettings,
+  setQuietMsForTests,
+  type AskState,
+} from '../src/askFlow';
 import type {Box} from '../src/freeSpace';
 import type {BridgeMessage, InkStroke, LayoutParams} from '../src/protocol';
 
@@ -8,6 +13,7 @@ let mockBridgeSettings = {
   showProgress: false,
   lineTilt: true,
   thinkingAnimation: true,
+  busyNotice: true,
 };
 let mockScript: (
   send: (m: BridgeMessage) => void,
@@ -141,6 +147,7 @@ describe('AskFlow', () => {
               showProgress: false,
               lineTilt: true,
               thinkingAnimation: false,
+              busyNotice: true,
             },
             onMessage: () => {},
             onClose: () => {},
@@ -166,6 +173,7 @@ describe('AskFlow', () => {
       showProgress: false,
       lineTilt: true,
       thinkingAnimation: false,
+      busyNotice: true,
     };
     const resumes: {id: string; next: number}[] = [];
     let first: Record<string, unknown>;
@@ -408,6 +416,7 @@ describe('AskFlow', () => {
               showProgress: false,
               lineTilt: true,
               thinkingAnimation: true,
+              busyNotice: true,
             },
             onMessage: () => {},
             onClose: () => {},
@@ -586,6 +595,7 @@ beforeEach(() => {
     showProgress: false,
     lineTilt: true,
     thinkingAnimation: true,
+    busyNotice: true,
   };
   rememberSettings({...mockBridgeSettings});
 });
@@ -628,10 +638,12 @@ describe('the connection drops (e.g. the tunnel reconnects)', () => {
       .spyOn(bridge, 'connectFirst')
       .mockImplementationOnce(async (...a: unknown[]) => {
         conn = (await real(...a)) as never;
-        // queued only now: `real` is the spy itself, so a second queued mock would be taken by it
-        bridge.connectFirst.mockImplementationOnce(async () => {
-          throw new Error('no bridge reachable'); // the one reconnection attempt fails
-        });
+        // queued only now: `real` is the spy itself, so queued mocks would be taken by it
+        for (let i = 0; i < 3; i++) {
+          bridge.connectFirst.mockImplementationOnce(async () => {
+            throw new Error('no bridge reachable'); // every reconnection attempt fails
+          });
+        }
         return conn;
       });
     mockScript = (send, id) => {
@@ -651,7 +663,153 @@ describe('defaults', () => {
       showProgress: false,
       lineTilt: true,
       thinkingAnimation: false,
+      busyNotice: true,
     });
     expect(knownSettings().thinkingAnimation).toBe(false);
+  });
+});
+
+describe('reconnecting (docs/spec/ask-flow.md, S5)', () => {
+  const settings = {
+    showProgress: false,
+    lineTilt: true,
+    thinkingAnimation: false,
+    busyNotice: true,
+  };
+  type Sent = {type: string; id: string; next?: number};
+  /** A connection whose reaction to what it is sent is scripted. */
+  const fake = (
+    react: (m: Sent, deliver: (x: unknown) => void, drop: () => void) => void,
+  ) => {
+    const c: Record<string, unknown> = {
+      name: 'fake',
+      settings,
+      onMessage: () => {},
+      onClose: () => {},
+      onBad: () => {},
+      close: () => {},
+      send: (m: Sent) =>
+        setTimeout(
+          () =>
+            react(
+              m,
+              x => (c.onMessage as (x: unknown) => void)(x),
+              () => (c.onClose as (r: string) => void)('closed (1006)'),
+            ),
+          0,
+        ),
+    };
+    return c;
+  };
+  const queue = (...conns: Record<string, unknown>[]) => {
+    const spy = jest.spyOn(require('../src/bridgeClient'), 'connectFirst');
+    spy.mockClear(); // the spy is shared: count only this test's calls
+    for (const c of conns) {
+      spy.mockImplementationOnce(async () => c as never);
+    }
+    return spy;
+  };
+  const alive = (id: string, seq?: number) => ({
+    type: 'status',
+    id,
+    stage: 'alive',
+    seq,
+  });
+  const states = async (l: LayoutParams = layout) => {
+    const seen: AskState[] = [];
+    await new AskFlow(x => seen.push(x)).runWithQuestion('q', l, ctx);
+    return seen;
+  };
+
+  beforeEach(() => fakeNote.reset());
+  afterEach(() => setQuietMsForTests(15000));
+
+  it('tries three times in a row, shows n/3, and then gives up with the reason', async () => {
+    const spy = queue(fake((m, _d, drop) => m.type === 'ask' && drop()));
+    spy.mockImplementation(async () => {
+      throw new Error('no bridge reachable');
+    });
+    const seen = await states();
+    spy.mockRestore(); // back to the module's own fake for the other tests
+    const msgs = seen.map(s => s.message);
+    expect(msgs.some(m => m.includes('(1/3)'))).toBe(true);
+    expect(msgs.some(m => m.includes('(3/3)'))).toBe(true);
+    expect(msgs.some(m => m.includes('(4/3)'))).toBe(false);
+    expect(seen[seen.length - 1].failed).toBe(true);
+    expect(seen[seen.length - 1].message).toContain('1006');
+  });
+
+  it('hearing from the bridge resets the count: more than three drops are fine if each got through', async () => {
+    const resumeSeen: number[] = [];
+    const part = (n: number) =>
+      fake((m, deliver, drop) => {
+        if (m.type === 'resume') {
+          resumeSeen.push(m.next ?? -1);
+        }
+        deliver(alive(m.id)); // proof of life
+        if (n < 5) {
+          deliver({...line(m.id, n, 0, [stroke()]), seq: n});
+          drop();
+        } else {
+          deliver({...done(m.id), seq: n});
+        }
+      });
+    queue(part(0), part(1), part(2), part(3), part(4), part(5));
+    const seen = await states();
+    expect(seen[seen.length - 1].failed).toBeFalsy();
+    expect(seen[seen.length - 1].finished).toBe(true);
+    expect(resumeSeen).toEqual([1, 2, 3, 4, 5]); // five reconnections, each from the next frame
+    expect(answerStrokes(0)).toHaveLength(5);
+  });
+
+  it('a drop between connecting and asking connects again and sends the question (not a resume)', async () => {
+    const got: string[] = [];
+    const first = fake(() => {});
+    const second = fake((m, deliver) => {
+      got.push(m.type);
+      deliver({...done(m.id), seq: 0});
+    });
+    // the first connection is already closed when the question is about to be sent
+    first.send = () => {
+      throw new Error('socket is closed');
+    };
+    queue(first, second);
+    const seen = await states();
+    expect(got).toEqual(['ask']);
+    expect(seen[seen.length - 1].finished).toBe(true);
+    expect(seen[seen.length - 1].failed).toBeFalsy();
+  });
+
+  it('a connection that goes completely silent is treated as dead and resumed', async () => {
+    setQuietMsForTests(40);
+    const silent = fake(() => {}); // takes the question and says nothing, ever
+    const resumed: Sent[] = [];
+    const second = fake((m, deliver) => {
+      resumed.push(m);
+      deliver({...done(m.id), seq: 0});
+    });
+    queue(silent, second);
+    const seen = await states();
+    expect(resumed.map(m => m.type)).toEqual(['resume']);
+    expect(seen[seen.length - 1].finished).toBe(true);
+  });
+
+  it('keep-alives from a slow AI are not mistaken for a dead connection', async () => {
+    setQuietMsForTests(60);
+    const spy = queue(
+      fake((m, deliver) => {
+        let n = 0;
+        const timer = setInterval(() => {
+          deliver(alive(m.id));
+          if (++n === 8) {
+            clearInterval(timer);
+            deliver({...done(m.id), seq: 0});
+          }
+        }, 20);
+      }),
+    );
+    const seen = await states();
+    expect(seen[seen.length - 1].finished).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(1); // never reconnected
   });
 });

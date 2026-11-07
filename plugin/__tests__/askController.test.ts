@@ -65,3 +65,49 @@ describe('asking about something that is not text', () => {
     expect(fakeNote.dialogs).toHaveLength(1);
   });
 });
+
+describe('pressing the button again while an answer is being written', () => {
+  const {cancelAsk} = require('../src/askController');
+  const {rememberSettings} = require('../src/askFlow');
+  const settings = (busyNotice: boolean) => ({
+    showProgress: false,
+    lineTilt: true,
+    thinkingAnimation: false,
+    busyNotice,
+  });
+  /** Holds the first question inside recognition so it is still running when the button is pressed again. */
+  const holdFirstQuestion = () => {
+    fakeNote.lasso = [textStroke()];
+    const api = require('../__mocks__/sn-plugin-lib').PluginCommAPI;
+    jest
+      .spyOn(api, 'recognizeElements')
+      .mockImplementationOnce(() => new Promise(() => {}));
+  };
+
+  beforeEach(() => fakeNote.reset());
+  afterEach(() => {
+    cancelAsk();
+    rememberSettings(settings(true));
+  });
+
+  it('answers the person with a short notice (the new question is not started)', async () => {
+    rememberSettings(settings(true));
+    holdFirstQuestion();
+    startAsk();
+    await new Promise(r => setTimeout(r, 30));
+    startAsk(); // pressed again
+    await new Promise(r => setTimeout(r, 30));
+    expect(fakeNote.dialogs).toHaveLength(1);
+    expect(fakeNote.dialogs[0]).toContain('回答を書いている');
+  });
+
+  it('stays silent when the notice is turned off in the settings', async () => {
+    rememberSettings(settings(false));
+    holdFirstQuestion();
+    startAsk();
+    await new Promise(r => setTimeout(r, 30));
+    startAsk();
+    await new Promise(r => setTimeout(r, 30));
+    expect(fakeNote.dialogs).toHaveLength(0);
+  });
+});

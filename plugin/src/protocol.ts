@@ -38,6 +38,8 @@ export interface Settings {
   /** Letter spacing in percent of the glyph's own advance (100 = tightest). */
   fullWidthSpacing?: number;
   halfWidthSpacing?: number;
+  /** Tell the user, with a short notice, when they ask again while an answer is being written. */
+  busyNotice: boolean;
 }
 
 export type ClientMessage =
@@ -68,7 +70,7 @@ export type BridgeMessage =
     }
   | {type: 'settings'; settings: Settings}
   | {type: 'historyCleared'; notes: number}
-  | {type: 'status'; id: string; stage: 'thinking' | 'writing'}
+  | {type: 'status'; id: string; stage: 'thinking' | 'writing' | 'alive'}
   | {
       type: 'line';
       id: string;

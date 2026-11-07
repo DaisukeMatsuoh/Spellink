@@ -51,6 +51,8 @@ type Settings struct {
 	// the tightest the glyph data allows.
 	FullWidthSpacing int `json:"fullWidthSpacing"`
 	HalfWidthSpacing int `json:"halfWidthSpacing"`
+	// BusyNotice shows a short notice when the user asks again while an answer is being written.
+	BusyNotice bool `json:"busyNotice"`
 }
 
 // Limits of the spacing sliders (percent).

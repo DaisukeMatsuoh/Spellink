@@ -1,6 +1,8 @@
 import type {BridgeEndpoint} from './bridgeConfig';
+import {MAX_EXTRA_PAGES, parseFrame, parseSettings} from './frames';
 import {NoiseInitiator, pskFromToken, type SecureChannel} from './noise';
 import type {BridgeMessage, ClientMessage, Settings} from './protocol';
+import {trace} from './trace';
 import {utf8Decode, utf8Encode} from './utf8';
 
 const CLIENT = 'spellink-plugin/0.1.0';
@@ -12,20 +14,23 @@ export type ConnectionMode = 'noise' | 'plaintext';
 function decode(
   data: unknown,
   channel: SecureChannel | null,
-): BridgeMessage | null {
+): {value: unknown} | null {
   if (!channel) {
-    return JSON.parse(String(data)) as BridgeMessage;
+    return {value: JSON.parse(String(data))};
   }
   if (!(data instanceof ArrayBuffer)) {
     throw new Error('expected a binary frame');
   }
   const message = channel.open(new Uint8Array(data));
-  return message ? (JSON.parse(utf8Decode(message)) as BridgeMessage) : null;
+  return message ? {value: JSON.parse(utf8Decode(message))} : null;
 }
 
 export class BridgeConnection {
+  /** Only frames that passed `parseFrame` arrive here. */
   onMessage: (m: BridgeMessage) => void = () => {};
   onClose: (reason: string) => void = () => {};
+  /** A frame that is not valid (wrong shape, out of range): by default the connection is dropped. */
+  onBad: (reason: string) => void = () => this.ws.close();
 
   constructor(
     private readonly ws: WebSocket,
@@ -36,16 +41,25 @@ export class BridgeConnection {
     readonly settings: Settings,
   ) {
     ws.onmessage = e => {
-      let m: BridgeMessage | null;
+      let m: {value: unknown} | null;
       try {
         m = decode(e.data, channel);
       } catch {
-        // A frame that fails to decrypt means the session can no longer be trusted.
+        // A frame that fails to decrypt or to parse means the session can no longer be trusted.
         ws.close();
         return;
       }
-      if (m) {
-        this.onMessage(m);
+      if (!m) {
+        return;
+      }
+      const parsed = parseFrame(m.value, MAX_EXTRA_PAGES);
+      if (parsed.kind === 'frame') {
+        this.onMessage(parsed.frame);
+      } else if (parsed.kind === 'ignore') {
+        trace('frame.ignored', {d: {type: parsed.type}}); // e.g. a newer bridge's message
+      } else {
+        trace('frame.bad', {err: parsed.reason});
+        this.onBad(parsed.reason);
       }
     };
     ws.onclose = e => this.onClose(e.reason || `closed (${e.code})`);
@@ -75,6 +89,21 @@ export interface ConnectAttempt {
 }
 
 const isRelay = (url: string) => url.includes('/v1/relay/');
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** What an unexpected first reply says: the bridge's own error message, or a generic one. */
+function replyProblem(reply: unknown): string {
+  if (
+    isRecord(reply) &&
+    reply.type === 'error' &&
+    typeof reply.message === 'string'
+  ) {
+    return reply.message.slice(0, 200);
+  }
+  return 'unexpected reply';
+}
 
 /**
  * Connects to every URL of every paired bridge at once and keeps the first one that completes
@@ -160,28 +189,26 @@ export function connectFirst(
           if (done) {
             return;
           }
-          let m: BridgeMessage | null;
+          let decoded: {value: unknown} | null;
           try {
             if (initiator && !channel) {
               if (!(e.data instanceof ArrayBuffer)) {
                 // The bridge answered in plaintext: it rejected us (e.g. an old bridge).
-                const err = JSON.parse(String(e.data)) as BridgeMessage;
-                return fail(
-                  err.type === 'error' ? err.message : 'unexpected reply',
-                );
+                return fail(replyProblem(JSON.parse(String(e.data))));
               }
               channel = initiator.readMessage2(new Uint8Array(e.data));
               return; // the encrypted welcome follows
             }
-            m = decode(e.data, channel);
+            decoded = decode(e.data, channel);
           } catch (err) {
             return fail((err as Error).message);
           }
-          if (!m) {
+          if (!decoded) {
             return;
           }
-          if (m.type !== 'welcome') {
-            return fail(m.type === 'error' ? m.message : 'unexpected reply');
+          const w = decoded.value;
+          if (!isRecord(w) || w.type !== 'welcome') {
+            return fail(replyProblem(w));
           }
           done = true;
           attempts.push({url, ms: Date.now() - started, mode});
@@ -190,15 +217,19 @@ export function connectFirst(
             return;
           }
           finish(ws);
+          const name =
+            typeof w.bridge === 'string' && w.bridge.length <= 128
+              ? w.bridge
+              : 'bridge';
           resolve(
-            new BridgeConnection(ws, channel, m.bridge, url, mode, {
-              showProgress: m.settings?.showProgress ?? false,
-              lineTilt: m.settings?.lineTilt ?? true,
-              tiltDegrees: m.settings?.tiltDegrees,
-              thinkingAnimation: m.settings?.thinkingAnimation ?? false,
-              fullWidthSpacing: m.settings?.fullWidthSpacing,
-              halfWidthSpacing: m.settings?.halfWidthSpacing,
-            }),
+            new BridgeConnection(
+              ws,
+              channel,
+              name,
+              url,
+              mode,
+              parseSettings(w.settings),
+            ),
           );
         };
         ws.onerror = e => fail((e as {message?: string}).message ?? 'error');

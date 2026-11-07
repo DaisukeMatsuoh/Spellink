@@ -1,6 +1,7 @@
 import {PluginCommAPI} from 'sn-plugin-lib';
 import {connectFirst, type BridgeConnection} from './bridgeClient';
 import {freeLimit, type Box} from './freeSpace';
+import {MAX_EXTRA_PAGES} from './frames';
 import {flushTrace, setTraceSink, trace} from './trace';
 import {InkDrops} from './inkDrops';
 import {loadBridges} from './bridgeConfig';
@@ -45,6 +46,7 @@ let lastSettings: Settings = {
   showProgress: false,
   lineTilt: true,
   thinkingAnimation: false,
+  busyNotice: true,
 };
 export function rememberSettings(s: Settings): void {
   lastSettings = s;
@@ -86,11 +88,19 @@ function unlessStalled<T>(what: string, fallback: T) {
   };
 }
 
-/** How many times one answer may reconnect after the connection dropped before it is given up. */
-const MAX_RESUMES = 3;
+/** Reconnection attempts in a row, without hearing from the bridge, before the answer is given up. */
+const MAX_RECONNECTS = 3;
 
-/** Long answers continue on up to this many freshly inserted pages after the current one. */
-const MAX_EXTRA_PAGES = 2;
+/**
+ * No traffic at all from the bridge for this long means the connection is dead. The bridge sends
+ * a keep-alive about every 5 s while it works, so a slow AI does not look like a dead connection.
+ */
+let quietMs = 15000;
+
+/** Tests shorten the wait. */
+export function setQuietMsForTests(ms: number): void {
+  quietMs = ms;
+}
 
 /** Answers follow the language the question was written in. */
 function questionLang(q: string): Lang {
@@ -132,6 +142,8 @@ export class AskFlow {
   private id = '';
   private traceTimer: ReturnType<typeof setInterval> | null = null;
   private cancelled = false;
+  /** Set when the connection drops after it was made but before the question was sent. */
+  private earlyClose: string | null = null;
 
   constructor(private readonly report: Report) {}
 
@@ -260,6 +272,10 @@ export class AskFlow {
         return update({message: t('noBridge'), finished: true, failed: true});
       }
       update({showProgress: this.conn.settings.showProgress});
+      this.earlyClose = null;
+      this.conn.onClose = reason => {
+        this.earlyClose = reason; // the question has not been sent yet: converse() starts over
+      };
       rememberSettings(this.conn.settings);
       // Everything from here on is also reported to the bridge, so a failure on the device can
       // be read afterwards on the computer.
@@ -400,44 +416,116 @@ export class AskFlow {
     let abort: (e: Error) => void = () => {};
     let finished = false;
     let nextSeq = 0;
-    let resumes = 0;
+    let askSent = false;
+    // Reconnection attempts in a row without hearing anything (docs/spec/ask-flow.md, S5).
+    let streak = 0;
+    let recovering = false;
+    let quiet: ReturnType<typeof setTimeout> | null = null;
+    const stopQuiet = () => {
+      if (quiet) {
+        clearTimeout(quiet);
+        quiet = null;
+      }
+    };
     return new Promise<void>((resolve, reject) => {
       abort = reject;
       this.endQuestion = reject;
+      const fail = (e: Error) => {
+        // Could not go on (bad data, the note moved…): stop, do not carry on half-way.
+        abort(e);
+        this.cancel();
+      };
+      const sendAsk = (c: BridgeConnection) => {
+        c.send({
+          type: 'ask',
+          id: this.id,
+          question,
+          note: ctx.filePath,
+          lang: questionLang(question),
+          layout,
+        });
+        askSent = true;
+      };
+      // The connection carries traffic (frames or keep-alives) as long as it is alive. Silence
+      // means it is dead although the socket looks open: treat it like a drop.
+      const armQuiet = () => {
+        stopQuiet();
+        if (!finished && !this.cancelled) {
+          quiet = setTimeout(() => {
+            trace('ask.quiet', {d: {ms: quietMs}});
+            const dead = this.conn;
+            dead?.close();
+            if (dead === this.conn) {
+              void recover('no traffic');
+            }
+          }, quietMs);
+        }
+      };
       const attach = (c: BridgeConnection) => {
         c.onClose = reason => {
           // The bridge already sent everything (`done`): the rest is writing what we hold. A
-          // dropped connection (e.g. a tunnel reconnecting) must not cut that short.
-          if (!finished && !this.cancelled) {
-            void resume(reason);
+          // dropped connection (e.g. a tunnel reconnecting) must not cut that short. A close
+          // of a connection we already replaced is not news.
+          if (c === this.conn && !finished && !this.cancelled) {
+            void recover(reason);
           }
         };
+        c.onBad = reason => fail(new Error(`${t('badFrame')} (${reason})`));
         c.onMessage = handle;
       };
-      // The connection dropped before the answer was complete. The bridge keeps numbered
-      // frames, so reconnect once and ask for the ones after the last we handled (ADR 0013).
-      const resume = async (reason: string) => {
-        if (++resumes > MAX_RESUMES) {
-          return reject(new Error(reason));
+      // The connection dropped before the answer was complete (S5). Up to MAX_RECONNECTS
+      // attempts in a row, each waiting at most for the connection to be made; hearing from the
+      // bridge again resets the count. The bridge keeps numbered frames, so we ask only for the
+      // ones after the last we handled (ADR 0013) — or, if it never got the question, ask again.
+      const recover = async (reason: string) => {
+        if (recovering || finished || this.cancelled) {
+          return;
         }
-        trace('ask.resume', {d: {next: nextSeq, reason}});
+        recovering = true;
+        stopQuiet();
         try {
-          const {endpoints} = await loadBridges();
-          const c = await connectFirst(endpoints);
-          if (finished || this.cancelled) {
-            return c.close();
+          while (streak < MAX_RECONNECTS) {
+            streak++;
+            update({
+              message: t('reconnecting', {n: streak, max: MAX_RECONNECTS}),
+            });
+            trace('ask.resume', {
+              d: {n: streak, next: nextSeq, reason, askSent},
+            });
+            try {
+              const {endpoints} = await loadBridges();
+              const c = await connectFirst(endpoints);
+              if (finished || this.cancelled) {
+                c.close();
+                return;
+              }
+              const old = this.conn;
+              this.conn = c;
+              old?.close();
+              setTraceSink(events =>
+                c.send({type: 'report', data: {trace: events}}),
+              );
+              attach(c);
+              if (askSent) {
+                c.send({type: 'resume', id: this.id, next: nextSeq});
+              } else {
+                sendAsk(c);
+              }
+              armQuiet();
+              return;
+            } catch {
+              // this attempt failed; the loop decides whether there is another
+            }
           }
-          this.conn = c;
-          setTraceSink(events =>
-            c.send({type: 'report', data: {trace: events}}),
-          );
-          attach(c);
-          c.send({type: 'resume', id: this.id, next: nextSeq});
-        } catch {
           reject(new Error(reason));
+        } finally {
+          recovering = false;
         }
       };
       const handle = (m: BridgeMessage) => {
+        // Any frame, a keep-alive included, proves the connection works.
+        streak = 0;
+        armQuiet();
         if ('id' in m && m.id !== this.id) {
           return;
         }
@@ -459,6 +547,7 @@ export class AskFlow {
             break;
           case 'done':
             finished = true;
+            stopQuiet();
             writes.then(() => {
               const notes = [t('done')];
               if (m.truncated) {
@@ -474,14 +563,20 @@ export class AskFlow {
         }
       };
       attach(conn);
-      conn.send({
-        type: 'ask',
-        id: this.id,
-        question,
-        note: ctx.filePath,
-        lang: questionLang(question),
-        layout,
-      });
-    }).finally(clearDrops);
+      if (this.earlyClose) {
+        // It dropped between connecting and asking: connect again and ask (nothing was sent yet).
+        void recover(this.earlyClose);
+      } else {
+        try {
+          sendAsk(conn);
+          armQuiet();
+        } catch (e) {
+          void recover((e as Error).message);
+        }
+      }
+    }).finally(() => {
+      stopQuiet();
+      return clearDrops();
+    });
   }
 }

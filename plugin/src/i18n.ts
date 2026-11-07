@@ -12,6 +12,12 @@ const STRINGS = {
     noBridge:
       'No bridge reachable. Is spellink-bridge running on a computer on this network?',
     thinking: 'Claude is thinking…',
+    reconnecting: 'Reconnecting ({n}/{max})…',
+    badFrame: 'The bridge sent data that could not be used.',
+    busy: 'An answer is already being written.',
+    busyNoticeLabel: 'Notice when busy',
+    busyNoticeHelp:
+      'If you ask again while an answer is being written, show a short notice (it is otherwise ignored).',
     writing: 'Writing… ({lines} lines)',
     done: 'Done.',
     truncated: 'The answer did not fit on this page and was cut short.',
@@ -60,6 +66,12 @@ const STRINGS = {
     noBridge:
       'ブリッジに接続できません。同じネットワークのPCで spellink-bridge が動いているか確認してください。',
     thinking: 'Claude が考えています…',
+    reconnecting: '再接続中 ({n}/{max})…',
+    badFrame: 'ブリッジから、使えないデータが届きました。',
+    busy: '回答を書いている最中です。',
+    busyNoticeLabel: '回答中の通知',
+    busyNoticeHelp:
+      '回答を書いている最中にもう一度質問を始めたとき、短い通知を出します（オフのときは何も表示せず無視します）。',
     writing: '書いています…（{lines} 行）',
     done: '完了しました。',
     truncated: '回答がこのページに収まらなかったため、途中までになっています。',

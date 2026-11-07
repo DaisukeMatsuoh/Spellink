@@ -171,3 +171,153 @@ describe('a stuck note app is not mistaken for something else', () => {
     await expect(ensureOpen(FILE)).rejects.toBeInstanceOf(CallTimeoutError);
   });
 });
+
+describe('what the note app answers is checked before it is used', () => {
+  const comm = () => require('../__mocks__/sn-plugin-lib').PluginCommAPI;
+  const file = () => require('../__mocks__/sn-plugin-lib').PluginFileAPI;
+  const answer = (result: unknown) => async () => ({success: true, result});
+  const sdk = () => require('../src/sdk');
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each([
+    [
+      'a path that is not a string',
+      () =>
+        jest.spyOn(comm(), 'getCurrentFilePath').mockImplementation(answer(42)),
+      /path/,
+    ],
+    [
+      'an empty path',
+      () =>
+        jest.spyOn(comm(), 'getCurrentFilePath').mockImplementation(answer('')),
+      /path/,
+    ],
+    [
+      'a page number that is a string',
+      () =>
+        jest.spyOn(comm(), 'getCurrentPageNum').mockImplementation(answer('1')),
+      /page number/,
+    ],
+    [
+      'a negative page number',
+      () =>
+        jest.spyOn(comm(), 'getCurrentPageNum').mockImplementation(answer(-1)),
+      /page number/,
+    ],
+    [
+      'a size with a zero side',
+      () =>
+        jest
+          .spyOn(file(), 'getPageSize')
+          .mockImplementation(answer({width: 0, height: 100})),
+      /size/,
+    ],
+    [
+      'a size that is not numbers',
+      () =>
+        jest
+          .spyOn(file(), 'getPageSize')
+          .mockImplementation(answer({width: 'a', height: 'b'})),
+      /size/,
+    ],
+    [
+      'a missing size',
+      () =>
+        jest.spyOn(file(), 'getPageSize').mockImplementation(answer(undefined)),
+      /size/,
+    ],
+  ])('noteContext rejects %s', async (_n, arrange, why) => {
+    arrange();
+    await expect(sdk().noteContext()).rejects.toThrow(why);
+  });
+
+  it('lassoRect rejects a rectangle that is not one', async () => {
+    jest
+      .spyOn(comm(), 'getLassoRect')
+      .mockImplementation(answer({left: 5, top: 5, right: 1, bottom: 9}));
+    await expect(sdk().lassoRect()).rejects.toThrow(/rectangle/);
+    jest
+      .spyOn(comm(), 'getLassoRect')
+      .mockImplementation(answer({left: NaN, top: 0, right: 1, bottom: 1}));
+    await expect(sdk().lassoRect()).rejects.toThrow(/rectangle/);
+  });
+
+  it('recognition must give text or nothing; elements must be a list or nothing', async () => {
+    fakeNote.lasso = [{type: 0} as never];
+    jest
+      .spyOn(comm(), 'recognizeElements')
+      .mockImplementation(answer({text: 'x'}));
+    await expect(sdk().recognizeLasso({width: 10, height: 10})).rejects.toThrow(
+      /not text/,
+    );
+    jest.spyOn(comm(), 'getLassoElements').mockImplementation(answer('nope'));
+    await expect(sdk().recognizeLasso({width: 10, height: 10})).rejects.toThrow(
+      /not a list/,
+    );
+  });
+
+  it('a pen that makes no sense falls back to the default pen, and says so in the record', async () => {
+    jest
+      .spyOn(comm(), 'getPenInfo')
+      .mockImplementation(answer({type: 'x', color: 0, width: -3}));
+    expect(await sdk().currentPen()).toEqual({type: 10, color: 0, width: 200});
+    expect(dumpTrace().some(e => e.k === 'getPenInfo.unexpected')).toBe(true);
+  });
+
+  it('a page read that is not a list is an error, not an empty page', async () => {
+    jest
+      .spyOn(file(), 'getElements')
+      .mockImplementation(answer({not: 'a list'}));
+    await expect(readPage(FILE, 0)).rejects.toThrow(/not a list/);
+  });
+
+  it('isOnPage rejects a page number that is not an integer', async () => {
+    jest.spyOn(comm(), 'getCurrentPageNum').mockImplementation(answer(0.5));
+    await expect(sdk().isOnPage(FILE, 0)).rejects.toThrow(/page number/);
+  });
+});
+
+describe('inserting a page checks the open note first', () => {
+  it('another note being open means nothing is saved and nothing is inserted', async () => {
+    fakeNote.currentFile = '/another.note';
+    await expect(insertPageAfter(FILE, 1, 0)).rejects.toThrow(/no longer open/);
+    expect(fakeNote.saves).toBe(0); // saving would have saved the other note
+    expect(fakeNote.inserted).toEqual([]);
+  });
+});
+
+describe('permissions and screens use the common path', () => {
+  const manager = () => require('../__mocks__/sn-plugin-lib').PluginManager;
+  afterEach(() => jest.restoreAllMocks());
+
+  it('a permission asked for and granted (1) or granted this time (2) is fine; anything else is missing', async () => {
+    const {ensurePermissions} = require('../src/sdk');
+    jest.spyOn(manager(), 'hasPermission').mockResolvedValue(0);
+    const request = jest.spyOn(manager(), 'requestPermission');
+    request
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(0);
+    expect(await ensurePermissions()).toEqual(['plugin.permission.INTERNET']);
+    request.mockResolvedValue('granted' as never); // not a value the SDK documents
+    expect((await ensurePermissions()).length).toBe(3);
+  });
+
+  it('waiting for the person at a permission dialog gets far longer than a quick call', () => {
+    const {timeoutFor} = require('../src/sdk');
+    expect(timeoutFor('requestPermission')).toBeGreaterThan(
+      timeoutFor('saveCurrentNote') * 3,
+    );
+  });
+
+  it('a screen that cannot be opened is recorded, not thrown', async () => {
+    const {showView} = require('../src/sdk');
+    jest.spyOn(manager(), 'showPluginView').mockResolvedValue(false);
+    expect(await showView()).toBe(false);
+    expect(dumpTrace().some(e => e.k === 'showPluginView.refused')).toBe(true);
+    jest
+      .spyOn(manager(), 'showPluginView')
+      .mockRejectedValue(new Error('no host'));
+    expect(await showView()).toBe(false);
+  });
+});

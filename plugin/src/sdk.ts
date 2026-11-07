@@ -12,6 +12,11 @@ import {WAVE_MARKER_PREFIX, boundsOf, type Box} from './freeSpace';
 import {trace} from './trace';
 import type {InkStroke} from './protocol';
 
+const isInt = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isInteger(v);
+const isFiniteNumber = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isFinite(v);
+
 export class SdkError extends Error {
   constructor(
     readonly api: string,
@@ -43,6 +48,9 @@ const SLOW_CALLS = new Set([
   'insertNotePage',
   'recognizeElements',
 ]);
+/** Calls that wait for the person (a permission dialog): far longer, but not forever. */
+const USER_CALLS = new Set(['requestPermission']);
+const USER_TIMEOUT_MS = 300000;
 const QUICK_TIMEOUT_MS = 15000;
 const SLOW_TIMEOUT_MS = 60000;
 let timeoutScale = 1;
@@ -53,6 +61,9 @@ export function setTimeoutScaleForTests(scale: number): void {
 
 /** How long a call may take before it is given up on, in milliseconds. */
 export function timeoutFor(api: string): number {
+  if (USER_CALLS.has(api)) {
+    return USER_TIMEOUT_MS * timeoutScale;
+  }
   return (
     (SLOW_CALLS.has(api) ? SLOW_TIMEOUT_MS : QUICK_TIMEOUT_MS) * timeoutScale
   );
@@ -201,15 +212,50 @@ export const PERMISSIONS = [
 export async function ensurePermissions(): Promise<string[]> {
   const missing: string[] = [];
   for (const p of PERMISSIONS) {
-    if ((await PluginManager.hasPermission(p)) === 1) {
+    const has = await raw('hasPermission', () =>
+      PluginManager.hasPermission(p),
+    );
+    if (has === 1) {
       continue;
     }
-    const r = await PluginManager.requestPermission(p);
+    const r = await raw('requestPermission', () =>
+      PluginManager.requestPermission(p),
+    );
+    // 1 = granted, 2 = granted this time; anything else (including an unexpected value) is a no.
     if (r !== 1 && r !== 2) {
       missing.push(p);
     }
   }
   return missing;
+}
+
+/** Opens the plugin's own screen. A refusal or failure is recorded; nothing else depends on it. */
+export async function showView(): Promise<boolean> {
+  try {
+    const ok = await raw('showPluginView', () =>
+      PluginManager.showPluginView(),
+    );
+    if (ok === false) {
+      trace('showPluginView.refused');
+    }
+    return ok !== false;
+  } catch {
+    return false; // already recorded by raw()
+  }
+}
+
+/** Closes the plugin's own screen. */
+export async function closeView(): Promise<void> {
+  try {
+    const ok = await raw('closePluginView', () =>
+      PluginManager.closePluginView(),
+    );
+    if (ok === false) {
+      trace('closePluginView.refused');
+    }
+  } catch {
+    // already recorded by raw()
+  }
 }
 
 export interface Size {
@@ -223,42 +269,80 @@ export interface NoteContext {
   size: Size;
 }
 
+/** The host answered, but with something we cannot use. Stop rather than guess. */
+function unexpected(api: string, what: string): never {
+  trace(`${api}.unexpected`, {err: what});
+  throw new SdkError(api, undefined, `unexpected answer (${what})`);
+}
+
 export async function noteContext(): Promise<NoteContext> {
   const filePath = await call<string>('getCurrentFilePath', () =>
     PluginCommAPI.getCurrentFilePath(),
   );
+  if (typeof filePath !== 'string' || filePath === '') {
+    unexpected('getCurrentFilePath', 'not a path');
+  }
   const page = await call<number>('getCurrentPageNum', () =>
     PluginCommAPI.getCurrentPageNum(),
   );
+  if (!isInt(page) || page < 0) {
+    unexpected('getCurrentPageNum', 'not a page number');
+  }
   const size = await call<Size>('getPageSize', () =>
     PluginFileAPI.getPageSize(filePath, page),
   );
+  if (
+    !isFiniteNumber(size?.width) ||
+    !isFiniteNumber(size?.height) ||
+    size.width <= 0 ||
+    size.height <= 0
+  ) {
+    unexpected('getPageSize', 'not a size');
+  }
   return {filePath, page, size};
 }
 
-export function lassoRect(): Promise<Rect> {
-  return call<Rect>('getLassoRect', () => PluginCommAPI.getLassoRect());
+export async function lassoRect(): Promise<Rect> {
+  const r = await call<Rect>('getLassoRect', () =>
+    PluginCommAPI.getLassoRect(),
+  );
+  if (
+    !isFiniteNumber(r?.left) ||
+    !isFiniteNumber(r?.top) ||
+    !isFiniteNumber(r?.right) ||
+    !isFiniteNumber(r?.bottom) ||
+    r.right < r.left ||
+    r.bottom < r.top
+  ) {
+    unexpected('getLassoRect', 'not a rectangle');
+  }
+  return r;
 }
 
 const RECOGNIZABLE = new Set([0, 500, 501, 502]); // strokes and text boxes
 
 /** Runs the firmware's handwriting recognition over the lassoed strokes / text boxes. */
 export async function recognizeLasso(size: Size): Promise<string> {
-  const elements =
-    (await call<Element[] | null>('getLassoElements', () =>
-      PluginCommAPI.getLassoElements(),
-    )) ?? [];
+  const found = await call<Element[] | null>('getLassoElements', () =>
+    PluginCommAPI.getLassoElements(),
+  );
+  if (found != null && !Array.isArray(found)) {
+    unexpected('getLassoElements', 'not a list');
+  }
+  const elements = found ?? [];
   try {
     const targets = elements.filter(e => RECOGNIZABLE.has(e.type));
     if (targets.length === 0) {
       return '';
     }
     // The recogniser returns null when it finds no text (a drawing, a music score…).
-    return (
-      (await call<string | null>('recognizeElements', () =>
-        PluginCommAPI.recognizeElements(targets, size),
-      )) ?? ''
+    const text = await call<string | null>('recognizeElements', () =>
+      PluginCommAPI.recognizeElements(targets, size),
     );
+    if (text != null && typeof text !== 'string') {
+      unexpected('recognizeElements', 'not text');
+    }
+    return text ?? '';
   } finally {
     for (const e of elements) {
       PluginCommAPI.recycleElement(e.uuid);
@@ -281,6 +365,14 @@ export async function currentPen(): Promise<PenStyle> {
     const pen = await call<PenStyle>('getPenInfo', () =>
       PluginCommAPI.getPenInfo(),
     );
+    if (
+      !isInt(pen?.type) ||
+      !isInt(pen?.color) ||
+      !isFiniteNumber(pen?.width) ||
+      pen.width <= 0
+    ) {
+      unexpected('getPenInfo', 'not a pen'); // caught below: the default pen is used
+    }
     return {...pen, type: pen.type === PEN_MARKER ? PEN_FINELINER : pen.type};
   } catch (e) {
     if (e instanceof CallTimeoutError) {
@@ -440,6 +532,7 @@ export async function insertPageAfter(
   page: number,
   likePage: number,
 ): Promise<void> {
+  await ensureOpen(filePath); // saving acts on whatever note is open: it must be ours
   await saveNote(); // throws when the save was refused: never insert with unsaved edits
   const before = await totalPages(filePath);
   let template = BLANK_TEMPLATE;
@@ -521,11 +614,13 @@ export async function isOnPage(
   page: number,
 ): Promise<boolean> {
   await ensureOpen(filePath);
-  return (
-    (await call<number>('getCurrentPageNum', () =>
-      PluginCommAPI.getCurrentPageNum(),
-    )) === page
+  const current = await call<number>('getCurrentPageNum', () =>
+    PluginCommAPI.getCurrentPageNum(),
   );
+  if (!isInt(current)) {
+    unexpected('getCurrentPageNum', 'not a page number');
+  }
+  return current === page;
 }
 
 export async function jumpToPageIn(
@@ -587,6 +682,9 @@ export async function readPage(
   const elements = await call<Element[] | null>('getElements', () =>
     PluginFileAPI.getElements(page, filePath),
   );
+  if (elements != null && !Array.isArray(elements)) {
+    unexpected('getElements', 'not a list');
+  }
   if (!elements) {
     trace('getElements.null', {d: {page}}); // an empty page, or an answer we cannot read
   }

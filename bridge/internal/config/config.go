@@ -42,6 +42,8 @@ type Config struct {
 	// ThinkingAnimation defaults to off (it saves and re-reads the note, which can stall the note
 	// app on large notes); nil means "not set".
 	ThinkingAnimation *bool `json:"thinkingAnimation,omitempty"`
+	// BusyNotice defaults to on; nil means "not set".
+	BusyNotice *bool `json:"busyNotice,omitempty"`
 	// Letter spacing in percent (see protocol.Settings); nil means the default.
 	FullWidthSpacing *int `json:"fullWidthSpacing,omitempty"`
 	HalfWidthSpacing *int `json:"halfWidthSpacing,omitempty"`
@@ -157,6 +159,9 @@ func orDefault(v *int, def int) int {
 
 func (c *Config) FullSpacing() int { return orDefault(c.FullWidthSpacing, defaultFullSpacing) }
 func (c *Config) HalfSpacing() int { return orDefault(c.HalfWidthSpacing, defaultHalfSpacing) }
+
+// BusyNoticeOn reports the busy-notice setting, on unless turned off.
+func (c *Config) BusyNoticeOn() bool { return c.BusyNotice == nil || *c.BusyNotice }
 
 // LineTiltOn reports the line-tilt setting, on unless turned off.
 func (c *Config) LineTiltOn() bool { return c.LineTilt == nil || *c.LineTilt }

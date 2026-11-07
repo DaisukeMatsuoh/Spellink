@@ -1,6 +1,5 @@
 import React, {useSyncExternalStore} from 'react';
 import {ScrollView, Text, View} from 'react-native';
-import {PluginManager} from 'sn-plugin-lib';
 import {
   cancelAsk,
   getAskState,
@@ -8,6 +7,7 @@ import {
   subscribeAsk,
 } from '../askController';
 import {t} from '../i18n';
+import {closeView} from '../sdk';
 import {Button, styles} from './common';
 
 /** Progress / error panel for a question being answered in the background. */
@@ -19,7 +19,7 @@ export function AskPanel() {
       cancelAsk();
     }
     panelClosed();
-    PluginManager.closePluginView();
+    void closeView();
   };
 
   return (

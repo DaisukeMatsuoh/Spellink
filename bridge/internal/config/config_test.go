@@ -182,3 +182,10 @@ func TestTheReportLogIsMovedAsideWhenItGrowsTooLarge(t *testing.T) {
 		t.Fatalf("a fresh log must start: %v %v", info, err)
 	}
 }
+
+func TestBusyNoticeIsOnUnlessTurnedOff(t *testing.T) {
+	off := false
+	if !(&Config{}).BusyNoticeOn() || (&Config{BusyNotice: &off}).BusyNoticeOn() {
+		t.Fatal("the busy notice defaults to on and can be turned off")
+	}
+}

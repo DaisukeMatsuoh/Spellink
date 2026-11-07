@@ -1,8 +1,8 @@
 import React, {useCallback, useRef, useState} from 'react';
 import {ScrollView, Text, View} from 'react-native';
-import {PluginManager} from 'sn-plugin-lib';
 import * as diag from '../diagnostics';
 import {t} from '../i18n';
+import {closeView} from '../sdk';
 import {Button, styles} from './common';
 
 /** Developer screen for verifying device behaviour; results can be sent to the bridge's log. */
@@ -90,10 +90,7 @@ export function DiagnosticsScreen() {
           label="Send log to bridge"
           onPress={run('report', l => diag.sendReport(all.current, l))}
         />
-        <Button
-          label={t('close')}
-          onPress={() => PluginManager.closePluginView()}
-        />
+        <Button label={t('close')} onPress={() => void closeView()} />
       </View>
       <ScrollView style={styles.fill}>
         {lines.map((l, i) => (

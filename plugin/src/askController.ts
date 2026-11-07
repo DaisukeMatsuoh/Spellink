@@ -1,9 +1,11 @@
 // Runs "Ask Claude" in the background (the lasso button has no UI of its own) so the answer can
 // be watched appearing on the page. The progress panel opens only when the user turned it on
 // (Settings → show progress) or when something went wrong.
-import {PluginManager} from 'sn-plugin-lib';
-import {AskFlow, type AskState} from './askFlow';
+import {AskFlow, knownSettings, type AskState} from './askFlow';
 import {notify} from './notify';
+import {t} from './i18n';
+import {trace} from './trace';
+import {showView} from './sdk';
 import {show} from './session';
 
 let state: AskState = {message: '', finished: true};
@@ -18,7 +20,7 @@ function openPanel(): void {
   }
   panelOpen = true;
   show('ask');
-  PluginManager.showPluginView();
+  void showView();
 }
 
 function report(next: AskState): void {
@@ -39,7 +41,13 @@ function report(next: AskState): void {
 
 export function startAsk(): void {
   if (flow && !state.finished) {
-    return; // one question at a time
+    // One question at a time. The person pressed the button, so something must answer them
+    // (docs/spec/ask-flow.md, A2); the short notice can be turned off in the settings.
+    trace('ask.pressedWhileBusy');
+    if (knownSettings().busyNotice) {
+      void notify(t('busy'));
+    }
+    return;
   }
   panelOpen = false;
   alerted = false;

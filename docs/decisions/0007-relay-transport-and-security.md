@@ -1,6 +1,6 @@
 # 0007. プラグイン⇔ブリッジ間の通信方式とセキュリティ
 
-- 状態: Proposed（PluginHost が平文の ws:// を許すか、実機で確認後に確定）
+- 状態: Accepted（実機で確認 2026-11-07。平文 hello の削除は残作業）
 - 日付: 2026-10-30
 
 ## 背景
@@ -38,7 +38,7 @@ Wi-Fi 越しのやり取りなので暗号化したい。gRPC や UDP の独自�
   Noise が端末上で動かない場合のみ、LAN の URL に限って平文にフォールバックする。診断画面に方式（noise / plaintext）と乱数源を表示。
 - 確認: Go 同士のテスト（大きなメッセージの分割、誤った鍵の拒否）、TypeScript 実装と Go ブリッジの相互接続（Node 上で実 Claude Code まで）、改ざん検出、代替乱数。
 - 未確認: 端末の JS エンジン（Hermes）上で動くか（BigInt・乱数源）。→ 診断 1 で確認。
-- 状態は Proposed のまま（端末での確認後に Accepted）。平文 hello は端末で Noise が動くと確認できたら削除する。
+- 平文 hello は、端末で Noise が動くと確認できたら削除する（下の 2026-11-07 の追記で確認済み。削除は残作業）。
 
 ## 追記（2026-11-01）: 実機の結果 — 平文は禁止、TLS（公的 CA）が必須
 - Nomad（Chauvet 3.31.45）の PluginHost は **http:// と ws:// をネットワークセキュリティポリシーで拒否**する
@@ -49,3 +49,9 @@ Wi-Fi 越しのやり取りなので暗号化したい。gRPC や UDP の独自�
 - ブリッジは、プロキシ経由（`Cf-Connecting-Ip` / `X-Forwarded-For` ヘッダ付き）の接続には Noise を必須にした。
 - 検証: Cloudflare クイックトンネル（一時 URL）経由で、プラグインの接続コードから Noise 接続 → 回答受信を確認。平文は拒否されることも確認。
 - LAN の ws:// URL はペアリングファイルに残っていても即座に失敗するだけで害はないが、正式版では外す。
+
+## 追記（2026-11-07）: 実機での確認と状態の整理
+- 端末（Nomad）から、Cloudflare の名前付きトンネル（`wss://bridge.spellink.uk/v1`）経由で、Noise の接続が成立し、質問・回答が動いている（トレースの `ask.connected` が `mode: noise`、`url: wss://bridge.spellink.uk/v1`）。端末の JS エンジン（Hermes）上で Noise が動くことも確認できた。
+- トンネルの終端は Cloudflare のエッジ。エッジからブリッジまでは、同じ機械の中の平文 http（Service は HTTP）。Cloudflare に見えるのは暗号文だけ。
+- 残作業: 平文 hello（LAN のみ）の削除、ペアリング情報の端末側保存の決定（公開版に向けて。`docs/notes/progress/README.md`）。
+- 接続の切断への対策は ADR 0013（番号つきフレームでの再開）を参照。

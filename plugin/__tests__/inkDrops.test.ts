@@ -1,5 +1,6 @@
 import {fakeNote} from '../__mocks__/sn-plugin-lib';
 import {InkDrops, wavePiece} from '../src/inkDrops';
+import {dumpTrace, resetTraceForTests} from '../src/trace';
 
 describe('wavePiece', () => {
   it('starts and ends where asked and has matching pressure data', () => {
@@ -26,13 +27,25 @@ describe('InkDrops', () => {
   const pen = {type: 10, color: 0, width: 200};
   const pts = (x: number, y: number, n = 17) =>
     Array.from({length: n}, (_, i) => ({x: x + i, y}));
-  const make = () => new InkDrops('/note.note', 0, 100, 600, 500, 40, pen);
+  const make = () => {
+    const d = new InkDrops('/note.note', 0, 100, 600, 500, 40, pen);
+    d.start(false); // the test drives the ticks
+    return d;
+  };
   const tick = (d: InkDrops) =>
     (d as unknown as {tick(): Promise<void>}).tick();
   const waveOnPage = () =>
     fakeNote.strokes(0).filter(e => e.userData.startsWith('spellink-wave:'));
 
-  beforeEach(() => fakeNote.reset());
+  beforeEach(() => {
+    fakeNote.reset();
+    resetTraceForTests();
+  });
+  afterEach(() => {
+    expect(
+      dumpTrace().filter(e => ['wave.never', 'wave.unknown'].includes(e.k)),
+    ).toEqual([]);
+  });
 
   it('tags every piece with one shared marker', async () => {
     const d = make();

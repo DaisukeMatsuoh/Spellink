@@ -15,7 +15,17 @@ import {dumpTrace, resetTraceForTests} from '../src/trace';
 beforeEach(() => resetTraceForTests());
 afterEach(() => {
   const holes = dumpTrace().filter(e =>
-    ['ask.never', 'ask.unknown', 'ask.notTerminal'].includes(e.k),
+    [
+      'ask.never',
+      'ask.unknown',
+      'ask.notTerminal',
+      'wave.never',
+      'wave.unknown',
+      'insert.never',
+      'insert.unknown',
+      'write.never',
+      'write.unknown',
+    ].includes(e.k),
   );
   expect(holes).toEqual([]);
 });

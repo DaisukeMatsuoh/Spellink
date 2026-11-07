@@ -3,6 +3,9 @@
 // is an error that names the state and the event.
 'use strict';
 
+const ACTION = '[A-Z]\\d+b?';
+const NAME = '[A-Z][A-Z0-9_]*';
+
 const rowsOf = lines =>
   lines
     .filter(l => l.startsWith('|') && !/^\|[-| ]+\|$/.test(l))
@@ -13,7 +16,7 @@ const rowsOf = lines =>
         .map(c => c.trim()),
     );
 
-function sections(md) {
+function sectionsOf(md) {
   const out = {};
   let name = null;
   for (const line of md.split('\n')) {
@@ -47,38 +50,44 @@ function parseCell(text, state, event, known) {
   if ((m = /^×([a-z])$/.exec(text))) {
     return {k: 'ignore', note: m[1]};
   }
-  if ((m = /^×(A\d+b?)$/.exec(text))) {
+  if ((m = /^×([A-Z]\d+b?)$/.exec(text))) {
     return {k: 'ignore', action: action(m[1])};
   }
-  if ((m = /^(A\d+b?)→([A-Z_]+) \[more\] \/ (A\d+b?)→([A-Z_]+) \[spent\]$/.exec(text))) {
+  if ((m = /^([A-Z]\d+b?)→([A-Z][A-Z0-9_]*) \[more\] \/ ([A-Z]\d+b?)→([A-Z][A-Z0-9_]*) \[spent\]$/.exec(text))) {
     return {
       k: 'guard',
       more: {action: action(m[1]), next: target(m[2])},
       spent: {action: action(m[3]), next: target(m[4])},
     };
   }
-  if ((m = /^(A\d+b?)(?:→([A-Z_]+))?$/.exec(text))) {
+  if ((m = /^([A-Z]\d+b?)(?:→([A-Z][A-Z0-9_]*))?$/.exec(text))) {
     return {k: 'do', action: action(m[1]), next: m[2] ? target(m[2]) : state};
   }
   return fail('not a cell in the documented notation');
 }
 
-function parse(md) {
-  const sec = sections(md);
+const DEFAULT_SECTIONS = {
+  states: '状態',
+  events: 'イベント',
+  actions: '処理（Action）',
+  matrix: '状態遷移表',
+};
+
+/** `sections` names the headings of one table's parts; a document may hold several tables. */
+function parse(md, sections = DEFAULT_SECTIONS) {
+  const sec = sectionsOf(md);
   const need = n => {
     if (!sec[n]) throw new Error(`section "## ${n}" not found`);
     return rowsOf(sec[n]);
   };
-  const states = need('状態').slice(1).map(r => r[0]);
-  const events = need('イベント').slice(1).map(r => r[0]);
-  const actions = need('処理（Action）')
-    .slice(1)
-    .map(r => r[0]);
+  const states = need(sections.states).slice(1).map(r => r[0]);
+  const events = need(sections.events).slice(1).map(r => r[0]);
+  const actions = need(sections.actions).slice(1).map(r => r[0]);
   const known = {states, events, actions};
 
   const table = {};
   let header = null;
-  for (const r of need('状態遷移表')) {
+  for (const r of need(sections.matrix)) {
     if (r[0].startsWith('状態＼イベント')) {
       header = r.slice(1);
       for (const e of header) {
@@ -86,7 +95,7 @@ function parse(md) {
       }
       continue;
     }
-    const sm = /^\*\*([A-Z_]+)\*\*$/.exec(r[0]);
+    const sm = /^\*\*([A-Z][A-Z0-9_]*)\*\*$/.exec(r[0]);
     if (!sm || !header) throw new Error(`unexpected matrix row "${r[0]}"`);
     const state = sm[1];
     if (!states.includes(state)) throw new Error(`matrix row "${state}" is not a defined state`);
@@ -104,4 +113,4 @@ function parse(md) {
   return {states, events, actions, table};
 }
 
-module.exports = {parse};
+module.exports = {parse, DEFAULT_SECTIONS};

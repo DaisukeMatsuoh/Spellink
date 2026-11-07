@@ -11,6 +11,12 @@ const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
 /** Draws one piece of wave, as a tick does. */
 const drawOne = (d: InkDrops) =>
   (d as unknown as {tick: () => Promise<void>}).tick();
+/** A wave whose ticks the test drives itself. */
+const fresh = () => {
+  const d = new InkDrops(FILE, 0, 100, 800, 500, 40, PEN);
+  d.start(false);
+  return d;
+};
 const waveCount = (page = 0) =>
   fakeNote.strokes(page).filter(e => e.userData.startsWith('spellink-wave:'))
     .length;
@@ -24,7 +30,7 @@ beforeEach(() => {
 
 describe('wave strokes that cannot be removed are remembered, then swept', () => {
   it('a refused removal leaves the strokes on the page and records where', async () => {
-    const drops = new InkDrops(FILE, 0, 100, 800, 500, 40, PEN);
+    const drops = fresh();
     await drawOne(drops);
     await drawOne(drops);
     expect(waveCount()).toBe(2);
@@ -36,7 +42,7 @@ describe('wave strokes that cannot be removed are remembered, then swept', () =>
   });
 
   it('the next question on that page removes them, and nothing of the user’s', async () => {
-    const drops = new InkDrops(FILE, 0, 100, 800, 500, 40, PEN);
+    const drops = fresh();
     await drawOne(drops);
     fakeNote.refuse.add('deletePageElements');
     await drops.stop();
@@ -55,7 +61,7 @@ describe('wave strokes that cannot be removed are remembered, then swept', () =>
   });
 
   it('a sweep that fails keeps the memory and is recorded; it does not throw', async () => {
-    const drops = new InkDrops(FILE, 0, 100, 800, 500, 40, PEN);
+    const drops = fresh();
     await drawOne(drops);
     fakeNote.refuse.add('deletePageElements');
     await drops.stop();
@@ -66,7 +72,7 @@ describe('wave strokes that cannot be removed are remembered, then swept', () =>
   });
 
   it('a page with nothing left makes the memory of it go away', async () => {
-    const drops = new InkDrops(FILE, 0, 100, 800, 500, 40, PEN);
+    const drops = fresh();
     await drawOne(drops);
     fakeNote.refuse.add('deletePageElements');
     await drops.stop();
@@ -86,38 +92,55 @@ describe('wave strokes that cannot be removed are remembered, then swept', () =>
 
 describe('a failure while drawing removes what was drawn, right away', () => {
   it('the removal succeeds: nothing is left to remember', async () => {
-    const drops = new InkDrops(FILE, 0, 100, 800, 500, 40, PEN);
+    const drops = fresh();
     await drawOne(drops);
-    await (
-      drops as unknown as {giveUp: (e: Error, c: boolean) => Promise<void>}
-    ).giveUp(new Error('boom'), false);
+    fakeNote.refuse.add('insertPageElements'); // the next piece cannot be drawn
+    await drawOne(drops); // FAIL while DRAWING → clear once → STOPPED
     expect(waveCount()).toBe(0);
     expect(leftoversOn(FILE, 0)).toHaveLength(0);
+    expect(dumpTrace().some(e => e.k === 'wave.giveUp')).toBe(true);
   });
 
   it('the removal fails too: it is remembered once, not retried', async () => {
-    const drops = new InkDrops(FILE, 0, 100, 800, 500, 40, PEN);
+    const drops = fresh();
     await drawOne(drops);
+    fakeNote.refuse.add('insertPageElements');
     fakeNote.refuse.add('deletePageElements');
     const deletes = jest.spyOn(
       require('../__mocks__/sn-plugin-lib').PluginCommAPI,
       'deletePageElements',
     );
-    await (
-      drops as unknown as {giveUp: (e: Error, c: boolean) => Promise<void>}
-    ).giveUp(new Error('boom'), false);
+    await drawOne(drops); // FAIL → clear (refused) → FAIL while CLEARING → LEFTOVER
     expect(deletes).toHaveBeenCalledTimes(1);
     expect(leftoversOn(FILE, 0)).toHaveLength(1);
     deletes.mockRestore();
   });
 
+  it('nothing drawn yet: a failure leaves nothing to clear and nothing to remember', async () => {
+    const drops = fresh();
+    fakeNote.refuse.add('insertPageElements');
+    await drawOne(drops); // the first piece fails: FAIL_CLEAN
+    expect(waveCount()).toBe(0);
+    expect(leftoversOn(FILE, 0)).toHaveLength(0);
+    await drops.stop(); // already stopped: nothing more happens
+  });
+
   it('a note that is no longer open is remembered, not written to', async () => {
-    const drops = new InkDrops(FILE, 0, 100, 800, 500, 40, PEN);
+    const drops = fresh();
     await drawOne(drops);
     fakeNote.currentFile = '/another.note';
     await drops.stop();
     expect(fakeNote.strayDeletes).toBe(0);
     expect(leftoversOn(FILE, 0)).toHaveLength(1);
+  });
+
+  it('stopping twice is harmless, and a late tick after stopping draws nothing', async () => {
+    const drops = fresh();
+    await drawOne(drops);
+    await drops.stop();
+    await drops.stop();
+    await drawOne(drops);
+    expect(waveCount()).toBe(0);
   });
 });
 

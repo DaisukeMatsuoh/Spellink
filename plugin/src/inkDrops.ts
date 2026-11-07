@@ -8,11 +8,19 @@
 import {WAVE_MARKER_PREFIX} from './freeSpace';
 import type {Element} from 'sn-plugin-lib';
 import {forgetLeftoversOn, recordLeftover} from './leftovers';
+import {Stm, type Handlers} from './stm';
+import {
+  WAVE_TABLE,
+  type WaveAction,
+  type WaveEvent,
+  type WaveState,
+} from './waveTable.generated';
 import {trace} from './trace';
 import {
   CallTimeoutError,
   deleteElementsAt,
   isOnPage,
+  NoteMovedError,
   readPage,
   releaseElements,
   writeStrokesAt,
@@ -52,13 +60,22 @@ const newMarker = () =>
     .toString(36)
     .slice(2, 12)}`;
 
+type Job = () => Promise<void>;
+
+/**
+ * The thinking wave. What each tick, stop or failure means is the table in docs/spec/wave.md
+ * (src/waveTable.generated.ts, run by src/stm.ts); the work an action starts is kept as a job and
+ * run, one at a time, on the chain — so the table decides and the chain keeps things in order.
+ */
 export class InkDrops {
   private readonly marker = newMarker();
   private cursor: number;
   private drawnPieces = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private chain: Promise<void> = Promise.resolve();
-  private stopped = false;
+  /** The work the last event asked for, run right after it. */
+  private job: Job | null = null;
+  private readonly machine: Stm<WaveState, WaveEvent, WaveAction>;
 
   constructor(
     private readonly filePath: string,
@@ -68,77 +85,140 @@ export class InkDrops {
     private readonly baseline: number,
     private readonly size: number,
     private readonly pen: PenStyle,
+    private readonly intervalMs = INTERVAL_MS,
   ) {
     this.cursor = x;
+    this.machine = new Stm(
+      WAVE_TABLE,
+      this.handlers(),
+      (k, d) => trace(k, {d}),
+      ['LEFTOVER', 'STOPPED'],
+      'OFF',
+      'wave',
+    );
   }
 
-  start(): void {
-    this.timer = setInterval(() => {
-      this.chain = this.chain
-        .then(() => this.tick())
-        .catch(e => this.giveUp(e, false));
-    }, INTERVAL_MS);
+  /** Starts the animation; `autoTick: false` lets a test drive the ticks itself. */
+  start(autoTick = true): void {
+    this.machine.dispatch('START', autoTick);
   }
 
-  /** Stops and removes everything drawn; resolves once the page is clean. */
+  /** Stops and removes everything drawn; resolves once the page is clean (or the rest is remembered). */
   async stop(): Promise<void> {
-    this.stopped = true;
-    if (this.timer) {
-      clearInterval(this.timer);
-    }
+    this.chain = this.chain.then(() => this.event('STOP'));
     await this.chain;
-    await this.clear().catch(e => this.giveUp(e, true));
   }
 
-  /**
-   * Whatever went wrong, the animation just ends; the answer itself does not depend on it. If
-   * strokes were drawn, they are removed right now (once) — unless the failure was the removal
-   * itself. What cannot be removed is remembered (leftovers.ts) and swept by the next question on
-   * that page; it is also recorded, because it is the user's note that stays untidy.
-   */
-  private async giveUp(error: unknown, duringClear: boolean): Promise<void> {
-    trace('wave.giveUp', {
-      err: (error as Error)?.message,
-      d: {drawnPieces: this.drawnPieces, duringClear},
-    });
-    this.stopped = true;
-    if (this.timer) {
-      clearInterval(this.timer);
-    }
-    if (this.drawnPieces === 0) {
-      return;
-    }
-    if (!duringClear) {
+  // ---------------------------------------------------------------- events
+
+  /** One periodic step; what it does depends on the state (table). */
+  private async tick(): Promise<void> {
+    await this.event('TICK');
+  }
+
+  private async event(event: WaveEvent, arg?: unknown): Promise<void> {
+    this.job = null;
+    this.machine.dispatch(event, arg);
+    const job = this.job as Job | null;
+    this.job = null;
+    if (job) {
       try {
-        await this.clear();
-        return;
+        await job();
       } catch (e) {
-        error = e;
+        await this.failed(e);
       }
     }
-    recordLeftover({
-      filePath: this.filePath,
-      page: this.page,
-      marker: this.marker,
-    });
-    trace('wave.leftover', {
-      err: (error as Error)?.message,
-      d: {page: this.page, pieces: this.drawnPieces},
-    });
   }
 
-  private async tick(): Promise<void> {
-    if (this.stopped) {
-      return;
+  /** An error in drawing or clearing becomes the event the table has a cell for. */
+  private async failed(e: unknown): Promise<void> {
+    trace('wave.giveUp', {
+      err: (e as Error)?.message,
+      d: {drawnPieces: this.drawnPieces, state: this.machine.state},
+    });
+    const event: WaveEvent =
+      this.drawnPieces === 0
+        ? 'FAIL_CLEAN'
+        : e instanceof NoteMovedError
+        ? 'MOVED'
+        : 'FAIL';
+    await this.event(event, e);
+  }
+
+  // ---------------------------------------------------------------- actions
+
+  private stopTimer(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
     }
+  }
+
+  private handlers(): Handlers<WaveAction> {
+    return {
+      W1: () => this.stopTimer(),
+      W2: () => {
+        this.job = () => this.drawOne();
+      },
+      W3: () => {
+        this.stopTimer();
+        this.job = async () => {
+          await this.clear();
+          await this.event('CLEARED');
+        };
+      },
+      W4: () => {
+        this.job = async () => {
+          await this.clear();
+          await this.event('WRAPPED');
+        };
+      },
+      W5: () => {}, // the user is on another page: draw nothing until they are back
+      W6: () => {
+        this.stopTimer();
+        this.job = async () => {
+          await this.clear(); // once, right away; a failure here is the FAIL cell of CLEARING
+          await this.event('CLEARED');
+        };
+      },
+      W7: () => {
+        this.stopTimer();
+        recordLeftover({
+          filePath: this.filePath,
+          page: this.page,
+          marker: this.marker,
+        });
+        trace('wave.leftover', {
+          d: {page: this.page, pieces: this.drawnPieces},
+        });
+      },
+      W8: () => {
+        this.drawnPieces = 0;
+      },
+      W9: auto => {
+        if (auto !== false) {
+          this.timer = setInterval(() => {
+            this.chain = this.chain.then(() => this.tick());
+          }, this.intervalMs);
+        }
+      },
+      W10: () => {
+        this.cursor = this.x;
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------- the work
+
+  private async drawOne(): Promise<void> {
     // The user looking at another page: draw nothing until they are back.
     if (!(await isOnPage(this.filePath, this.page))) {
+      this.machine.dispatch('AWAY');
       return;
     }
     const end = this.x + this.width;
     if (this.cursor >= end) {
-      await this.clear();
-      this.cursor = this.x;
+      await this.event('WRAP');
       return;
     }
     const next = Math.min(end, this.cursor + this.size * PIECE_CHARS);

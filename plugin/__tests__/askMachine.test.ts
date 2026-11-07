@@ -13,7 +13,7 @@ import {
 } from '../src/askTable.generated';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const {parse} = require('../scripts/askTable.js');
+const {parse} = require('../scripts/stmTable.js');
 const SPEC = path.join(__dirname, '../../docs/spec/ask-flow.md');
 
 describe('the table in the document is the table in the code', () => {

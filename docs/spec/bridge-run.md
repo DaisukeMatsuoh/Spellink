@@ -30,7 +30,7 @@ run は WebSocket より長く生きる。フレーム（`line` / `done` / 回�
 | B4 | CANCEL: 端末から取消 |
 | B5 | DISCONNECT: 端末の接続が終わった |
 | B6 | RESUME: 端末が `resume{id,next}` を送った |
-| B7 | GRACE: 猶予（既定 90 秒）が切れた |
+| B7 | GRACE: 猶予（既定 30 秒。端末の再接続は最大 3 回×5 秒）が切れた |
 | B8 | DELTA: AI（プロバイダ）から文字が届いた |
 | B9 | PROVIDER-DONE: AI が正常に終わった |
 | B10 | PROVIDER-FAIL: AI が失敗した（起動できない、未ログイン、異常終了、取消、時間切れを含む） |
@@ -39,7 +39,7 @@ run は WebSocket より長く生きる。フレーム（`line` / `done` / 回�
 | B13 | SHUTDOWN: ブリッジの停止・再起動 |
 | B14 | SEND-FAIL: 端末への書き込みに失敗した |
 | B15 | CLEARHISTORY: 端末が会話の削除を頼んだ |
-| B16 | HANG: AI が、最初の出力まで 30 秒、または出力の間 20 秒（設定で変更可）、何も返さない・終わらない（全体の上限は 120 秒） |
+| B16 | HANG: AI が、最初の出力まで 30 秒、または出力の間 20 秒（設定で変更可）、何も返さない・終わらない（全体の上限は 30 秒） |
 | B17 | KEEPALIVE: 生存通知の周期（約 5 秒）。端末が、接続の死活を見分けるため |
 
 ## 状態遷移表
@@ -74,7 +74,7 @@ run は WebSocket より長く生きる。フレーム（`line` / `done` / 回�
 | R10 | 回答を終わらせる `error` フレームを 1 つ作る。記憶には残さない | ✅ | `TestFailedOrCancelled…` |
 | R11 | AI を止め（これ以上は課金しない）、`truncated` つきの `done` を作る | ✅ | `ink` テスト、`server_test` |
 | R12 | 最初の失敗だけログに残す。フレームは保存済みなので、再接続で取り戻せる | ✅ | — |
-| R13 | **AI の無応答の時間切れ**: 最初の出力まで 30 秒、出力の間 20 秒、全体で 120 秒（`config.json` の `timeouts` で変更可）。超えたら AI を止め、`error`（`provider_timeout`、理由つき）を 1 つ作る。最初の出力までの時間を、1 質問ごとにログに記録する | ✅ | `TestAnAIThatNeverStartsIsStopped` ほか 4 件 |
+| R13 | **AI の無応答の時間切れ**: 最初の出力まで 30 秒、出力の間 20 秒、全体で 30 秒（`config.json` の `timeouts` で変更可）。超えたら AI を止め、`error`（`provider_timeout`、理由つき）を 1 つ作る。最初の出力までの時間を、1 質問ごとにログに記録する | ✅ | `TestAnAIThatNeverStartsIsStopped` ほか 4 件 |
 | R15 | 生存通知（`status`、`stage: alive`、保存しない）を約 5 秒おきに送る。端末は、これが来る限り「接続は生きている」と見なせる | ✅ | `TestARunningAnswerSaysItIsAlive` |
 | R14 | run を忘れる | ✅ | ⬜ 掃除のテストなし |
 | E1 | `error` `unknown_ask` を返す | ✅ | `TestResumeOfAnUnknownAnswerSaysSo` |
@@ -99,7 +99,7 @@ run は WebSocket より長く生きる。フレーム（`line` / `done` / 回�
 - 掃除（B12）は次の質問の開始時にだけ走る。保持の上限（16 件）はメモリの上限でもある。
 
 ## この表から出た修正の状況（2026-11-07）
-1. ✅ B16 / R13: AI への問い合わせの時間切れ（最初 30 秒・間 20 秒・全体 120 秒、設定可）と、最初の出力までの時間の記録。
+1. ✅ B16 / R13: AI への問い合わせの時間切れ（最初 30 秒・間 20 秒・全体 30 秒、設定可）と、最初の出力までの時間の記録。
 2. ✅ B17 / R15: 生存通知。
 3. ⬜ B2・B3・B12・RA での B6 のテストを足す。
 4. ⬜ B15 と実行中の run の関係は保留。

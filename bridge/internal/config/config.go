@@ -66,14 +66,15 @@ type Timeouts struct {
 	FirstOutputSec int `json:"firstOutputSec,omitempty"`
 	// GapSec is the longest silence once it works (default 10): nothing at all, thinking included.
 	GapSec int `json:"gapSec,omitempty"`
-	// TotalSec bounds the whole answer, a backstop (default 90).
+	// TotalSec bounds the whole answer (default 30). The silence limits above already stop an AI
+	// that has stopped; this only ends one that keeps trickling. A real answer takes under 10 s.
 	TotalSec int `json:"totalSec,omitempty"`
 }
 
 const (
 	defaultFirstOutputSec = 10
 	defaultGapSec         = 10
-	defaultTotalSec       = 90
+	defaultTotalSec       = 30
 	maxTimeoutSec         = 3600
 )
 

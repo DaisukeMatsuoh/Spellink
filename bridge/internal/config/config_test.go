@@ -132,7 +132,7 @@ func TestUnsupportedCompactionIsRejectedByName(t *testing.T) {
 
 func TestProviderTimeoutDefaultsAndOverrides(t *testing.T) {
 	first, gap, total := (&Config{}).ProviderTimeouts()
-	if first != 10*time.Second || gap != 10*time.Second || total != 90*time.Second {
+	if first != 10*time.Second || gap != 10*time.Second || total != 30*time.Second {
 		t.Fatalf("defaults: %v %v %v", first, gap, total)
 	}
 	first, gap, total = (&Config{Timeouts: &Timeouts{FirstOutputSec: 5, TotalSec: 60}}).ProviderTimeouts()

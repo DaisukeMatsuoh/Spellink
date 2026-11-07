@@ -56,7 +56,7 @@ type Deps struct {
 	// Runs holds the answers in flight; share one between the direct and the relay entrance so
 	// a plugin can resume on either. Nil gets a private table per Handler/ServeConn call.
 	Runs *Runs
-	// FirstOutput, Gap and Total bound the AI's silence (0: defaults 10 s / 10 s / 90 s).
+	// FirstOutput, Gap and Total bound the AI's silence (0: defaults 10 s / 10 s / 30 s).
 	FirstOutput, Gap, Total time.Duration
 	// KeepaliveEvery is how often a running answer tells the plugin it is alive (0: 5 s).
 	KeepaliveEvery time.Duration
@@ -426,7 +426,7 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 	// The AI must show it is working: the model has to begin soon after the process starts, then
 	// never be silent for long — thinking counts, only nothing at all does — all within a
 	// backstop total (bridge-run spec, R13). Whichever limit hits first stops it.
-	first, gap, total := cmp.Or(s.deps.FirstOutput, 10*time.Second), cmp.Or(s.deps.Gap, 10*time.Second), cmp.Or(s.deps.Total, 90*time.Second)
+	first, gap, total := cmp.Or(s.deps.FirstOutput, 10*time.Second), cmp.Or(s.deps.Gap, 10*time.Second), cmp.Or(s.deps.Total, 30*time.Second)
 	var timedOut atomic.Pointer[string]
 	expire := func(why string) func() {
 		return func() {

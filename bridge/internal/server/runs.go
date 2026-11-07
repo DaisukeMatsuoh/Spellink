@@ -123,7 +123,7 @@ const (
 )
 
 // defaultOrphanGrace is how long an answer keeps being produced with no plugin connected.
-const defaultOrphanGrace = 90 * time.Second
+const defaultOrphanGrace = 30 * time.Second
 
 func (rs *Runs) get(id string) *run {
 	rs.mu.Lock()

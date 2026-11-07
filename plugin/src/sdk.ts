@@ -96,55 +96,122 @@ const HEAVY_CALLS = new Set([
   'getElements',
 ]);
 
-/** Tail of the line of requests waiting for the note app (see `native`). */
-let hostQueue: Promise<void> = Promise.resolve();
+/**
+ * How a request may share the note app with others. `exclusive`: it changes the note or depends
+ * on its state (save, insert, delete, jump, create…), so nothing else runs beside it. `shared`:
+ * it only reads data of an element we already hold (a stroke's points), so such reads may run
+ * side by side — but never beside an exclusive request.
+ */
+export type Share = 'exclusive' | 'shared';
+
+/** At most this many shared reads are in flight at once. */
+const MAX_SHARED = 8;
+
+interface Job {
+  api: string;
+  share: Share;
+  start: () => Promise<unknown>;
+  /** The caller stopped waiting: if it has not started yet, it is never sent. */
+  abandoned: boolean;
+  run: (p: Promise<unknown>) => void;
+}
+
+const waiting: Job[] = [];
+let sharedRunning = 0;
+let exclusiveRunning = false;
 
 /** Tests that abandon a call which never settles must not block the next test. */
 export function resetHostQueueForTests(): void {
-  hostQueue = Promise.resolve();
+  waiting.length = 0;
+  sharedRunning = 0;
+  exclusiveRunning = false;
+}
+
+/** Starts whatever may start now, in the order requests were made. */
+function pump(): void {
+  while (waiting.length > 0) {
+    const job = waiting[0];
+    if (job.abandoned) {
+      waiting.shift(); // its caller gave up while it waited: never send it
+      continue;
+    }
+    if (job.share === 'exclusive') {
+      if (sharedRunning > 0 || exclusiveRunning) {
+        return; // wait for everything running to settle; nothing behind it may jump ahead
+      }
+      exclusiveRunning = true;
+    } else {
+      if (exclusiveRunning || sharedRunning >= MAX_SHARED) {
+        return;
+      }
+      sharedRunning++;
+    }
+    waiting.shift();
+    if (HEAVY_CALLS.has(job.api)) {
+      trace(`${job.api}.begin`);
+    }
+    let pending: Promise<unknown>;
+    try {
+      pending = Promise.resolve(job.start());
+    } catch (e) {
+      pending = Promise.reject(e);
+    }
+    // The slot is given back when the host has settled — including a request whose caller gave up.
+    const free = () => {
+      if (job.share === 'exclusive') {
+        exclusiveRunning = false;
+      } else {
+        sharedRunning--;
+      }
+      pump();
+    };
+    pending.then(free, free);
+    job.run(pending);
+  }
 }
 
 /**
- * Every request to the note app goes through here, strictly one at a time, in order. The next
- * request starts only once the previous one has *settled* — including one we gave up waiting
- * for, which may still be running inside the note app. Waiting in line counts towards the
- * timeout, so while the host is stuck requests fail with CallTimeoutError instead of piling up,
- * and a request whose caller already gave up is never sent late.
+ * Every request to the note app goes through here. Requests that change the note or depend on its
+ * state run one at a time, in order; independent reads of elements we hold may run together
+ * (bounded), but never beside one of the others. A request starts only once what must come
+ * before it has *settled* — including one we gave up waiting for, which may still be running
+ * inside the note app. Waiting in line counts towards the timeout, so while the host is stuck
+ * requests fail with CallTimeoutError instead of piling up, and a request whose caller already
+ * gave up is never sent late.
  */
-export function native<T>(api: string, start: () => Promise<T>): Promise<T> {
-  const previous = hostQueue;
-  let release!: () => void;
-  hostQueue = new Promise<void>(r => (release = r));
-  let abandoned = false;
-  const run = (async (): Promise<T> => {
-    await previous;
-    if (abandoned) {
-      release();
-      throw new CallTimeoutError(api);
-    }
-    if (HEAVY_CALLS.has(api)) {
-      trace(`${api}.begin`);
-    }
-    try {
-      const pending = start();
-      pending.then(release, release);
-      return await pending;
-    } catch (e) {
-      release();
-      throw e;
-    }
-  })();
+export function native<T>(
+  api: string,
+  start: () => Promise<T>,
+  share: Share = 'exclusive',
+): Promise<T> {
+  let job!: Job;
+  const run = new Promise<T>((resolve, reject) => {
+    job = {
+      api,
+      share,
+      start,
+      abandoned: false,
+      run: p => (p as Promise<T>).then(resolve, reject),
+    };
+  });
   run.catch(() => {}); // the caller has stopped listening after a timeout
+  waiting.push(job);
+  pump();
   return withTimeout(api, run, () => {
-    abandoned = true;
+    job.abandoned = true;
+    pump(); // a request that was only waiting for this one can now be dropped or started
   });
 }
 
 /** A request whose answer is a plain value (accessors on elements), not an SDK envelope. */
-export async function raw<T>(api: string, start: () => Promise<T>): Promise<T> {
+export async function raw<T>(
+  api: string,
+  start: () => Promise<T>,
+  share: Share = 'exclusive',
+): Promise<T> {
   const started = Date.now();
   try {
-    return await native(api, start);
+    return await native(api, start, share);
   } catch (e) {
     trace(api, {ms: Date.now() - started, err: (e as Error).message});
     throw e;
@@ -726,22 +793,39 @@ export async function boxesOf(
         strokes.push(e);
       }
     }
-    // One stroke at a time, like every other request to the note app (see `native`).
+    // Reading the points of strokes we already hold is independent per stroke: these reads run
+    // together (up to MAX_SHARED at a time, see `native`), in chunks so the time limit is checked.
     let scanned = 0;
-    for (const e of strokes) {
-      if (Date.now() >= deadline) {
-        break;
-      }
-      const n = await raw('points.size', () => e.stroke!.points.size());
-      const b = boundsOf(
-        n > 0
-          ? await raw('points.getRange', () => e.stroke!.points.getRange(0, n))
-          : [],
+    for (
+      let i = 0;
+      i < strokes.length && Date.now() < deadline;
+      i += SCAN_CHUNK
+    ) {
+      const chunk = strokes.slice(i, i + SCAN_CHUNK);
+      const found = await Promise.all(
+        chunk.map(async e => {
+          const n = await raw(
+            'points.size',
+            () => e.stroke!.points.size(),
+            'shared',
+          );
+          return boundsOf(
+            n > 0
+              ? await raw(
+                  'points.getRange',
+                  () => e.stroke!.points.getRange(0, n),
+                  'shared',
+                )
+              : [],
+          );
+        }),
       );
-      if (b) {
-        boxes.push(b);
+      for (const b of found) {
+        if (b) {
+          boxes.push(b);
+        }
       }
-      scanned++;
+      scanned += chunk.length;
     }
     trace('scan', {d: {strokes: strokes.length, scanned}});
   } finally {
@@ -749,6 +833,8 @@ export async function boxesOf(
   }
   return boxes;
 }
+
+const SCAN_CHUNK = 32;
 
 export function releaseElements(elements: Element[]): void {
   for (const e of elements) {

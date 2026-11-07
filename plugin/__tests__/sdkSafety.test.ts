@@ -6,6 +6,7 @@ import {
   boxesOf,
   ensureOpen,
   insertPageAfter,
+  native,
   jumpToPageIn,
   readPage,
   resetHostQueueForTests,
@@ -132,32 +133,113 @@ describe('requests to the note app never overlap', () => {
     expect(started).toEqual(['stuck']);
   });
 
-  it('element scanning reads one stroke at a time', async () => {
+  it('reads of strokes we already hold run together, but never more than 8 at once', async () => {
     let running = 0;
     let peak = 0;
     const tracked = (n: number) => ({
       async size() {
         peak = Math.max(peak, ++running);
-        await pause(1);
+        await pause(2);
         running--;
         return n;
       },
       async getRange() {
         peak = Math.max(peak, ++running);
-        await pause(1);
+        await pause(2);
         running--;
         return Array.from({length: n}, (_, i) => ({x: i, y: i}));
       },
     });
-    const strokes = Array.from({length: 8}, (_, i) => ({
+    const strokes = Array.from({length: 40}, (_, i) => ({
       uuid: `s${i}`,
       type: 0,
       userData: '',
       stroke: {points: tracked(3)},
     }));
     const boxes = await boxesOf(strokes as never, 5000);
-    expect(boxes).toHaveLength(8);
-    expect(peak).toBe(1);
+    expect(boxes).toHaveLength(40);
+    expect(peak).toBeGreaterThan(1); // in parallel…
+    expect(peak).toBeLessThanOrEqual(8); // …within the bound
+  });
+});
+
+describe('what may run beside what (readers and writers)', () => {
+  const job = (
+    name: string,
+    ms: number,
+    log: string[],
+    share: 'exclusive' | 'shared',
+  ) =>
+    native(
+      name,
+      async () => {
+        log.push(`${name}:start`);
+        await pause(ms);
+        log.push(`${name}:end`);
+        return name;
+      },
+      share,
+    );
+
+  it('shared reads overlap each other', async () => {
+    const log: string[] = [];
+    await Promise.all([
+      job('r1', 20, log, 'shared'),
+      job('r2', 20, log, 'shared'),
+    ]);
+    expect(log.slice(0, 2)).toEqual(['r1:start', 'r2:start']); // both began before either ended
+  });
+
+  it('an exclusive request waits for the reads already running, and nothing behind it starts first', async () => {
+    const log: string[] = [];
+    await Promise.all([
+      job('r1', 30, log, 'shared'),
+      job('w', 5, log, 'exclusive'),
+      job('r2', 5, log, 'shared'), // asked after w: must not slip in front of it
+    ]);
+    expect(log).toEqual([
+      'r1:start',
+      'r1:end',
+      'w:start',
+      'w:end',
+      'r2:start',
+      'r2:end',
+    ]);
+  });
+
+  it('a read never runs beside an exclusive request', async () => {
+    const log: string[] = [];
+    await Promise.all([
+      job('w', 20, log, 'exclusive'),
+      job('r', 5, log, 'shared'),
+    ]);
+    expect(log).toEqual(['w:start', 'w:end', 'r:start', 'r:end']);
+  });
+
+  it('a read whose caller gave up while waiting is never sent; one already sent keeps its place until it settles', async () => {
+    setTimeoutScaleForTests(0.004); // 60 ms
+    const started: string[] = [];
+    let finish!: () => void;
+    const stuck = native('createElement', () => {
+      started.push('stuck');
+      return new Promise<string>(r => (finish = () => r('x')));
+    });
+    const read = native(
+      'points.size',
+      async () => {
+        started.push('read');
+        return 1;
+      },
+      'shared',
+    );
+    await expect(stuck).rejects.toBeInstanceOf(CallTimeoutError);
+    await expect(read).rejects.toBeInstanceOf(CallTimeoutError);
+    expect(started).toEqual(['stuck']);
+    finish();
+    await pause(5);
+    setTimeoutScaleForTests(1);
+    expect(await native('points.size', async () => 7, 'shared')).toBe(7);
+    expect(started).toEqual(['stuck']);
   });
 });
 

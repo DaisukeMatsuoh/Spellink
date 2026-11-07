@@ -6,8 +6,11 @@
 // elements with this marker, delete them" — nothing is inferred from positions or numbers, so
 // nothing else can be matched.
 import {WAVE_MARKER_PREFIX} from './freeSpace';
+import type {Element} from 'sn-plugin-lib';
+import {forgetLeftoversOn, recordLeftover} from './leftovers';
 import {trace} from './trace';
 import {
+  CallTimeoutError,
   deleteElementsAt,
   isOnPage,
   readPage,
@@ -73,7 +76,7 @@ export class InkDrops {
     this.timer = setInterval(() => {
       this.chain = this.chain
         .then(() => this.tick())
-        .catch(e => this.giveUp(e));
+        .catch(e => this.giveUp(e, false));
     }, INTERVAL_MS);
   }
 
@@ -84,22 +87,44 @@ export class InkDrops {
       clearInterval(this.timer);
     }
     await this.chain;
-    await this.clear().catch(e => this.giveUp(e));
+    await this.clear().catch(e => this.giveUp(e, true));
   }
 
   /**
-   * Whatever went wrong, the animation just ends; the answer itself does not depend on it. The
-   * error is recorded: if it was the removal that failed, strokes of the wave are left on the page.
+   * Whatever went wrong, the animation just ends; the answer itself does not depend on it. If
+   * strokes were drawn, they are removed right now (once) — unless the failure was the removal
+   * itself. What cannot be removed is remembered (leftovers.ts) and swept by the next question on
+   * that page; it is also recorded, because it is the user's note that stays untidy.
    */
-  private giveUp(error: unknown): void {
+  private async giveUp(error: unknown, duringClear: boolean): Promise<void> {
     trace('wave.giveUp', {
       err: (error as Error)?.message,
-      d: {drawnPieces: this.drawnPieces},
+      d: {drawnPieces: this.drawnPieces, duringClear},
     });
     this.stopped = true;
     if (this.timer) {
       clearInterval(this.timer);
     }
+    if (this.drawnPieces === 0) {
+      return;
+    }
+    if (!duringClear) {
+      try {
+        await this.clear();
+        return;
+      } catch (e) {
+        error = e;
+      }
+    }
+    recordLeftover({
+      filePath: this.filePath,
+      page: this.page,
+      marker: this.marker,
+    });
+    trace('wave.leftover', {
+      err: (error as Error)?.message,
+      d: {page: this.page, pieces: this.drawnPieces},
+    });
   }
 
   private async tick(): Promise<void> {
@@ -147,7 +172,48 @@ export class InkDrops {
       .map(e => e.numInPage)
       .sort((a, b) => b - a);
     releaseElements(elements);
-    this.drawnPieces = 0;
     await deleteElementsAt(this.filePath, this.page, nums);
+    // Only now is the page clean; a failure above leaves the count, so the leftovers are known.
+    this.drawnPieces = 0;
   }
+}
+
+/**
+ * Numbers of the wave strokes on a page just read, whichever question drew them. The prefix is
+ * ours alone (a person's handwriting never carries it), so this is an identity, not a guess.
+ */
+export function waveNumsOn(elements: Element[]): number[] {
+  return elements
+    .filter(
+      e =>
+        typeof e.userData === 'string' &&
+        e.userData.startsWith(WAVE_MARKER_PREFIX),
+    )
+    .map(e => e.numInPage)
+    .sort((a, b) => b - a);
+}
+
+/**
+ * Start-of-question sweep (docs/spec/wave.md): wave strokes left on this page by an earlier
+ * question are removed; the memory of them is dropped once the page is clean. Only this page is
+ * looked at. A failure is recorded and does not stop the question (a stuck note app does).
+ */
+export async function sweepLeftovers(
+  filePath: string,
+  page: number,
+  stale: number[],
+): Promise<void> {
+  if (stale.length > 0) {
+    try {
+      await deleteElementsAt(filePath, page, stale);
+      trace('wave.swept', {d: {page, count: stale.length}});
+    } catch (e) {
+      if (e instanceof CallTimeoutError) {
+        throw e;
+      }
+      trace('wave.sweepFailed', {err: (e as Error).message});
+      return; // still there: keep remembering
+    }
+  }
+  forgetLeftoversOn(filePath, page); // clean now, or already gone
 }

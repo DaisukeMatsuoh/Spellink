@@ -3,7 +3,7 @@ import {connectFirst, type BridgeConnection} from './bridgeClient';
 import {freeLimit, type Box} from './freeSpace';
 import {MAX_EXTRA_PAGES} from './frames';
 import {flushTrace, setTraceSink, trace} from './trace';
-import {InkDrops} from './inkDrops';
+import {InkDrops, sweepLeftovers, waveNumsOn} from './inkDrops';
 import {loadBridges} from './bridgeConfig';
 import {t} from './i18n';
 import type {
@@ -193,7 +193,14 @@ export class AskFlow {
         PluginCommAPI.setLassoBoxState(LASSO_REMOVE),
       );
 
-      await this.answer(question, answerLayout(ctx.size, rect), ctx, update);
+      // The selection is where the answer starts and what it must not run over: without it the
+      // page is never read and existing writing below would be written over.
+      await this.answer(question, answerLayout(ctx.size, rect), ctx, update, {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+      });
     } catch (e) {
       update({
         message: describeFailure(e),
@@ -255,7 +262,13 @@ export class AskFlow {
             unlessStalled('readPage', null),
           )
         : null;
+    // Wave strokes an earlier question left on this page (docs/spec/wave.md): taken from the same
+    // read, before the scan below releases the elements.
+    const stale = snapshot ? waveNumsOn(snapshot) : null;
     trace('ask.start', {d: {page: ctx.page, y: layout.y, full: obviouslyFull}});
+    if (stale) {
+      await sweepLeftovers(ctx.filePath, ctx.page, stale);
+    }
     let wave = this.startWave(ctx, layout, pen);
     const scan = snapshot
       ? boxesOf(snapshot, SCAN_BUDGET_MS).catch(

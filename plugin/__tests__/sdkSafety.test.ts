@@ -70,10 +70,15 @@ describe('a refusal (`success: true, result: false`) is not a success', () => {
     );
   });
 
-  it('a refused jump is recorded but does not stop the answer (strokes name their page)', async () => {
+  it('a refused jump is an error by itself; inside a page insert the table makes it a recorded fallback', async () => {
     fakeNote.refuse.add('jumpToPage');
-    await jumpToPageIn(FILE, 1);
-    expect(dumpTrace().some(e => e.k === 'jumpToPage.refused')).toBe(true);
+    await expect(jumpToPageIn(FILE, 1)).rejects.toThrow(/refused/);
+    await insertPageAfter(FILE, 1, 0); // strokes name their page: the view not turning is no reason to stop
+    expect(fakeNote.inserted).toEqual([1]);
+    const t = dumpTrace();
+    expect(t.some(e => e.k === 'jumpToPage.refused')).toBe(true);
+    expect(t.some(e => e.k === 'pageTurn.fallback')).toBe(true);
+    expect(t.some(e => e.k === 'pageTurn.dirty')).toBe(false);
   });
 
   it('the host’s boolean answers are recorded, to learn what a real device says', async () => {
@@ -401,5 +406,106 @@ describe('permissions and screens use the common path', () => {
       .spyOn(manager(), 'showPluginView')
       .mockRejectedValue(new Error('no host'));
     expect(await showView()).toBe(false);
+  });
+});
+
+describe('the page procedures follow their tables (docs/spec/page-turn.md)', () => {
+  const file = () => require('../__mocks__/sn-plugin-lib').PluginFileAPI;
+  const comm = () => require('../__mocks__/sn-plugin-lib').PluginCommAPI;
+  const events = () => dumpTrace().map(e => e.k);
+  afterEach(() => jest.restoreAllMocks());
+
+  it('a template that cannot be read or named: carry on with a blank page, and say so', async () => {
+    jest
+      .spyOn(file(), 'getNotePageTemplate')
+      .mockRejectedValue(new Error('no'));
+    await insertPageAfter(FILE, 1, 0);
+    expect(fakeNote.inserted).toEqual([1]);
+    expect(events()).toContain('pageTurn.fallback');
+    jest.restoreAllMocks();
+    resetTraceForTests();
+    jest
+      .spyOn(file(), 'getNotePageTemplate')
+      .mockResolvedValue({
+        success: true,
+        result: {name: 'custom', md5: 'abc123'},
+      });
+    await insertPageAfter(FILE, 2, 0); // a custom template cannot be referenced by name
+    expect(events()).toContain('pageTurn.fallback');
+  });
+
+  it('silence from the insert may have changed the note: stop and record it as dirty', async () => {
+    setTimeoutScaleForTests(0.004);
+    jest
+      .spyOn(file(), 'insertNotePage')
+      .mockImplementation(() => new Promise(() => {}));
+    await expect(insertPageAfter(FILE, 1, 0)).rejects.toBeInstanceOf(
+      CallTimeoutError,
+    );
+    expect(events()).toContain('pageTurn.dirty');
+  });
+
+  it('a page count that did not grow is dirty too (the host said yes)', async () => {
+    fakeNote.silentInsertPage = true;
+    await expect(insertPageAfter(FILE, 1, 0)).rejects.toThrow(/did not grow/);
+    expect(events()).toContain('pageTurn.dirty');
+  });
+
+  it('a failure before anything was inserted is clean: the note is not touched and nothing is called dirty', async () => {
+    jest
+      .spyOn(file(), 'getNoteTotalPageNum')
+      .mockResolvedValue({success: true, result: 'many'});
+    await expect(insertPageAfter(FILE, 1, 0)).rejects.toThrow(
+      /not a page count/,
+    );
+    expect(fakeNote.inserted).toEqual([]);
+    expect(events()).not.toContain('pageTurn.dirty');
+  });
+
+  it('writing: the wrong note open is clean; a refused insert is dirty', async () => {
+    fakeNote.currentFile = '/another.note';
+    await expect(writeStrokesAt(FILE, 0, [stroke], PEN)).rejects.toThrow(
+      /no longer open/,
+    );
+    expect(fakeNote.strayWrites).toBe(0);
+    expect(events()).not.toContain('write.dirty');
+    fakeNote.currentFile = FILE;
+    fakeNote.refuse.add('insertPageElements');
+    await expect(writeStrokesAt(FILE, 0, [stroke], PEN)).rejects.toThrow(
+      /refused/,
+    );
+    expect(events()).toContain('write.dirty');
+  });
+
+  it('a procedure whose table has no move for an outcome stops instead of looping', async () => {
+    const {runProcedure} = require('../src/procedure');
+    const table = {
+      A: {
+        OK: {k: 'never', note: 'x'},
+        FAIL: {k: 'do', action: 'X0', next: 'END'},
+        REF: {k: 'do', action: 'X0', next: 'END'},
+        SIL: {k: 'do', action: 'X0', next: 'END'},
+        NOP: {k: 'do', action: 'X0', next: 'END'},
+        ODD: {k: 'do', action: 'X0', next: 'END'},
+      },
+      END: {
+        OK: {k: 'never', note: 'c'},
+        FAIL: {k: 'never', note: 'c'},
+        REF: {k: 'never', note: 'c'},
+        SIL: {k: 'never', note: 'c'},
+        NOP: {k: 'never', note: 'c'},
+        ODD: {k: 'never', note: 'c'},
+      },
+    };
+    await expect(
+      runProcedure({
+        name: 't',
+        table,
+        start: 'A',
+        ends: ['END'],
+        steps: {A: async () => 'OK'},
+        handlers: {X0: () => {}},
+      }),
+    ).rejects.toThrow(/stuck at A after OK/);
   });
 });

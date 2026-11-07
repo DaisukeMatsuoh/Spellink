@@ -9,7 +9,10 @@ import {
   type Rect,
 } from 'sn-plugin-lib';
 import {WAVE_MARKER_PREFIX, boundsOf, type Box} from './freeSpace';
+import {runProcedure, type Outcome} from './procedure';
 import {trace} from './trace';
+import {INSERT_TABLE} from './insertTable.generated';
+import {WRITE_TABLE} from './writeTable.generated';
 import type {InkStroke} from './protocol';
 
 const isInt = (v: unknown): v is number =>
@@ -25,6 +28,29 @@ export class SdkError extends Error {
   ) {
     super(`${api}: ${message}${code != null ? ` (${code})` : ''}`);
   }
+}
+
+/** The host understood the call but refused it (`result: false`). */
+export class RefusedError extends SdkError {}
+
+/** The host answered with something we cannot use (a wrong type, a page count that did not grow). */
+export class UnexpectedError extends SdkError {}
+
+/** Which outcome of the spec's "結果" table an error is. */
+export function classify(e: unknown): Outcome {
+  if (e instanceof NoteMovedError) {
+    return 'NOP';
+  }
+  if (e instanceof CallTimeoutError) {
+    return 'SIL';
+  }
+  if (e instanceof RefusedError) {
+    return 'REF';
+  }
+  if (e instanceof UnexpectedError) {
+    return 'ODD';
+  }
+  return 'FAIL';
 }
 
 type ApiResponse<T> = {
@@ -262,7 +288,11 @@ export async function callChecked(
 ): Promise<void> {
   if ((await call<boolean | undefined>(api, start)) === false) {
     trace(`${api}.refused`);
-    throw new SdkError(api, undefined, 'the note app refused (result: false)');
+    throw new RefusedError(
+      api,
+      undefined,
+      'the note app refused (result: false)',
+    );
   }
 }
 
@@ -339,7 +369,7 @@ export interface NoteContext {
 /** The host answered, but with something we cannot use. Stop rather than guess. */
 function unexpected(api: string, what: string): never {
   trace(`${api}.unexpected`, {err: what});
-  throw new SdkError(api, undefined, `unexpected answer (${what})`);
+  throw new UnexpectedError(api, undefined, `unexpected answer (${what})`);
 }
 
 export async function noteContext(): Promise<NoteContext> {
@@ -591,44 +621,86 @@ export async function saveNote(): Promise<void> {
 const BLANK_TEMPLATE = 'style_blank';
 
 /**
- * Inserts a new page at `page` (later pages move down) using the same template as `likePage`.
- * Custom templates can't be referenced by name, so those fall back to a blank page.
+ * Inserts a new page at `page` (later pages move down) using the same template as `likePage`,
+ * and turns the view to it. The steps and what each outcome means are the "挿入" table of
+ * docs/spec/page-turn.md (src/insertTable.generated.ts): the steps below only do the work and
+ * report OK / FAIL / REF / SIL / NOP / ODD; the table decides whether to go on, to fall back
+ * (blank template, a view that would not turn) or to stop — and whether the note may have been
+ * changed when it stops. On a stop the error that caused it is thrown.
  */
 export async function insertPageAfter(
   filePath: string,
   page: number,
   likePage: number,
 ): Promise<void> {
-  await ensureOpen(filePath); // saving acts on whatever note is open: it must be ours
-  await saveNote(); // throws when the save was refused: never insert with unsaved edits
-  const before = await totalPages(filePath);
+  let before = 0;
   let template = BLANK_TEMPLATE;
-  try {
-    const t = await call<{name: string; md5: string}>(
-      'getNotePageTemplate',
-      () => PluginFileAPI.getNotePageTemplate(filePath, likePage),
-    );
-    if (t.name && (!t.md5 || t.md5 === '0')) {
-      template = t.name;
+  let failure: unknown = null;
+  const step = (work: () => Promise<void>) => async (): Promise<Outcome> => {
+    try {
+      await work();
+      return 'OK';
+    } catch (e) {
+      failure = e;
+      return classify(e);
     }
-  } catch (e) {
-    if (e instanceof CallTimeoutError) {
-      throw e;
-    }
-    // any other failure: the blank template (already recorded by call())
-  }
-  await callChecked('insertNotePage', () =>
-    PluginFileAPI.insertNotePage({notePath: filePath, page, template}),
-  );
-  // "Inserted" is only believed once the note really has one more page.
-  const after = await totalPages(filePath);
-  if (after <= before) {
-    trace('insertNotePage.notGrown', {d: {before, after}});
-    throw new SdkError(
-      'insertNotePage',
-      undefined,
-      `the page count did not grow (${before} → ${after})`,
-    );
+  };
+  const end = await runProcedure({
+    name: 'insert',
+    table: INSERT_TABLE,
+    start: 'OPEN',
+    ends: ['DONE', 'ABORT0', 'ABORT1'],
+    steps: {
+      // saving acts on whatever note is open: it must be ours
+      OPEN: step(() => ensureOpen(filePath)),
+      // a save that was refused stops everything: never insert with unsaved edits
+      SAVE: step(() => saveNote()),
+      COUNT1: step(async () => {
+        before = await totalPages(filePath);
+      }),
+      TEMPLATE: step(async () => {
+        const t = await call<{name: string; md5: string}>(
+          'getNotePageTemplate',
+          () => PluginFileAPI.getNotePageTemplate(filePath, likePage),
+        );
+        // Custom templates can't be referenced by name: those fall back to a blank page.
+        if (!t?.name || (t.md5 && t.md5 !== '0')) {
+          unexpected('getNotePageTemplate', 'no template that can be named');
+        }
+        template = t.name;
+      }),
+      INSERT: step(() =>
+        callChecked('insertNotePage', () =>
+          PluginFileAPI.insertNotePage({notePath: filePath, page, template}),
+        ),
+      ),
+      // "Inserted" is only believed once the note really has one more page.
+      COUNT2: step(async () => {
+        const after = await totalPages(filePath);
+        if (after <= before) {
+          trace('insertNotePage.notGrown', {d: {before, after}});
+          throw new UnexpectedError(
+            'insertNotePage',
+            undefined,
+            `the page count did not grow (${before} → ${after})`,
+          );
+        }
+      }),
+      JUMP: step(() => jumpToPageIn(filePath, page)),
+    },
+    handlers: {
+      X0: () => {},
+      X1: arg => trace('pageTurn.dirty', {d: arg}),
+      X2: () => {},
+      X3: arg => {
+        trace('pageTurn.fallback', {d: arg}); // a blank page, or a view that would not turn
+        failure = null;
+      },
+      X4: () => {},
+    },
+  });
+  if (end !== 'DONE') {
+    throw failure ?? new Error(`inserting a page ended at ${end}`);
   }
 }
 
@@ -637,11 +709,7 @@ async function totalPages(filePath: string): Promise<number> {
     PluginFileAPI.getNoteTotalPageNum(filePath),
   );
   if (!Number.isInteger(n)) {
-    throw new SdkError(
-      'getNoteTotalPageNum',
-      undefined,
-      `unexpected answer: ${String(n)}`,
-    );
+    unexpected('getNoteTotalPageNum', `not a page count: ${String(n)}`);
   }
   return n;
 }
@@ -695,15 +763,9 @@ export async function jumpToPageIn(
   page: number,
 ): Promise<void> {
   await ensureOpen(filePath);
-  // Turning the user's view is not needed to write (strokes name their page), so a refusal is
-  // recorded but does not stop the answer; a failure or silence still does.
-  if (
-    (await call<boolean | undefined>('jumpToPage', () =>
-      PluginCommAPI.jumpToPage(page),
-    )) === false
-  ) {
-    trace('jumpToPage.refused', {d: {page}});
-  }
+  // Turning the user's view is not needed to write (strokes name their page): the insert table
+  // treats a refusal as a recorded fallback, a failure or silence as a stop.
+  await callChecked('jumpToPage', () => PluginCommAPI.jumpToPage(page));
 }
 
 /**
@@ -718,8 +780,40 @@ export async function writeStrokesAt(
   pen: PenStyle,
   userData?: string,
 ): Promise<void> {
-  await ensureOpen(filePath);
-  await writeStrokes(strokes, page, pen, undefined, userData);
+  let failure: unknown = null;
+  const step = (work: () => Promise<void>) => async (): Promise<Outcome> => {
+    try {
+      await work();
+      return 'OK';
+    } catch (e) {
+      failure = e;
+      return classify(e);
+    }
+  };
+  // The "書き込み" table of docs/spec/page-turn.md: only into the open note; once the insert has
+  // been asked for, any failure leaves the page possibly changed.
+  const end = await runProcedure({
+    name: 'write',
+    table: WRITE_TABLE,
+    start: 'OPEN',
+    ends: ['WRITTEN', 'ABORT0', 'ABORT1'],
+    steps: {
+      OPEN: step(() => ensureOpen(filePath)),
+      WRITE: step(async () => {
+        await writeStrokes(strokes, page, pen, undefined, userData);
+      }),
+    },
+    handlers: {
+      X0: () => {},
+      X1: arg => trace('write.dirty', {d: arg}),
+      X2: () => {},
+      X3: () => {},
+      X4: () => {},
+    },
+  });
+  if (end !== 'WRITTEN') {
+    throw failure ?? new Error(`writing ended at ${end}`);
+  }
 }
 
 /** Deletes elements (highest number first) from `page` of `filePath`, only while it is open. */

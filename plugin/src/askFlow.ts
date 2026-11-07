@@ -19,7 +19,6 @@ import {
   currentPen,
   ensurePermissions,
   insertPageAfter,
-  jumpToPageIn,
   CallTimeoutError,
   NoteMovedError,
   lassoRect,
@@ -547,7 +546,6 @@ export class AskFlow {
       this.note.page + 1,
       this.note.page,
     );
-    await jumpToPageIn(this.note.filePath, this.note.page + 1);
     this.note = {...this.note, page: this.note.page + 1};
     this.layout = {
       ...this.layout,
@@ -775,10 +773,6 @@ export class AskFlow {
             this.note.filePath,
             this.note.page + this.pagesReady,
             this.note.page,
-          );
-          await jumpToPageIn(
-            this.note.filePath,
-            this.note.page + this.pagesReady,
           );
           this.pagesReady++;
         }

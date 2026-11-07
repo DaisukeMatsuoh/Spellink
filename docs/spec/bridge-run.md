@@ -54,8 +54,8 @@ run は WebSocket より長く生きる。フレーム（`line` / `done` / 回�
 | 状態＼イベント | B9 DONE | B10 FAIL | B11 FULL | B12 SWEEP | B13 SHUTDOWN | B14 SEND-FAIL | B15 CLEAR | B16 HANG | B17 KEEPALIVE |
 |---|---|---|---|---|---|---|---|---|---|
 | **N** | —e | —e | —e | —i | — | —j | R9 | —e | —e |
-| **RA** | R8→FA | R10→FA | R11→FA | ×k | 失われるl | R12 | R9（この run の組は完了後に追記される m） | ！ R13→FA | ！ R15 |
-| **RD** | R8→FD | R10→FD | R11→FD | ×k | 失われるl | —j | R9 | ！ R13→FD | ×n |
+| **RA** | R8→FA | R10→FA | R11→FA | ×k | 失われるl | R12 | R9（この run の組は完了後に追記される m） | R13→FA | R15 |
+| **RD** | R8→FD | R10→FD | R11→FD | ×k | 失われるl | —j | R9 | R13→FD | ×n |
 | **FA** | —h | —h | —h | R14（期限・上限超過）→N | 失われるl | R12 | R9 | —h | —h |
 | **FD** | —h | —h | —h | R14→N | 失われるl | —j | R9 | —h | —h |
 
@@ -65,7 +65,7 @@ run は WebSocket より長く生きる。フレーム（`line` / `done` / 回�
 | R1 | run を作り、端末に接続（attach）して AI に聞く。会話の記憶を読んで質問に付ける | ✅ | `server_test` |
 | R2 | AI を止める。`error`（`cancelled`）フレームを 1 つ作る | ✅ | `TestCancelStopsTheModel` |
 | R3 | 接続を外し（detach）、猶予タイマーを始める | ✅ | `TestAnswerNobodyComesBackForIsCancelled` |
-| R4 | `next` 以降のフレームを再送し、接続先をこの接続にする（猶予タイマーを止める） | ✅（RA での「奪い取り」は ❌ テストなし） | `TestDroppedConnection…`、`TestResumingBeforeTheGraceEnds…` |
+| R4 | `next` 以降のフレームを再送し、接続先をこの接続にする（猶予タイマーを止める） | ✅（RA での「奪い取り」は ⬜ テストなし） | `TestDroppedConnection…`、`TestResumingBeforeTheGraceEnds…` |
 | R5 | フレームを作って保存し、接続中なら送る | ✅ | `server_test` |
 | R6 | AI を止める。`error`（`cancelled`）を保存 | ✅ | `TestAnswerNobodyComesBackFor…` |
 | R7 | 接続を外す。保持期限は完了時から数える | 🟡 | — |
@@ -74,12 +74,12 @@ run は WebSocket より長く生きる。フレーム（`line` / `done` / 回�
 | R10 | 回答を終わらせる `error` フレームを 1 つ作る。記憶には残さない | ✅ | `TestFailedOrCancelled…` |
 | R11 | AI を止め（これ以上は課金しない）、`truncated` つきの `done` を作る | ✅ | `ink` テスト、`server_test` |
 | R12 | 最初の失敗だけログに残す。フレームは保存済みなので、再接続で取り戻せる | ✅ | — |
-| R13 | **AI の無応答の時間切れ**: 最初の出力まで 30 秒、出力の間 20 秒、全体で 120 秒（`config.json` の `timeouts` で変更可）。超えたら AI を止め、`error`（`provider_timeout`、理由つき）を 1 つ作る。最初の出力までの時間を、1 質問ごとにログに記録する | ❌ **時間切れが一切ない** | — |
-| R15 | 生存通知（`status`、保存しない）を約 5 秒おきに送る。端末は、これが来る限り「接続は生きている」と見なせる | ❌ | — |
-| R14 | run を忘れる | ✅ | ❌ 掃除のテストなし |
+| R13 | **AI の無応答の時間切れ**: 最初の出力まで 30 秒、出力の間 20 秒、全体で 120 秒（`config.json` の `timeouts` で変更可）。超えたら AI を止め、`error`（`provider_timeout`、理由つき）を 1 つ作る。最初の出力までの時間を、1 質問ごとにログに記録する | ✅ | `TestAnAIThatNeverStartsIsStopped` ほか 4 件 |
+| R15 | 生存通知（`status`、`stage: alive`、保存しない）を約 5 秒おきに送る。端末は、これが来る限り「接続は生きている」と見なせる | ✅ | `TestARunningAnswerSaysItIsAlive` |
+| R14 | run を忘れる | ✅ | ⬜ 掃除のテストなし |
 | E1 | `error` `unknown_ask` を返す | ✅ | `TestResumeOfAnUnknownAnswerSaysSo` |
-| E2 | `error` `bad_request`（duplicate id）を返す。既存の run には触れない | ✅ | ❌ テストなし |
-| E3 | `error` `busy` を返す | ✅ | ❌ テストなし |
+| E2 | `error` `bad_request`（duplicate id）を返す。既存の run には触れない | ✅ | ⬜ テストなし |
+| E3 | `error` `busy` を返す | ✅ | ⬜ テストなし |
 
 ## 注
 - a: 新しい ID でなければ B1 ではない（B2 になる）。
@@ -98,8 +98,8 @@ run は WebSocket より長く生きる。フレーム（`line` / `done` / 回�
 - n: 端末が接続していないので、生存通知を送る相手がいない。
 - 掃除（B12）は次の質問の開始時にだけ走る。保持の上限（16 件）はメモリの上限でもある。
 
-## この表から出る修正（優先順）
-1. B16 / R13: AI への問い合わせの時間切れ（最初 30 秒・間 20 秒・全体 120 秒、設定可）と、最初の出力までの時間の記録。
-2. B17 / R15: 生存通知。
-3. B2・B3・B12・RA での B6 のテストを足す。
-4. B15 と実行中の run の関係は保留。
+## この表から出た修正の状況（2026-11-07）
+1. ✅ B16 / R13: AI への問い合わせの時間切れ（最初 30 秒・間 20 秒・全体 120 秒、設定可）と、最初の出力までの時間の記録。
+2. ✅ B17 / R15: 生存通知。
+3. ⬜ B2・B3・B12・RA での B6 のテストを足す。
+4. ⬜ B15 と実行中の run の関係は保留。

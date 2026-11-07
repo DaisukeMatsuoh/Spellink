@@ -116,3 +116,52 @@ func converse(ctx context.Context, t *testing.T, url string, encrypted bool) []s
 		}
 	}
 }
+
+// Anyone can name a new room, so the relay must stop growing at a limit — while a bridge that is
+// already registered can still reconnect.
+func TestTheRelayRefusesNewRoomsAtItsLimit(t *testing.T) {
+	quiet := log.New(io.Discard, "", 0)
+	s := NewServer(quiet)
+	s.MaxRooms = 2
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	base := "ws" + strings.TrimPrefix(srv.URL, "http")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	bridgeURL := func(token string) string { return base + BridgePath + "?room=" + RoomID(token) }
+	var held []*websocket.Conn
+	for _, tok := range []string{"a", "b"} {
+		c, _, err := websocket.Dial(ctx, bridgeURL(tok), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held = append(held, c)
+	}
+	defer func() {
+		for _, c := range held {
+			c.CloseNow()
+		}
+	}()
+	time.Sleep(100 * time.Millisecond) // both registered
+
+	third, _, err := websocket.Dial(ctx, bridgeURL("c"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer third.CloseNow()
+	if _, _, err := third.Read(ctx); websocket.CloseStatus(err) != StatusRelayFull {
+		t.Fatalf("a third room must be refused with the relay-full code, got %v", err)
+	}
+
+	again, _, err := websocket.Dial(ctx, bridgeURL("a"), nil) // an existing room reconnecting
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.CloseNow()
+	readCtx, stop := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer stop()
+	if _, _, err := again.Read(readCtx); websocket.CloseStatus(err) == StatusRelayFull {
+		t.Fatal("a bridge whose room already exists must not be refused")
+	}
+}

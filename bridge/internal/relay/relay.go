@@ -31,11 +31,16 @@ const (
 	// Close codes sent to the plugin.
 	StatusBridgeOffline websocket.StatusCode = 4404
 	StatusRoomBusy      websocket.StatusCode = 4429
+	// StatusRelayFull is sent to a bridge when the relay has no room left for a new one.
+	StatusRelayFull websocket.StatusCode = 4503
 
 	maxFrameBytes      = 1 << 20
 	maxSessionsPerRoom = 4
-	acceptTimeout      = 10 * time.Second
-	pingInterval       = 30 * time.Second
+	// maxRooms bounds the memory anyone can make the relay use: a room is created by any
+	// connection naming a new id, and ids are free to invent.
+	maxRooms      = 10000
+	acceptTimeout = 10 * time.Second
+	pingInterval  = 30 * time.Second
 )
 
 var roomRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -61,13 +66,15 @@ type room struct {
 
 // Server is the relay. It keeps everything in memory; restarting it just makes bridges reconnect.
 type Server struct {
-	Log   *log.Logger
-	mu    sync.Mutex
-	rooms map[string]*room
+	Log *log.Logger
+	// MaxRooms bounds the number of rooms (default maxRooms).
+	MaxRooms int
+	mu       sync.Mutex
+	rooms    map[string]*room
 }
 
 func NewServer(logger *log.Logger) *Server {
-	return &Server{Log: logger, rooms: map[string]*room{}}
+	return &Server{Log: logger, MaxRooms: maxRooms, rooms: map[string]*room{}}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -115,6 +122,12 @@ func (s *Server) handleBridge(w http.ResponseWriter, r *http.Request) {
 	defer c.CloseNow()
 	s.mu.Lock()
 	rm := s.rooms[id]
+	if rm == nil && len(s.rooms) >= s.MaxRooms {
+		s.mu.Unlock()
+		s.Log.Printf("relay full: refused a new room")
+		_ = c.Close(StatusRelayFull, "relay is full")
+		return
+	}
 	if rm == nil {
 		rm = &room{pending: map[string]*pending{}}
 		s.rooms[id] = rm

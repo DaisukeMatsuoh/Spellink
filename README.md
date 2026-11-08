@@ -41,7 +41,7 @@ go build -o spellink-bridge .             # Go 1.26+; scripts/build.sh builds ev
 ./spellink-bridge serve                    # first run downloads the glyph data and creates the config
 ./spellink-bridge service install          # start by itself with the computer (add --dry-run to look first)
 ./spellink-bridge check                    # reach the bridge the way the plugin does, encrypted handshake included
-./spellink-bridge pair plugin/../plugin/src/bridges.local.json   # connection details to build into the plugin
+./spellink-bridge pair ../plugin/src/bridges.local.json   # the connection details to build into the plugin
 cd ../plugin && npm install && npm run build   # → build/outputs/Spellink.snplg, to install on the device
 ```
 

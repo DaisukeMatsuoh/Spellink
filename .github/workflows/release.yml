@@ -1,0 +1,81 @@
+name: release
+
+# A tag publishes a release. Tags have no path filter: bridge-vX.Y.Z publishes the bridge for every
+# OS, plugin-vX.Y.Z the Supernote plugin. Both are marked as pre-releases while the project is
+# an alpha. Nothing is published unless the tests pass and the built program runs.
+on:
+  push:
+    tags: ['bridge-v*', 'plugin-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    if: startsWith(github.ref_name, 'bridge-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: bridge
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bridge/go.mod
+          cache-dependency-path: bridge/go.sum
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+      - name: Build every target
+        run: scripts/build.sh "${GITHUB_REF_NAME#bridge-v}"
+      - name: The built program runs, and says the version of the tag
+        run: |
+          got=$(./dist/spellink-bridge-linux-amd64 version)
+          want="${GITHUB_REF_NAME#bridge-v}"
+          [ "$got" = "$want" ] || { echo "version is '$got', the tag says '$want'"; exit 1; }
+          ./dist/spellink-bridge-linux-amd64 service install --dry-run >/dev/null
+      - name: The checksums match the files
+        run: cd dist && sha256sum -c SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --prerelease \
+            --title "spellink-bridge ${GITHUB_REF_NAME#bridge-v}" \
+            --notes "Pre-release. Binaries for macOS, Linux and Windows; verify with SHA256SUMS. Windows and macOS are not yet verified on real machines. See README.md."
+
+  plugin:
+    if: startsWith(github.ref_name, 'plugin-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: plugin
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - uses: actions/setup-go@v5 # the integration tests build the real bridge
+        with:
+          go-version-file: bridge/go.mod
+          cache-dependency-path: bridge/go.sum
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx jest
+      - name: Build the plugin package
+        run: bash buildPlugin.sh
+      - name: The package is there
+        run: test -s build/outputs/Spellink.snplg
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum build/outputs/Spellink.snplg > build/outputs/Spellink.snplg.sha256
+          gh release create "$GITHUB_REF_NAME" build/outputs/Spellink.snplg build/outputs/Spellink.snplg.sha256 --prerelease \
+            --title "Spellink plugin ${GITHUB_REF_NAME#plugin-v}" \
+            --notes "Pre-release. This package has no bridge built in: pairing a device with a bridge is not yet possible without building the plugin yourself (see docs/notes/progress/release-plan.md, M3). Install on the device from Settings → Apps → Plugins."

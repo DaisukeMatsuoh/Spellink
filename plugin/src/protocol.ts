@@ -63,8 +63,9 @@ export type ClientMessage =
   | {type: 'resume'; id: string; next: number}
   | {type: 'report'; data: unknown}
   | {type: 'setSettings'; settings: Settings}
-  /** Forget the conversation of the note with this key, or of every note when `note` is absent. */
-  | {type: 'clearHistory'; note?: string};
+  | {type: 'clearHistory'}
+  /** Forget the conversation of the note with this key only. */
+  | {type: 'forgetNote'; note: string};
 
 export type BridgeMessage =
   | {

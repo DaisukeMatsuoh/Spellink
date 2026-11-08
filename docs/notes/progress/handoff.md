@@ -29,14 +29,12 @@ cd ~/GitWorkspaces/Cloute/plugin  && npm run spec && git diff --stat            
 - 動いているブリッジ・トンネルの確認と再起動（`spellink-bridge check`）、端末から送られた診断（`~/.config/spellink-bridge/reports.jsonl`）の読み取り、実 Claude Code を使う確認。
 
 ### 遠隔・別のエージェントでもできること（コードと文書だけ。端末も、この機械のサービスも要らない）
-優先度の高い順:
-1. **CI に、表の生成物が古くないことの確認を足す**: `.github/workflows/plugin.yml` で `npm run spec` のあと `git diff --exit-code`、`bridge.yml` でも同様（Go の生成物は `plugin/` の `npm run spec` が作る）。まだ push していないので CI は動いていない。
-2. **表の「テストなし」（⬜）を埋める**: `docs/spec/*.md` の処理の表で「テスト」が ⬜ のもの（run の掃除の保持期限は済み。多重 ask、重複 ID の細部、保持件数の上限、など）。
-3. **ADR 0015 の実装**: 呼称を「AIに聞く」/ "Ask AI" に（`plugin/src/i18n.ts`、README）。ブリッジに `internal/provider` の境界を作り、`claude` パッケージをその実装にする。`config.json` に `provider`。プロトコルは変えない。先に `docs/spec/bridge-run.md` の B10 / B16 の呼び名との整合を見る。
-4. **会話の記憶の拡張**（ADR 0012 の予約分）: ノート単位の削除、圧縮（`history.compaction: "summarize"`）。
-5. **配布の準備の文書**: README、CONTRIBUTING、SECURITY.md、ライセンスの整理（KanjiVG は CC BY-SA で、同梱せず利用者のパソコンで生成）。`docs/guides/bridge-and-relay-for-users.md` を元に。
-6. **lantls の点検**（`docs/spec/interfaces.md` の I21）、リレーの接続元ごとの回数制限（方針の決定と一緒に）。
-7. 文字以外の入力（楽譜など）の調査の続き（`docs/notes/research/2026-11-02-non-text-input.md`。画像は外部に送らない方針）。
+2026-11-08 に、CI の起動条件、表の穴の埋め直し、ADR 0015、ノート単位の削除、lantls の点検とリレーの回数制限、端末側の統合テスト、`service install`、公開用の文書の草案、リリースの自動化は済んだ。残り:
+1. **会話の圧縮**（ADR 0012 の予約分。`history.compaction: "summarize"`。要約を作る AI の呼び出しをどうするか、先に設計）。
+2. **他社の AI の追加**: `internal/provider/<名前>`、`main.go` の `newProvider`、`config.KnownProviders`。**規約と料金の確認が先**（ADR 0015）。
+3. **多言語**（中国語・スペイン語・韓国語。文字データと UI 文字列。ADR 0006）。
+4. 文字以外の入力（楽譜など）の調査の続き（`docs/notes/research/2026-11-02-non-text-input.md`。画像は外部に送らない方針）。
+5. 利用者向けのセットアップ手順書の仕上げ（`docs/guides/bridge-and-relay-for-users.md` と `service install` / `check` を元に）。
 
 ### 先にユーザーに聞くこと（勝手に決めない）
 - ページ数の変化の検出（回答の最中に、利用者がページを挿入・削除したとき）。仕様の確認待ち（`docs/spec/page-turn.md`）。

@@ -20,7 +20,7 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 - **開発ポリシー（ADR 0014）**: 戻り値は必ず確認／全ケースを洗い出す／状態遷移表を先に書く（表がコードの元データ）／信頼境界の値は必ず検証／場当たり的な再試行をしない。
 
 ## 現在の状態（2026-11-08）
-- **コード**: `stg` ブランチ、未 push。テスト: Go 10 パッケージ全緑（`-race`）、端末 16 スイート・約 460 件。**件数だけでなくスイート数を確認する**。CI（`.github/workflows/`）は一度も動かしていない。
+- **コード**: `stg` ブランチ、未 push。テスト: Go 10 パッケージ全緑（`-race`）、端末 18 スイート・約 466 件。**件数だけでなくスイート数を確認する**。CI（`.github/workflows/`）は一度も動かしていない。
 - **表がコード**（`docs/spec/README.md`）: 端末の質問の流れ（`ask-flow.md`）、波線（`wave.md`）、ページ追加と書き込み（`page-turn.md`）、ブリッジの run（`bridge-run.md`）。文書を直す → `cd plugin && npm run spec` → ハンドラ → テスト。
 - **実行中（開発機）**: ブリッジ `~/.local/bin/spellink-bridge serve`（ポート 8765、ログ `/tmp/spellink-bridge.log`。**nohup。再起動後は自動で起動しない**）。cloudflared はシステムのサービス（`/etc/cloudflared/token`、起動時に自動）。`https://bridge.spellink.uk/health` と、`spellink-bridge check`（実際の暗号化の握手まで）が通る。
 - **配布物**: `plugin/build/outputs/Spellink.snplg`（接続先 `wss://bridge.spellink.uk/v1` を埋め込み済み。`plugin/src/bridges.local.json`、git 管理外）。
@@ -43,10 +43,10 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 担当の分け方と、遠隔でできる作業の一覧は `handoff.md`。
 1. **実機の結果を見て、表の気になったセルだけを直す**（ユーザー）。
 2. **ブリッジの自動起動**（ユーザー）: `~/.local/bin/spellink-bridge service install`（`--dry-run` で、先に何をするか見られる）。`sudo` は要らない。systemd のユーザーサービスを作り、`loginctl enable-linger` まで行う。エージェントは、権限判定で、常駐の登録を実行できない。
-3. **CI に、表の生成物が古くないことの確認を足す**（遠隔可）。
-4. **表の「テストなし」（⬜）を埋める**（遠隔可）。
-5. **ADR 0015**: 呼称を「AIに聞く」に、問い合わせ先と認証をプロバイダとして分離（遠隔可。ユーザーの要望 2026-11-07）。
-6. 会話の記憶の拡張（ノート単位の削除、圧縮）、配布の準備の文書（README、CONTRIBUTING、SECURITY.md）、lantls の点検、リレーの回数制限（いずれも遠隔可）。
+3. **公開用の文書を読んで直す**（ユーザー）: `README.md`、`CONTRIBUTING.md`、`SECURITY.md`（非公開の報告の連絡手段）、`THIRD_PARTY_NOTICES.md`。`LICENSE` は Apache-2.0（初期コミットから。仮置き）で、著作権者の表示はユーザーが決める。
+4. **CI とリリースを動かす**（push の許可が要る）: `.github/workflows/`（`plugin.yml`、`bridge.yml`、`release.yml`）は、一度も動かしていない。
+5. 会話の圧縮、他社の AI の追加（規約の確認が先）、多言語（遠隔可）。
+6. ペアリング情報を端末に入れる方法（公開版の最大のブロッカー。端末で `file://` が読めるか、診断で確認してから）。
 7. NOTE が回答中に固まる件の再検証（原因未特定。フライトレコーダーとブリッジのログで証拠を取る）。
 8. LAN 直結 wss（ADR 0011）の実証明書での確認（Cloudflare の API トークンが要る）。優先度は低い。
 9. 文字以外（楽譜など）の入力（方針: 画像を外部に送らず、ストロークから意味を取る）。

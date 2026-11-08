@@ -18,7 +18,8 @@ const (
 //     Next on (every line/done/error frame of an answer carries Seq, counting from 0; ADR 0013)
 //   - "report": Data — free-form diagnostics appended to the bridge's report log
 //   - "setSettings": Settings — change user settings stored on the bridge
-//   - "clearHistory": forget the conversations of every note, or only of Note if it is set
+//   - "clearHistory": forget the conversations of every note
+//   - "forgetNote": Note — forget the conversation of that note only
 type ClientMessage struct {
 	Type     string      `json:"type"`
 	Token    string      `json:"token,omitempty"`

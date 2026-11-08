@@ -9,10 +9,10 @@ describe('forgetting the conversation of the open note', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
-  it('sends the open note’s path as the key, and nothing else', async () => {
+  it('sends the open note’s path as the key, in a message that cannot be mistaken for forgetting everything', async () => {
     const sent: unknown[] = [];
     expect(await forgetThisNote({send: m => sent.push(m)})).toBe('sent');
-    expect(sent).toEqual([{type: 'clearHistory', note: '/note.note'}]);
+    expect(sent).toEqual([{type: 'forgetNote', note: '/note.note'}]);
   });
 
   it('sends nothing when there is no note to name', async () => {

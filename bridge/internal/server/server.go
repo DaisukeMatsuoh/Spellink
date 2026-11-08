@@ -249,19 +249,22 @@ func (s *session) run(parent context.Context) {
 		case "resume":
 			s.resume(ctx, m.ID, m.Next)
 		case "clearHistory":
-			// R9 (docs/spec/bridge-run.md): whatever runs exist, the memory is cleared. With a
-			// note, only that note's conversation; without, every note's.
-			var n int
-			var err error
-			if m.Note != "" {
-				if len([]rune(m.Note)) <= maxNoteKeyChars {
-					n, err = s.deps.History.ClearNote(m.Note)
-				}
-			} else {
-				n, err = s.deps.History.Clear()
-			}
+			// R9 (docs/spec/bridge-run.md): whatever runs exist, the memory is cleared.
+			n, err := s.deps.History.Clear()
 			if err != nil {
 				s.deps.Log.Printf("history: clear: %v", err)
+			}
+			s.send(ctx, protocol.HistoryCleared{Type: "historyCleared", Notes: n})
+		case "forgetNote":
+			// One note only. It is a message of its own — not clearHistory with a field — so a bridge
+			// that does not know it refuses it, instead of ignoring the field and forgetting every note.
+			if m.Note == "" || len([]rune(m.Note)) > maxNoteKeyChars {
+				s.fail(ctx, "bad_request", "forgetNote needs the note's key")
+				return
+			}
+			n, err := s.deps.History.ClearNote(m.Note)
+			if err != nil {
+				s.deps.Log.Printf("history: forget note: %v", err)
 			}
 			s.send(ctx, protocol.HistoryCleared{Type: "historyCleared", Notes: n})
 		case "report":

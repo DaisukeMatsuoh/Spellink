@@ -4,7 +4,7 @@ import {PluginCommAPI} from 'sn-plugin-lib';
 
 /**
  * Asks the bridge to forget the conversation of the note that is open now. The open note's path
- * is the key the bridge keeps its memory under (the same one `ask` sends). When no note is open
+ * is the key the bridge keeps its memory under (the same one `ask` sends). The message is `forgetNote`, a type of its own: a bridge that predates it refuses it, whereas an added field on `clearHistory` would be ignored and every note forgotten. When no note is open
  * (the settings were opened from the plugin list, not from inside a note) there is nothing to
  * forget: 'noNote', and nothing is sent.
  */
@@ -22,6 +22,6 @@ export async function forgetThisNote(conn: {
   if (typeof path !== 'string' || path === '') {
     return 'noNote';
   }
-  conn.send({type: 'clearHistory', note: path});
+  conn.send({type: 'forgetNote', note: path});
   return 'sent';
 }

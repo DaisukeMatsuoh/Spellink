@@ -38,8 +38,12 @@ type Config struct {
 	StorageDir string `json:"-"`
 }
 
-// SetupTimeout bounds getting the first certificate. The bridge itself must not wait for it:
-// a wrong token or a DNS problem would otherwise keep the whole bridge from starting.
+// SetupTimeout bounds getting the first certificate. Nobody waits for it: it runs in the
+// background and the bridge is already serving (the tunnel, the LAN without TLS). It is long
+// because the DNS-01 challenge has to be right once: the TXT record must reach Cloudflare's
+// servers (certmagic itself waits up to 2 minutes for that by default) and Let's Encrypt must then
+// look it up. Ten seconds would make the very first certificate fail every time. Renewals, months
+// later, happen by themselves.
 const SetupTimeout = 3 * time.Minute
 
 // dnsName reports whether s is a plain DNS name of at least two labels: letters, digits and

@@ -1,87 +1,95 @@
 # 進捗（引き継ぎ用の入口）
 
-新しいセッションのエージェントは、**このファイルだけ読めば再開できる**ように書いてある。詳しい経緯が要るときだけ、下の「参照先」をたどる。
+新しいセッションのエージェントは、**まずこのファイル**を読む。次に `CLAUDE.md`（規約）。経緯が要るときだけ `history.md`。別のエージェントに作業を渡すときは `handoff.md`。
 
-最終更新: 2026-11-03
-
-> **2026-11-03: 開発機のブリッジとクイックトンネルは停止済み**（ユーザーが遠隔の Claude Code に切り替えるため）。再開時は下の「手順」で起動し直す。
+最終更新: 2026-11-08
 
 ## このファイルの管理ルール
-- ここには「**いまの状態・次にやること・未決事項・手順**」だけを書く。**経緯や実機での試行錯誤は `log/` に追記**する（追記専用。過去の記述は直さず、誤りは新しい項目で訂正する）。
-- 区切りごとに: ①「現在の状態」と「次にやること」を書き換える ②`log/<年-月>.md` の末尾に日付つきで経緯を足す。
-- 決めたことは ADR（`docs/decisions/`）。調査・比較は `docs/notes/research/`。ユーザー向けの手順は `docs/guides/`。ここに重複して書かず、リンクで示す。
-- 完了した項目は「現在の状態」へ移し、「次にやること」から消す。1 項目は 1〜3 行に収める。
+- ここには「**いまの状態・次にやること・未決事項・手順**」だけを書く。経緯や実機での試行錯誤は `log/<年-月>.md` に**追記**する（追記専用。過去の記述は直さず、誤りは新しい項目で訂正）。`history.md` は、まとめ直した読み物。
+- 決めたことは ADR（`docs/decisions/`）。仕様（状態遷移表・インターフェース台帳）は `docs/spec/`。調査・比較は `docs/notes/research/`。ユーザー向けの手順は `docs/guides/`。重複して書かず、リンクで示す。
+- 区切りごとに: ①この文書の「現在の状態」と「次にやること」を書き換える ②`log/` に日付つきで経緯を足す。1 項目は 1〜3 行。
 
 ## ゴール
-Supernote のノートで、手書きをラッソで囲む → Claude に質問 → 回答が**手書きの筆跡として**ページに浮かび上がる（「魔法の紙」）。
-ユーザーはコードを書かない。実装はエージェントが行い、説明は日本語で行う。
+Supernote のノートで、手書きをラッソで囲む → AI（現状は Claude）に質問 → 回答が**手書きの筆跡として**ページに浮かび上がる。ユーザーはコードを書かない。実装はエージェントが行い、説明は日本語で行う。
 
 ## 前提（変わらないもの）
 - 端末: Nomad（Chauvet 3.31.45）。Manta にも対応する設計。
-- Claude は **API キーを使わず**、ユーザーのサブスクリプションで、**公式の Claude Code CLI をそのまま**使う（ADR 0005）。プラグイン内にログインを持たない。
-- 構成: プラグイン（React Native）⇄ wss（Cloudflare トンネル／LAN）⇄ ブリッジ（Go）⇄ `claude -p`。通信は Noise で端末とブリッジの間を暗号化（ADR 0007）。
-- push はユーザーの指示があるまでしない（コミットは可）。特許・知財の分析は `docs/notes/ip/private/`（git 管理外）にだけ書く。
-- 識別は確実な ID で行い、**場当たり的な再試行やヒューリスティックで帳尻を合わせない**（ユーザー方針）。
+- AI は **API キーを使わず**、ユーザーのサブスクリプションで、**公式の Claude Code CLI をそのまま**使う（ADR 0005）。プラグイン内にログインを持たない。
+- 構成: プラグイン（RN）⇄ wss（Cloudflare トンネル／リレー／LAN）⇄ ブリッジ（Go）⇄ `claude -p`。端末とブリッジの間は Noise で暗号化（ADR 0007）。
+- **push はユーザーの指示があるまでしない**（コミットは可）。特許・知財の分析は `docs/notes/ip/private/`（git 管理外）にだけ書く。
+- **開発ポリシー（ADR 0014）**: 戻り値は必ず確認／全ケースを洗い出す／状態遷移表を先に書く（表がコードの元データ）／信頼境界の値は必ず検証／場当たり的な再試行をしない。
 
-## 現在の状態（2026-11-03）
-動いている（実機確認済み）: ラッソ → 端末内 OCR → ブリッジ → Claude → 筆跡の書き戻し、複数ページ、余白なしで新ページ、既存の字を避ける、待機中の波線アニメ（既定オフ）、設定画面（字間・傾き・進捗表示）、ネイティブの小さなエラーダイアログ。
-詳細は `log/2026-11.md`（実機）と `log/2026-10.md`（初期）。
+## 現在の状態（2026-11-08）
+- **コード**: `stg` ブランチ、未 push。テスト: Go 10 パッケージ全緑（`-race`）、端末 15 スイート・約 450 件。**件数だけでなくスイート数を確認する**。CI（`.github/workflows/`）は一度も動かしていない。
+- **表がコード**（`docs/spec/README.md`）: 端末の質問の流れ（`ask-flow.md`）、波線（`wave.md`）、ページ追加と書き込み（`page-turn.md`）、ブリッジの run（`bridge-run.md`）。文書を直す → `cd plugin && npm run spec` → ハンドラ → テスト。
+- **実行中（開発機）**: ブリッジ `~/.local/bin/spellink-bridge serve`（ポート 8765、ログ `/tmp/spellink-bridge.log`。**nohup。再起動後は自動で起動しない**）。cloudflared はシステムのサービス（`/etc/cloudflared/token`、起動時に自動）。`https://bridge.spellink.uk/health` と、`spellink-bridge check`（実際の暗号化の握手まで）が通る。
+- **配布物**: `plugin/build/outputs/Spellink.snplg`（接続先 `wss://bridge.spellink.uk/v1` を埋め込み済み。`plugin/src/bridges.local.json`、git 管理外）。
+- **設定の既定**: 回答中の通知 on、既存の字を避ける（ページ全体の読み取り）off、待機中の波線 off。AI の無応答は 10 秒（始まらない・止まった）、全体 30 秒。
+- **実機で確認済み**（〜11-07）: ラッソ → 認識 → 回答、複数ページ、会話の記憶（ADR 0012）、wss＋Noise、設定画面、ネイティブのエラーダイアログ。
+- **実機で未確認**: 切断後の再開（ADR 0013）、再接続 3 回、フレームの検証、`busyNotice`、`avoidOverwriting`、表で動く新しい流れ全体、空き領域の確認の実測。
+- ADR の一覧と根拠: `docs/decisions/README.md`（Accepted: 0001〜0003・0005〜0008・0012・0014）。
 
-- コード: `bridge/`（Go）、`plugin/`（RN）。テスト: ブリッジ `go test -race ./...`、プラグイン jest 75 件・9 スイート。**合格数だけでなくスイート数も確認する**（スイートが落ちると件数が減る）。
-- コミットは `stg` ブランチ。最新の区切りは `0a9f51f`。未 push。CI（`.github/workflows/`）は一度も動かしていない。
-- ADR: 一覧と状態の根拠は `docs/decisions/README.md`（2026-11-07 に整理。Accepted: 0001〜0003・0005〜0008・0012・0014。Proposed: 0009〜0011・0013・0015）。
+## 実機で見てほしいこと（ユーザー）
+新しい `Spellink.snplg` を端末に入れ直し、**新しいノート**で。
+1. 普通の質問が、最後まで書かれるか。ページをまたぐ長い回答。
+2. トンネルを一時的に止める／ブリッジを止めて、「再接続中 (n/3)」が出て、戻れば続きが書かれるか。3 回で諦めたときのエラー。
+3. 回答中にもう一度ボタンを押して、通知が出るか（設定で切れるか）。
+4. 回答中に別のノートを開いて、別のノートに書かれないか。
+5. 設定「既存の字を避ける」を on にして、下に字があるとき、重ならないか、どのくらい遅いか。
+6. ブリッジを止める等で、10 秒で失敗が出るか。
+7. NOTE が固まる・ページが空に見える現象が、まだ起きるか。起きたら診断の「Send log to bridge」。
 
 ## 次にやること（優先順）
-00000. **利用者向けの整理**: `docs/guides/bridge-and-relay-for-users.md`（利用者が知ること・やること、運営側の作業、未決一覧）。ユーザーが整理する。
-00000. **AI プロバイダの差し替え設計（ADR 0015）**: 呼称を「AIに聞く」/ "Ask AI" に、問い合わせ先と認証をプロバイダとしてモジュール化。ユーザーが表を確認し終えてから実装する。
-0000. **状態遷移表の確認**（4 つの表〔端末の質問の流れ・波線・ページ追加と書き込み・ブリッジの run〕は 2026-11-07 にコードの表になった。`docs/spec/README.md` の「実装の方針」。残りの穴は、各表の「現状」の ⬜）（表から出た穴の修正は 2026-11-07 に実装済み。残りは、表のコード化〔表の確認後〕、テストの補完、保留項目）（2026-11-07 に、ユーザーの決定を表へ反映済み。決定の一覧は `docs/spec/README.md` の「決定の記録」）（`docs/spec/`、ADR 0014）。表は初版。ユーザーの確認が要る項目（❓）: 二重押下の表示、無音の時間切れの値（端末 120/60 秒案、ブリッジ 180 秒案）、接続成立後・`ask` 送信前の切断の仕様、回答中のページ数の変化の扱い、波線の消し残しの通知、実行中の履歴削除の扱い、ホストのライフサイクルの意味。
-   確認が要らない穴（先に直す）: ブリッジ→プラグインのフレームの検証（`line.page` 範囲・`strokes` の形）、Claude への問い合わせの時間切れ、`insertPageAfter` の `ensureOpen`、SDK 戻り値の型検証、権限・パネル呼び出しを共通処理へ、設定値の範囲、診断ファイルの総量、未点検の境界（relay、lantls、glyphs.bin、bridges.json）。
-000. **SDK 呼び出しの点検（ADR 0014）の実機確認**: 保存・ページ挿入の `result` と、ページ数での確認、依頼の直列化。ページ追加が `getNoteTotalPageNum` の戻り値の違いで止まらないか見る（止まったらメッセージに `page count` / `unexpected answer`）。`reports.jsonl` の trace に、ブール値の `result` が記録される。
-00. **`closed (1006)` の再開機能（ADR 0013）を実機で確認**（ユーザー）。新しい `Spellink.snplg` の入れ直しが必要。ページをまたぐ長い回答を何度か。起きたら `/tmp/spellink-bridge.log`（`write ... failed` / `disconnected` / `resume`）と `reports.jsonl` の trace（`*.begin`＝重い呼び出しの開始）を読む。原因（ページ追加でホストが止まる？）は未解明。
-0. **会話の引き継ぎ（ADR 0012）を実機で確認**（ユーザー）。同じノートで「1+1は？」→「それを3倍して」と続けて書き、前を踏まえて答えるか。実装済み: ブリッジ（`internal/history`、`ask.note`、`clearHistory`、`config.history`）とプラグイン（`note` 送信、設定画面の「会話を忘れさせる」）。**新しい `Spellink.snplg` の入れ直しが必要**。未実装: 圧縮（`history.compaction: "summarize"`）、ノート単位の削除。
-1. **名前を決める**（ユーザー判断待ち。製品名は未決定で、現行は Spellink）。ドメインは `spellink.uk`（Cloudflare Registrar で取得。2026-11-03。先に取った `spell-ink.com` は使わない）。`spellink.com` が取得済みのため再検討中。候補とドメイン空き状況: `docs/notes/research/2026-11-03-naming-round2.md`。エージェントの推奨は `dancink`。決まったら改名を一括で行う（範囲は同ノート末尾。`pluginID` は変更禁止）。決定前に改名作業を始めない。
-2. **名前付きトンネル: 疎通済み**（2026-11-07）。`https://bridge.spellink.uk/health` が通る。Cloudflare 側のルートの Service は **HTTP**（HTTPS だと 502）、URL は `localhost:8765`。cloudflared は公式の `service install` 方式（`/etc/cloudflared/token`）で動いている。
-   `extraUrls` は `wss://bridge.spellink.uk/v1` に更新、`pair` 作り直し、プラグイン再ビルド済み（`plugin/build/outputs/Spellink.snplg`）。クイックトンネルは停止済み。
-   - **残り**: ①端末へ新しい `Spellink.snplg` を入れ、トンネル経由で質問が通るか確認（ユーザー）②ブリッジの自動起動（systemd ユーザーサービス）。後者は自動モードの権限判定で拒否されたため、**ユーザーが自分のターミナルで実行する**: `mkdir -p ~/.config/systemd/user && cp bridge/contrib/spellink-bridge.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now spellink-bridge && loginctl enable-linger $USER`（実行前に、手で起動中のブリッジを `pkill -f 'spellink-bridge serve'` で止める）。
-3. **NOTE アプリが回答中に固まる件の再検証**（ユーザーの再現待ち）。原因未特定。フライトレコーダーで「SDK 呼び出しが返らないまま止まる」ことまで分かっている。
-   - ユーザーに頼むこと: 待機アニメーション OFF のまま、長い回答中にページを切り替えて再現するか。診断「10. Cache number」と「Send log to bridge」の実行。
-   - エージェントがやること: `~/.config/spellink-bridge/reports.jsonl` の trace を読む。診断 10 でキャッシュから番号が読めるなら、波線の後始末から「保存＋ページ全体の読み取り」を除く。
-   - 注意: 「ページが消えた」は誤認だった（NOTE の描画が止まっていただけ）。
-4. LAN 直結 wss（ADR 0011）の実証明書での確認。必要: ドメイン＋Cloudflare API トークン（Zone → DNS → 編集、対象ドメインのみ）。
-5. 文字以外（楽譜など）の入力。方針: **画像を外部に送らず**、ストロークデータから意味を取る（`docs/notes/research/2026-11-02-non-text-input.md` の 2・3）。未実装。
-6. 配布準備: README・CONTRIBUTING・SECURITY.md、CI の実行確認（push 後）、macOS の公証、Windows の動作確認。弁理士への相談は当面しない。
+担当の分け方と、遠隔でできる作業の一覧は `handoff.md`。
+1. **実機の結果を見て、表の気になったセルだけを直す**（ユーザー）。
+2. **ブリッジの自動起動**（ユーザー。`sudo` は不要だが、エージェントは権限判定で実行できない）:
+   `pkill -f 'spellink-bridge serve'; mkdir -p ~/.config/systemd/user && cp ~/GitWorkspaces/Cloute/bridge/contrib/spellink-bridge.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now spellink-bridge && loginctl enable-linger $USER`
+3. **CI に、表の生成物が古くないことの確認を足す**（遠隔可）。
+4. **表の「テストなし」（⬜）を埋める**（遠隔可）。
+5. **ADR 0015**: 呼称を「AIに聞く」に、問い合わせ先と認証をプロバイダとして分離（遠隔可。ユーザーの要望 2026-11-07）。
+6. 会話の記憶の拡張（ノート単位の削除、圧縮）、配布の準備の文書（README、CONTRIBUTING、SECURITY.md）、lantls の点検、リレーの回数制限（いずれも遠隔可）。
+7. NOTE が回答中に固まる件の再検証（原因未特定。フライトレコーダーとブリッジのログで証拠を取る）。
+8. LAN 直結 wss（ADR 0011）の実証明書での確認（Cloudflare の API トークンが要る）。優先度は低い。
+9. 文字以外（楽譜など）の入力（方針: 画像を外部に送らず、ストロークから意味を取る）。
 
-## 未解決の判断（ユーザー）
-- 名前（上記 1）。ドメインの方針（丸ごと移す／専用を別に取る）。
-- 公開の時期と形（OSS・寄付か SaaS か）。push の許可。
+## 未決（ユーザーの判断）
+- **名前**: 現行は Spellink。`spellink.com` は取得済みで買えず、`spellink.uk` を取得。dancink などの案は `docs/notes/research/2026-11-03-naming-round2.md`。決めるまで改名しない（`pluginID` は変更禁止）。
+- 公開の時期と形（OSS・寄付か有料か）、push の許可。
+- リレーを運営するか、どこで、費用はどうするか。ペアリング情報を端末に入れる方法。（`docs/guides/bridge-and-relay-for-users.md` に整理）
+- 他社の AI（ChatGPT など）を足す順番と、各社の規約の確認（ADR 0015）。
+- 保留: 履歴の削除と実行中の回答の関係、ホストのライフサイクルの意味、ページ数の変化の扱い、波線の消し残しの通知。
 
 ## 手順（再開時）
 ```bash
-# ツールチェーン
 export PATH=$HOME/.local/go/bin:$PATH
-# ブリッジ: テスト → ビルド → 入れ替え → 再起動
-cd ~/GitWorkspaces/Cloute/bridge && go vet ./... && go test -race ./...
-go build -o /tmp/spellink-bridge-dev . && pkill -f '^/home/daisuke/.local/bin/spellink-bridge serve'; sleep 0.5
+# ブリッジ: テスト → ビルド → 入れ替え → 再起動 → 疎通
+cd ~/GitWorkspaces/Cloute/bridge && gofmt -l . ; go vet ./... && go test -race -count=1 ./...
+go build -o /tmp/spellink-bridge-dev . && pkill -f '^/home/daisuke/.local/bin/spellink-bridge serve'; sleep 1
 install -m 755 /tmp/spellink-bridge-dev ~/.local/bin/spellink-bridge
 (cd /tmp && nohup ~/.local/bin/spellink-bridge serve > /tmp/spellink-bridge.log 2>&1 &)
-# プラグイン: テスト → ビルド（成果物 plugin/build/outputs/Spellink.snplg）
-cd ../plugin && npx jest && npm run build
-# 端末からの診断ログを読む
+~/.local/bin/spellink-bridge check            # 端末と同じ道（LAN と、トンネル）で、暗号化の握手まで確かめる
+# プラグイン: 表の生成 → 型 → テスト → ビルド（成果物 plugin/build/outputs/Spellink.snplg）
+cd ../plugin && npm run spec && npx tsc --noEmit && npx jest && npm run build
+# 端末からの診断ログ
 tail -n 5 ~/.config/spellink-bridge/reports.jsonl
 ```
-- 実行中（開発機 ROCK 5B+、aarch64）: ブリッジ `~/.local/bin/spellink-bridge serve`（ポート 8765、ログ `/tmp/spellink-bridge.log`）。クイックトンネル `/tmp/cfd/cloudflared tunnel --url http://127.0.0.1:8765`（URL は `/tmp/cfd/tunnel.log`。数十秒おきに切れる。検証専用）。再起動後は手動で立ち上げ直す。
-- 設定: `~/.config/spellink-bridge/config.json`（`model: haiku`、`extraUrls`、`tiltDegrees` など）。文字データ `glyphs.bin`（KanjiVG から生成。再配布しない）、診断 `reports.jsonl`。JSON のカンマ抜けでブリッジが起動しなくなる（エラーにファイル名が出る）。
-- 端末へのインストール: `Spellink.snplg` を端末に送って入れる。**OS 更新前に作ったノートではボタンが出ない。新しいノートで試す**。接続先はビルド時に埋め込む（git 管理外の `plugin/src/bridges.local.json`）。
-- 実機で気を付けること: 平文の ws/http は PluginHost が禁止（wss＋公的 CA が必須）。`.local` は引けない。`INTERNET` 権限の許可が要る。
-- SDK の落とし穴（コードに反映済み。詳細は `log/2026-11.md`）: ファイル系 API（`insertNotePage`・`getElements` など）の前に `saveCurrentNote`。コメント系 API は「いま開いているファイル」に作用するので、書く前に開いているノートを確認する。`insertPageElements` はキャッシュにない要素を黙ってスキップする。
+- 設定: `~/.config/spellink-bridge/config.json`（`model: haiku`、`extraUrls`、`timeouts`、`history`、`tiltDegrees` など）。文字データ `glyphs.bin`（KanjiVG から生成。再配布しない）、診断 `reports.jsonl`、会話の記憶 `history/`。JSON のカンマ抜けでブリッジが起動しなくなる（エラーにファイル名が出る）。
+- 端末へのインストール: `Spellink.snplg` を端末に送って入れる。**OS 更新前に作ったノートではボタンが出ない。新しいノートで試す**。接続先はビルド時に埋め込む（`spellink-bridge pair plugin/src/bridges.local.json`）。
+- 実機の制約: 平文の ws/http は PluginHost が禁止（wss＋公的 CA が必須）。`.local` は引けない。`INTERNET` 権限の許可が要る。
+- SDK の落とし穴（コードに反映済み）: ファイル系 API の前に `saveCurrentNote`。コメント系 API は「いま開いているファイル」に作用するので、書く前に開いているノートを確認。`insertPageElements` はキャッシュにない要素を黙ってスキップ。`success` と `result` は別（`result: false` は拒否）。
+- トンネル: 502 は Service が HTTPS になっている／`1033` はコネクター未接続（`systemctl status cloudflared`、`/etc/cloudflared/token` の有無）。
 
 ## 参照先
 | 知りたいこと | 場所 |
 |---|---|
-| 経緯（実機の結果・バグと修正） | `log/2026-11.md`、`log/2026-10.md` |
-| 設計判断 | `docs/decisions/README.md`（0001〜0011） |
-| 調査・比較（競合、SDK、名前、中継、非テキスト入力） | `docs/notes/research/` |
-| 実機テストの手順 | `docs/notes/device-test-guide.md` |
+| 経緯（まとめ） | `history.md` |
+| 別のエージェントへの引き継ぎ | `handoff.md` |
+| 日付ごとの記録 | `log/2026-11.md`、`log/2026-10.md` |
+| 設計判断 | `docs/decisions/README.md` |
+| 仕様（状態遷移表・インターフェース台帳） | `docs/spec/README.md` |
+| 利用者が知ること・運営の作業 | `docs/guides/bridge-and-relay-for-users.md` |
 | Cloudflare トンネルの手順 | `docs/guides/cloudflare-tunnel-setup.md` |
+| 調査・比較 | `docs/notes/research/` |
+| 実機テストの手順 | `docs/notes/device-test-guide.md` |
 | 知財のルール | `docs/notes/ip/README.md`（分析本体は private/ で git 管理外） |
 | プロジェクトの規約 | `CLAUDE.md` |

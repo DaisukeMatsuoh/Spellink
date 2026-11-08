@@ -40,6 +40,7 @@ const usage = `usage:
   spellink-bridge serve                 run the bridge (builds glyph data on first run)
   spellink-bridge pair [out.json]       print the connection file for the plugin
   spellink-bridge build-glyphs          (re)download KanjiVG/Hershey and build glyph data
+  spellink-bridge check [url...]        reach this bridge the way the plugin does (encrypted handshake)
   spellink-bridge relay [-listen :8780] run a relay that lets plugins reach bridges behind NAT
   spellink-bridge preview TEXT OUT.png [charSize] [maxPages]
   spellink-bridge version`
@@ -66,6 +67,8 @@ func main() {
 		err = preview(args[1:])
 	case "relay":
 		err = runRelay(args[1:])
+	case "check":
+		err = check(args[1:])
 	case "version":
 		fmt.Println(version)
 	default:

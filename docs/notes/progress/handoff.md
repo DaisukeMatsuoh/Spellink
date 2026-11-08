@@ -6,7 +6,7 @@
 1. **push しない。** コミットは可。コミットの末尾に `Co-Authored-By: <使っているモデル> <noreply@anthropic.com>` を付ける。
 2. **表が先。** 状態を持つ処理は、`docs/spec/` の表を直す → `cd plugin && npm run spec` → ハンドラを書く → テスト。生成された `*.generated.ts` / `runtable_gen.go` は手で直さない。
 3. 戻り値・境界の値は必ず検証する。場当たり的な再試行や、回数・時間での帳尻合わせをしない。
-4. **テストは、件数だけでなくスイート数を確認**する（端末 16 スイート、Go は 11 パッケージ（`probe` を含む））。本番の入口（ラッソなら `AskFlow.run()`）から通すテストを書く。壊して落ちることも確かめる。
+4. **テストは、件数だけでなくスイート数を確認**する（端末 18 スイート、Go は 11 パッケージ（`probe` を含む））。本番の入口（ラッソなら `AskFlow.run()`）から通すテストを書く。壊して落ちることも確かめる。
 5. 作業の区切りで、`README.md`（現状・次にやること）と `log/2026-11.md`（日付つきの追記）を更新する。判断を伴うことは ADR。
 6. ドキュメントは日本語。ユーザーへの説明は、短く、日本語。
 7. 特許・知財の分析は `docs/notes/ip/private/`（git 管理外）にだけ書く。
@@ -15,7 +15,7 @@
 ```bash
 export PATH=$HOME/.local/go/bin:$PATH
 cd ~/GitWorkspaces/Cloute/bridge  && gofmt -l . ; go vet ./... && go test -race -count=1 ./...   # 全パッケージ ok
-cd ~/GitWorkspaces/Cloute/plugin  && npx tsc --noEmit && npx jest                                  # 16 スイート・約 460 件
+cd ~/GitWorkspaces/Cloute/plugin  && npx tsc --noEmit && npx jest                                  # 18 スイート・約 470 件（統合テストは Go が要る）
 cd ~/GitWorkspaces/Cloute/plugin  && npm run spec && git diff --stat                                # 表を直したあと。差分は生成物だけ
 ```
 

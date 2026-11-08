@@ -3,9 +3,9 @@ name: plugin
 on:
   push:
     branches: [main]
-    paths: ['plugin/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/internal/server/testdata/**']
+    paths: ['plugin/**', 'bridge/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/internal/server/testdata/**']
   pull_request:
-    paths: ['plugin/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/internal/server/testdata/**']
+    paths: ['plugin/**', 'bridge/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/internal/server/testdata/**']
 
 permissions:
   contents: read
@@ -23,6 +23,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: plugin/package-lock.json
+      # the integration tests build the real bridge and run the plugin's code against it
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bridge/go.mod
+          cache-dependency-path: bridge/go.sum
       - run: npm ci
       - run: npm run typecheck
       - run: npx eslint index.js App.tsx src

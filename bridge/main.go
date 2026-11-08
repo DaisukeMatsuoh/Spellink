@@ -71,6 +71,8 @@ func main() {
 		err = runRelay(args[1:])
 	case "check":
 		err = check(args[1:])
+	case "testfont":
+		err = testFont(args[1:]) // for the plugin's integration tests
 	case "version":
 		fmt.Println(version)
 	default:

@@ -3,10 +3,10 @@ name: bridge
 on:
   push:
     branches: [main]
-    paths: ['bridge/**', '.github/workflows/bridge.yml']
+    paths: ['bridge/**', '.github/workflows/bridge.yml', 'docs/spec/**']
     tags: ['bridge-v*']
   pull_request:
-    paths: ['bridge/**', '.github/workflows/bridge.yml']
+    paths: ['bridge/**', '.github/workflows/bridge.yml', 'docs/spec/**']
 
 permissions:
   contents: read

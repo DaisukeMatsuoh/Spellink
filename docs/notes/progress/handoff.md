@@ -6,7 +6,7 @@
 1. **push しない。** コミットは可。コミットの末尾に `Co-Authored-By: <使っているモデル> <noreply@anthropic.com>` を付ける。
 2. **表が先。** 状態を持つ処理は、`docs/spec/` の表を直す → `cd plugin && npm run spec` → ハンドラを書く → テスト。生成された `*.generated.ts` / `runtable_gen.go` は手で直さない。
 3. 戻り値・境界の値は必ず検証する。場当たり的な再試行や、回数・時間での帳尻合わせをしない。
-4. **テストは、件数だけでなくスイート数を確認**する（端末 15 スイート、Go は 10 パッケージ）。本番の入口（ラッソなら `AskFlow.run()`）から通すテストを書く。壊して落ちることも確かめる。
+4. **テストは、件数だけでなくスイート数を確認**する（端末 16 スイート、Go は 11 パッケージ（`probe` を含む））。本番の入口（ラッソなら `AskFlow.run()`）から通すテストを書く。壊して落ちることも確かめる。
 5. 作業の区切りで、`README.md`（現状・次にやること）と `log/2026-11.md`（日付つきの追記）を更新する。判断を伴うことは ADR。
 6. ドキュメントは日本語。ユーザーへの説明は、短く、日本語。
 7. 特許・知財の分析は `docs/notes/ip/private/`（git 管理外）にだけ書く。
@@ -15,7 +15,7 @@
 ```bash
 export PATH=$HOME/.local/go/bin:$PATH
 cd ~/GitWorkspaces/Cloute/bridge  && gofmt -l . ; go vet ./... && go test -race -count=1 ./...   # 全パッケージ ok
-cd ~/GitWorkspaces/Cloute/plugin  && npx tsc --noEmit && npx jest                                  # 15 スイート・約 450 件
+cd ~/GitWorkspaces/Cloute/plugin  && npx tsc --noEmit && npx jest                                  # 16 スイート・約 460 件
 cd ~/GitWorkspaces/Cloute/plugin  && npm run spec && git diff --stat                                # 表を直したあと。差分は生成物だけ
 ```
 
@@ -44,12 +44,9 @@ cd ~/GitWorkspaces/Cloute/plugin  && npm run spec && git diff --stat            
 - 波線の消し残しを、利用者に知らせる方法。
 
 ## 遠隔のエージェントを動かすときの注意
-- **この機械の `~/.claude/settings.json` に、caveman のプロキシ（`ANTHROPIC_BASE_URL`）があり、Remote Control が使えない。** 使うなら、別の設定ディレクトリで起動する（ログイン情報だけコピーし、hooks と `env` を持たない）:
-  ```bash
-  mkdir -p ~/.claude-rc && cp ~/.claude/.credentials.json ~/.claude-rc/
-  cd ~/GitWorkspaces/Cloute && CLAUDE_CONFIG_DIR=~/.claude-rc claude remote-control
-  ```
-  シェルに `ANTHROPIC_API_KEY` があると優先されるので、`env -u ANTHROPIC_API_KEY` を付ける。ユーザーが「家にいるときはやりにくい」と判断済み。
+- **Remote Control は、`claude remote-control` をそのまま使うと、「公式の API でない」と断られる。** 理由: caveman のインストーラが `~/.claude/settings.json` の `env` に `ANTHROPIC_BASE_URL=http://127.0.0.1:8787/w/claude`（この機械の caveman のゲートウェイ）を書いており、Remote Control は、向き先が `api.anthropic.com` 以外だと使えないため（二重の中継ではなく、1 段。向き先を変えるだけで、上流は Anthropic）。`settings.json` の `env` は、起動時の環境変数より**優先される**（実測）ので、環境変数で上書きしても効かない。
+- **起動は `claude-rc`**（`~/.local/bin/claude-rc [作業ディレクトリ]`）。`~/.claude-rc` という別の設定ディレクトリを使い、ログイン情報・`projects`（記憶や会話の履歴）は `~/.claude` と共有（シンボリックリンク）、caveman の hooks は残し、ゲートウェイの `env` だけを外してある。**初回だけ、端末で `claude-rc` を実行して `y` と答える**（「Enable Remote Control?」。一度答えれば、聞かれない）。caveman のゲートウェイ（入力・出力の圧縮の測定）は、この経路では使われない。
+- `~/.claude/settings.json` を caveman が書き換えたら（更新や再設定）、`~/.claude-rc/settings.json` は自動では追従しない。hooks が変わったら、`env` を除いて作り直す。
 - **コミットは push していない**（`stg` ブランチ）。別の機械のエージェントは、このリポジトリのコミットを見られない。同じ機械で動かすか、ユーザーが push を許可するか（または `git bundle` で渡す）。
 - 作業ツリーに、ユーザーの未コミットの変更があれば（`git status`）、触らない。
 - 実行中のもの: ブリッジ（`~/.local/bin/spellink-bridge serve`。**再起動すると自動では起動しない**）、cloudflared（システムのサービス、起動時に自動）。ブリッジを止める・入れ替える作業は、ローカルのエージェントかユーザーが行う。

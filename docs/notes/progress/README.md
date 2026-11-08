@@ -1,6 +1,6 @@
 # 進捗（引き継ぎ用の入口）
 
-新しいセッションのエージェントは、**まずこのファイル**を読む。次に `CLAUDE.md`（規約）。経緯が要るときだけ `history.md`。別のエージェントに作業を渡すときは `handoff.md`。
+新しいセッションのエージェントは、**まずこのファイル**を読む。次に `CLAUDE.md`（規約）。リリースまでの全体は `release-plan.md`。経緯が要るときだけ `history.md`。別のエージェントに作業を渡すときは `handoff.md`。
 
 最終更新: 2026-11-08
 
@@ -20,7 +20,7 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 - **開発ポリシー（ADR 0014）**: 戻り値は必ず確認／全ケースを洗い出す／状態遷移表を先に書く（表がコードの元データ）／信頼境界の値は必ず検証／場当たり的な再試行をしない。
 
 ## 現在の状態（2026-11-08）
-- **コード**: `stg` ブランチ、未 push。テスト: Go 10 パッケージ全緑（`-race`）、端末 15 スイート・約 450 件。**件数だけでなくスイート数を確認する**。CI（`.github/workflows/`）は一度も動かしていない。
+- **コード**: `stg` ブランチ、未 push。テスト: Go 10 パッケージ全緑（`-race`）、端末 16 スイート・約 460 件。**件数だけでなくスイート数を確認する**。CI（`.github/workflows/`）は一度も動かしていない。
 - **表がコード**（`docs/spec/README.md`）: 端末の質問の流れ（`ask-flow.md`）、波線（`wave.md`）、ページ追加と書き込み（`page-turn.md`）、ブリッジの run（`bridge-run.md`）。文書を直す → `cd plugin && npm run spec` → ハンドラ → テスト。
 - **実行中（開発機）**: ブリッジ `~/.local/bin/spellink-bridge serve`（ポート 8765、ログ `/tmp/spellink-bridge.log`。**nohup。再起動後は自動で起動しない**）。cloudflared はシステムのサービス（`/etc/cloudflared/token`、起動時に自動）。`https://bridge.spellink.uk/health` と、`spellink-bridge check`（実際の暗号化の握手まで）が通る。
 - **配布物**: `plugin/build/outputs/Spellink.snplg`（接続先 `wss://bridge.spellink.uk/v1` を埋め込み済み。`plugin/src/bridges.local.json`、git 管理外）。
@@ -84,6 +84,7 @@ tail -n 5 ~/.config/spellink-bridge/reports.jsonl
 |---|---|
 | 経緯（まとめ） | `history.md` |
 | 別のエージェントへの引き継ぎ | `handoff.md` |
+| リリースまでの計画 | `release-plan.md` |
 | 日付ごとの記録 | `log/2026-11.md`、`log/2026-10.md` |
 | 設計判断 | `docs/decisions/README.md` |
 | 仕様（状態遷移表・インターフェース台帳） | `docs/spec/README.md` |

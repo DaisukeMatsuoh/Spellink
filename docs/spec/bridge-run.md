@@ -75,21 +75,21 @@ run は WebSocket より長く生きる。フレーム（`line` / `done` / 回�
 | R1 | run を作り、端末に接続（attach）して AI に聞く。会話の記憶を読んで質問に付ける | ✅ | `server_test` |
 | R2 | AI を止める。`error`（`cancelled`）フレームを 1 つ作る | ✅ | `TestCancelStopsTheModel` |
 | R3 | 接続を外し（detach）、猶予タイマーを始める | ✅ | `TestAnswerNobodyComesBackForIsCancelled` |
-| R4 | `next` 以降のフレームを再送し、接続先をこの接続にする（猶予タイマーを止める）。すでに別の接続が受け取っていれば、最新の接続が受け取る | ✅ | `TestDroppedConnection…`、`TestResumingBeforeTheGraceEnds…` |
+| R4 | `next` 以降のフレームを再送し、接続先をこの接続にする（猶予タイマーを止める）。すでに別の接続が受け取っていれば、最新の接続が受け取る | ✅ | `TestDroppedConnection…`、`TestResumingBeforeTheGraceEnds…`、`TestTheNewestConnectionReceivesTheAnswer` |
 | R5 | フレームを作って保存し、接続中なら送る | ✅ | `server_test` |
 | R6 | 猶予が切れた: AI を止める。`error`（`cancelled`）を保存 | ✅ | `TestAnswerNobodyComesBackFor…` |
-| R7 | 接続を外す。保持期限は完了時から数える | ⬜ | — |
+| R7 | 接続を外す。保持期限は完了時から数える | ✅ | `TestTheShapeOfTheTable`（完了は FA↔FD のみ） |
 | R8 | 会話の記憶に追記し、`done` フレームを 1 つ作る | ✅ | `TestFollowUpInTheSameNote…` |
 | R9 | 会話の記憶をすべて消し、`historyCleared` を返す | ✅ | `TestClearHistory…` |
 | R10 | 回答を終わらせる `error` フレームを 1 つ作る。記憶には残さない | ✅ | `TestFailedOrCancelled…` |
 | R11 | AI を止め（これ以上は課金しない）、`truncated` つきの `done` を作る | ✅ | `server_test` |
 | R12 | 最初の失敗だけログに残す。フレームは保存済みなので、再接続で取り戻せる | ✅ | — |
 | R13 | **AI の無応答の時間切れ**: 止めて、`error`（`provider_timeout`、理由つき）を 1 つ作る。最初の出力までの時間も、1 質問ごとにログに記録する | ✅ | `TestAnAIThatNeverStartsIsStopped` ほか |
-| R14 | run を忘れる | ✅ | ⬜ |
+| R14 | run を忘れる | ✅ | `TestFinishedAnswersAreForgotten…` |
 | R15 | 生存通知（`status`、`stage: alive`、`phase`、`idleMs`、保存しない）を約 5 秒おきに送る | ✅ | `TestARunningAnswerSaysItIsAlive` |
 | E1 | `error` `unknown_ask` を返す | ✅ | `TestResumeOfAnUnknownAnswerSaysSo` |
-| E2 | `error` `bad_request`（duplicate id）を返す。既存の run には触れない | ✅ | ⬜ |
-| E3 | `error` `busy` を返す | ✅ | ⬜ |
+| E2 | `error` `bad_request`（duplicate id）を返す。既存の run には触れない | ✅ | `TestTheSameIdTwice…` |
+| E3 | `error` `busy` を返す | ✅ | `TestTheSameIdTwice…` |
 
 ## 注
 - a: 新しい ID でなければ ASK ではない（DUP になる）。この ID の run があるのに N ではない、という矛盾は起きない。

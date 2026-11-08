@@ -3,9 +3,9 @@ name: plugin
 on:
   push:
     branches: [main]
-    paths: ['plugin/**', '.github/workflows/plugin.yml']
+    paths: ['plugin/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/internal/server/testdata/**']
   pull_request:
-    paths: ['plugin/**', '.github/workflows/plugin.yml']
+    paths: ['plugin/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/internal/server/testdata/**']
 
 permissions:
   contents: read

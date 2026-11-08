@@ -51,5 +51,5 @@ cd ~/GitWorkspaces/Cloute/plugin  && npm run spec && git diff --stat            
   ```
   シェルに `ANTHROPIC_API_KEY` があると優先されるので、`env -u ANTHROPIC_API_KEY` を付ける。ユーザーが「家にいるときはやりにくい」と判断済み。
 - **コミットは push していない**（`stg` ブランチ）。別の機械のエージェントは、このリポジトリのコミットを見られない。同じ機械で動かすか、ユーザーが push を許可するか（または `git bundle` で渡す）。
-- 作業ツリーに、ユーザーの未コミットの変更が 1 つある（`.gitignore` に `docs/References/SPI_Monitor.zip`）。触らない。
+- 作業ツリーに、ユーザーの未コミットの変更があれば（`git status`）、触らない。
 - 実行中のもの: ブリッジ（`~/.local/bin/spellink-bridge serve`。**再起動すると自動では起動しない**）、cloudflared（システムのサービス、起動時に自動）。ブリッジを止める・入れ替える作業は、ローカルのエージェントかユーザーが行う。

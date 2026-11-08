@@ -249,7 +249,17 @@ func (s *session) run(parent context.Context) {
 		case "resume":
 			s.resume(ctx, m.ID, m.Next)
 		case "clearHistory":
-			n, err := s.deps.History.Clear()
+			// R9 (docs/spec/bridge-run.md): whatever runs exist, the memory is cleared. With a
+			// note, only that note's conversation; without, every note's.
+			var n int
+			var err error
+			if m.Note != "" {
+				if len([]rune(m.Note)) <= maxNoteKeyChars {
+					n, err = s.deps.History.ClearNote(m.Note)
+				}
+			} else {
+				n, err = s.deps.History.Clear()
+			}
 			if err != nil {
 				s.deps.Log.Printf("history: clear: %v", err)
 			}

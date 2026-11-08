@@ -98,6 +98,23 @@ func (s *Store) Recent(note string, maxChars int) ([]Turn, error) {
 	return all[from:], nil
 }
 
+// ClearNote forgets one note's conversation and returns how many notes had one (0 or 1).
+func (s *Store) ClearNote(note string) (int, error) {
+	if s == nil || note == "" {
+		return 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err := os.Remove(s.file(note))
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return 1, nil
+}
+
 // Clear forgets every note's conversation and returns how many notes had one.
 func (s *Store) Clear() (int, error) {
 	if s == nil {

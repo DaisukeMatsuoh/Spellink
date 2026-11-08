@@ -4,6 +4,7 @@ import {connectFirst, type BridgeConnection} from '../bridgeClient';
 import {loadBridges} from '../bridgeConfig';
 import {t} from '../i18n';
 import type {Settings} from '../protocol';
+import {forgetThisNote} from '../forget';
 import {closeView, ensurePermissions} from '../sdk';
 import {show} from '../session';
 import {Button, styles} from './common';
@@ -151,6 +152,22 @@ export function SettingsScreen() {
         onCommit={v => change({halfWidthSpacing: v})}
       />
       <Text style={styles.small}>{t('spacingHelp')}</Text>
+      <View style={styles.row}>
+        <Button
+          disabled={!conn}
+          label={t('forgetThisNote')}
+          onPress={() => {
+            if (conn) {
+              void forgetThisNote(conn).then(r => {
+                if (r === 'noNote') {
+                  setStatus(t('noNoteOpen'));
+                }
+              });
+            }
+          }}
+        />
+      </View>
+      <Text style={styles.small}>{t('forgetThisNoteHelp')}</Text>
       <View style={styles.row}>
         <Button
           disabled={!conn}

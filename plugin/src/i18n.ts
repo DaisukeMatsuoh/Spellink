@@ -45,7 +45,11 @@ const STRINGS = {
     halfWidthSpacing: 'Spacing: letters / digits',
     spacingHelp:
       '100% is the tightest. Widen it if characters touch; full-width and half-width are set separately.',
-    forgetHistory: 'Forget conversations',
+    forgetThisNote: 'Forget this note’s conversation',
+    forgetThisNoteHelp:
+      'Only for the note that is open now. Open the settings from inside a note to use it.',
+    noNoteOpen: 'No note is open: open the settings from inside a note.',
+    forgetHistory: 'Forget all conversations',
     forgetHistoryHelp:
       'The AI is given earlier questions written in the same note. This makes it forget them in every note.',
     forgotten: 'Forgot the conversations of {n} note(s).',
@@ -103,7 +107,12 @@ const STRINGS = {
     halfWidthSpacing: '字間: 英字・数字',
     spacingHelp:
       '100% が最も詰まった状態です。文字が重なるときは広げてください。全角と半角は別々に設定できます。',
-    forgetHistory: '会話を忘れさせる',
+    forgetThisNote: 'このノートの会話を忘れさせる',
+    forgetThisNoteHelp:
+      'いま開いているノートの会話だけを消します。ノートの中から設定を開いたときに使えます。',
+    noNoteOpen:
+      'ノートが開かれていません。ノートの中から設定を開いてください。',
+    forgetHistory: 'すべての会話を忘れさせる',
     forgetHistoryHelp:
       '同じノートに続けて書いた質問は、前のやり取りを踏まえて答えます。これを押すと、すべてのノートの会話を忘れます。',
     forgotten: '{n} 冊のノートの会話を忘れました。',

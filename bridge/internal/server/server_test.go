@@ -856,3 +856,27 @@ func TestAFailureOfTheAIEndsTheAnswerWithAProviderErrorNotNamingAnyAI(t *testing
 		t.Fatalf("got %v", m)
 	}
 }
+
+func TestClearHistoryWithANoteForgetsOnlyThatNote(t *testing.T) {
+	store := &history.Store{Dir: t.TempDir()}
+	_ = store.Append("/n/a.note", history.Turn{Q: "q", A: "a"})
+	_ = store.Append("/n/b.note", history.Turn{Q: "q", A: "a"})
+	url := startTestWith(t, nil, func(d *Deps) { d.History, d.HistoryChars = store, 1000 })
+	got := converse(t, url, []any{hello, map[string]any{"type": "clearHistory", "note": "/n/a.note"}},
+		func(m msg) bool { return m["type"] == "historyCleared" })
+	if got[1]["notes"] != 1.0 {
+		t.Fatalf("got %v", got)
+	}
+	if r, _ := store.Recent("/n/a.note", 1000); len(r) != 0 {
+		t.Fatalf("the named note must be forgotten: %+v", r)
+	}
+	if r, _ := store.Recent("/n/b.note", 1000); len(r) != 1 {
+		t.Fatalf("the other note must be kept: %+v", r)
+	}
+	// a note nobody has a conversation for, and a key that is not a real note key
+	got = converse(t, url, []any{hello, map[string]any{"type": "clearHistory", "note": strings.Repeat("x", 5000)}},
+		func(m msg) bool { return m["type"] == "historyCleared" })
+	if got[1]["notes"] != 0.0 {
+		t.Fatalf("an absurd key forgets nothing: %v", got)
+	}
+}

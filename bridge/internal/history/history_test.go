@@ -98,3 +98,28 @@ func TestTranscript(t *testing.T) {
 		t.Fatalf("en: %q", en)
 	}
 }
+
+func TestClearNoteForgetsOnlyThatNote(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	_ = s.Append("a", turn("qa", "aa"))
+	_ = s.Append("b", turn("qb", "ab"))
+	if n, err := s.ClearNote("a"); err != nil || n != 1 {
+		t.Fatalf("cleared %d, %v", n, err)
+	}
+	if got, _ := s.Recent("a", 1000); len(got) != 0 {
+		t.Fatalf("a is still there: %+v", got)
+	}
+	if got, _ := s.Recent("b", 1000); len(got) != 1 {
+		t.Fatalf("b must be untouched: %+v", got)
+	}
+	if n, err := s.ClearNote("never"); err != nil || n != 0 {
+		t.Fatalf("a note with no conversation: %d, %v", n, err)
+	}
+	if n, err := s.ClearNote(""); err != nil || n != 0 {
+		t.Fatalf("no key, nothing to forget: %d, %v", n, err)
+	}
+	var nilStore *Store
+	if n, err := nilStore.ClearNote("a"); err != nil || n != 0 {
+		t.Fatalf("a nil store remembers nothing: %d, %v", n, err)
+	}
+}

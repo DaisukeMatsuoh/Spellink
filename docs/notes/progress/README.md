@@ -42,8 +42,7 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 ## 次にやること（優先順）
 担当の分け方と、遠隔でできる作業の一覧は `handoff.md`。
 1. **実機の結果を見て、表の気になったセルだけを直す**（ユーザー）。
-2. **ブリッジの自動起動**（ユーザー。`sudo` は不要だが、エージェントは権限判定で実行できない）:
-   `pkill -f 'spellink-bridge serve'; mkdir -p ~/.config/systemd/user && cp ~/GitWorkspaces/Cloute/bridge/contrib/spellink-bridge.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now spellink-bridge && loginctl enable-linger $USER`
+2. **ブリッジの自動起動**（ユーザー）: `~/.local/bin/spellink-bridge service install`（`--dry-run` で、先に何をするか見られる）。`sudo` は要らない。systemd のユーザーサービスを作り、`loginctl enable-linger` まで行う。エージェントは、権限判定で、常駐の登録を実行できない。
 3. **CI に、表の生成物が古くないことの確認を足す**（遠隔可）。
 4. **表の「テストなし」（⬜）を埋める**（遠隔可）。
 5. **ADR 0015**: 呼称を「AIに聞く」に、問い合わせ先と認証をプロバイダとして分離（遠隔可。ユーザーの要望 2026-11-07）。

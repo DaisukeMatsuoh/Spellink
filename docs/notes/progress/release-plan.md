@@ -29,7 +29,7 @@
 |---|---|---|---|
 | 2.1 | 各 OS 向けのビルド（`scripts/build.sh`。darwin / linux / windows × arm64 / amd64） | — | ✅ |
 | 2.2 | リリースの自動化（タグで成果物を作り、チェックサムを付ける。CI の `bridge-v*` タグ） | R | 🔶 草案を点検 |
-| 2.3 | 自動起動: systemd（雛形あり）、launchd（雛形あり）、Windows（未）。`spellink-bridge service install` のような、利用者向けの導入コマンド | R | ⬜ |
+| 2.3 | 自動起動: `spellink-bridge service install / uninstall / status [--dry-run]`（systemd のユーザーサービス、launchd、Windows のタスク。Windows と Mac は実機未確認） | — | ✅ Linux はこの機械で確認が要る（ユーザー） |
 | 2.4 | macOS の公証（Apple Developer ID が要る）、Windows の署名と動作確認 | U（アカウント）/ R | ⏸ |
 | 2.5 | 初回の文字データの生成（KanjiVG のダウンロード）の失敗時の案内、ディスク・ネットワークのエラー表示 | R | 🔶 |
 | 2.6 | `spellink-bridge check`（疎通の確認） | — | ✅ |

@@ -3,6 +3,7 @@
 package config
 
 import (
+	"cmp"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -14,6 +15,8 @@ import (
 	mrand "math/rand/v2"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -26,6 +29,9 @@ type Config struct {
 	ClaudeExecutable string `json:"claudeExecutable"`
 	// Model is passed to `claude --model` (e.g. "haiku"); empty uses Claude Code's default.
 	Model string `json:"model,omitempty"`
+	// Provider chooses the AI the bridge asks (ADR 0015). Without it: Claude Code, with the
+	// claudeExecutable and model above (kept so existing config files keep working).
+	Provider *ProviderConfig `json:"provider,omitempty"`
 	// ExtraURLs are additional addresses the plugin may try, such as a tunnel that reaches
 	// this bridge from outside the LAN (e.g. "wss://bridge.example.com/v1").
 	ExtraURLs []string `json:"extraUrls,omitempty"`
@@ -57,6 +63,32 @@ type Config struct {
 	// LAN enables direct wss:// at home with a Let's Encrypt certificate for a name that points
 	// at this machine's LAN address (internal/lantls). Empty disables it.
 	LAN *lantls.Config `json:"lan,omitempty"`
+}
+
+// ProviderConfig names an AI and how to reach it. Authentication is the provider's own: a CLI
+// uses its own login, an API provider will keep its key here, on this machine only.
+type ProviderConfig struct {
+	// Kind is "claude-code" (the only one so far).
+	Kind string `json:"kind,omitempty"`
+	// Model is passed to the AI (e.g. "haiku"); empty uses its default.
+	Model string `json:"model,omitempty"`
+	// Executable is the CLI to run, for a CLI provider; empty means its usual name.
+	Executable string `json:"executable,omitempty"`
+}
+
+// KnownProviders are the values `provider.kind` may have.
+var KnownProviders = []string{"claude-code"}
+
+// ProviderSettings returns the effective kind, model and executable: provider.* wins over the
+// older top-level claudeExecutable / model.
+func (c *Config) ProviderSettings() (kind, model, executable string) {
+	kind, model, executable = "claude-code", c.Model, c.ClaudeExecutable
+	if p := c.Provider; p != nil {
+		kind = cmp.Or(p.Kind, kind)
+		model = cmp.Or(p.Model, model)
+		executable = cmp.Or(p.Executable, executable)
+	}
+	return kind, model, cmp.Or(executable, "claude")
 }
 
 // Timeouts are in seconds.
@@ -118,6 +150,9 @@ func (c *Config) HistoryChars() int {
 }
 
 func (c *Config) validate(file string) error {
+	if kind, _, _ := c.ProviderSettings(); !slices.Contains(KnownProviders, kind) {
+		return fmt.Errorf("%s: provider.kind %q is not one this version knows (%s)", file, kind, strings.Join(KnownProviders, ", "))
+	}
 	if c.Port < 0 || c.Port > 65535 {
 		return fmt.Errorf("%s: port %d is not a valid port (1-65535)", file, c.Port)
 	}

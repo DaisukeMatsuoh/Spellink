@@ -18,10 +18,11 @@ export type Cell<S extends string, A extends string> =
   | ({k: 'do'} & Move<S, A>)
   | {k: 'guard'; more: Move<S, A>; spent: Move<S, A>};
 
-export type Table<S extends string, E extends string, A extends string> = Record<
-  S,
-  Record<E, Cell<S, A>>
->;
+export type Table<
+  S extends string,
+  E extends string,
+  A extends string,
+> = Record<S, Record<E, Cell<S, A>>>;
 
 /** One function for every action in the table; a missing one does not compile. */
 export type Handlers<A extends string> = Record<A, (arg?: unknown) => void>;
@@ -62,7 +63,11 @@ export class Stm<S extends string, E extends string, A extends string> {
     switch (cell.k) {
       case 'never':
         // The table says this cannot happen here. It did: record it loudly, change nothing.
-        this.log(`${this.name}.never`, {state: this.state, event, note: cell.note});
+        this.log(`${this.name}.never`, {
+          state: this.state,
+          event,
+          note: cell.note,
+        });
         return;
       case 'ignore':
         if (cell.action) {
@@ -82,7 +87,12 @@ export class Stm<S extends string, E extends string, A extends string> {
     // The state changes first, so an action that raises further events sees the new state.
     this.state = to.next;
     if (from !== to.next) {
-      this.log(`${this.name}.state`, {from, event, action: to.action, to: to.next});
+      this.log(`${this.name}.state`, {
+        from,
+        event,
+        action: to.action,
+        to: to.next,
+      });
     }
     this.handlers[to.action](arg);
   }

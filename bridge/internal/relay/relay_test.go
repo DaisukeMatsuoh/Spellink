@@ -14,6 +14,7 @@ import (
 
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/provider"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/securechan"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/server"
 )
@@ -50,10 +51,10 @@ func TestSessionThroughRelay(t *testing.T) {
 		Name: "relayed", Version: "0", Token: "secret", Font: font, Log: quiet,
 		Report:   func(string, any) {},
 		Settings: func() protocol.Settings { return protocol.Settings{} }, SetSettings: func(protocol.Settings) error { return nil },
-		Ask: func(_ context.Context, _, _ string, onText func(string)) (string, error) {
-			onText("あ")
+		Provider: provider.Func("relay test AI", func(_ context.Context, _, _ string, s provider.Sink) (string, error) {
+			s.Text("あ")
 			return "あ", nil
-		},
+		}),
 	}
 	go Connect(ctx, base, "secret", func(ctx context.Context, c *websocket.Conn, peer string) {
 		server.ServeConn(ctx, deps, c, peer, true)

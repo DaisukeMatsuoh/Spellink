@@ -1,6 +1,6 @@
 [
   {
-    "elapsedMs": 80,
+    "elapsedMs": 81,
     "id": "g1",
     "missing": [],
     "pages": 1,
@@ -352,6 +352,7 @@
   {
     "bridge": "test",
     "protocol": 1,
+    "provider": "test AI",
     "settings": {
       "avoidOverwriting": false,
       "busyNotice": false,

@@ -21,13 +21,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/claude"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/config"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/glyphbuild"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/history"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/lantls"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/provider"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/provider/claudecode"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/relay"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/server"
 	"github.com/coder/websocket"
@@ -127,6 +128,17 @@ func loadFont() (*ink.Font, error) {
 	return font, err
 }
 
+// newProvider builds the AI the config names. Adding another AI is a case here and a package under
+// internal/provider; nothing else in the bridge changes (ADR 0015).
+func newProvider(cfg *config.Config) (provider.Provider, error) {
+	kind, model, executable := cfg.ProviderSettings()
+	switch kind {
+	case "claude-code":
+		return claudecode.NewRunner(executable, model)
+	}
+	return nil, fmt.Errorf("unknown provider %q", kind) // config.Load already refused it
+}
+
 func serve() error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -136,7 +148,7 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	runner, err := claude.NewRunner(cfg.ClaudeExecutable, cfg.Model)
+	ai, err := newProvider(cfg)
 	if err != nil {
 		return err
 	}
@@ -153,7 +165,7 @@ func serve() error {
 	var settingsMu sync.Mutex
 	deps := server.Deps{
 		Name: cfg.Name, Version: version, Token: cfg.Token, Font: font,
-		Ask: runner.Ask, AskActive: runner.AskActive, History: notes, HistoryChars: cfg.HistoryChars(), Runs: server.NewRuns(),
+		Provider: ai, History: notes, HistoryChars: cfg.HistoryChars(), Runs: server.NewRuns(),
 		FirstOutput: first, Gap: gap, Total: total,
 		Report: func(peer string, data any) {
 			if err := config.AppendReport(peer, data); err != nil {

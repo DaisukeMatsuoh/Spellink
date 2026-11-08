@@ -17,9 +17,30 @@ import (
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/history"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/provider"
 )
 
 var layout = ink.Layout{X: 10, Y: 10, Width: 400, PageHeight: 1000, BottomMargin: 20, CharSize: 40}
+
+// AskFunc is how most tests describe an AI: a function from the question to text. It is turned
+// into a provider.Provider; q is what a CLI would be given (the earlier conversation, then the
+// question), so tests can see what memory handed over.
+type AskFunc func(ctx context.Context, question, systemPrompt string, onText func(string)) (string, error)
+
+// AskActiveFunc is the same for a provider that also reports signs of life.
+type AskActiveFunc func(ctx context.Context, question, systemPrompt string, onText func(string), onActivity func(model bool)) (string, error)
+
+func asProvider(ask AskFunc, active AskActiveFunc) provider.Provider {
+	return provider.Func("test AI", func(ctx context.Context, q, sys string, s provider.Sink) (string, error) {
+		if active != nil {
+			return active(ctx, q, sys, s.Text, s.Activity)
+		}
+		if ask == nil {
+			return "", nil
+		}
+		return ask(ctx, q, sys, func(t string) { s.Activity(true); s.Text(t) })
+	})
+}
 
 func startTest(t *testing.T, ask AskFunc) string {
 	t.Helper()
@@ -30,7 +51,7 @@ func startTestWith(t *testing.T, ask AskFunc, tweak func(*Deps)) string {
 	t.Helper()
 	font := &ink.Font{Em: 100, Glyphs: map[rune]ink.Glyph{'あ': {Advance: 100, Strokes: [][]int16{{50, 0, 50, 100}}}}}
 	d := Deps{
-		Name: "test", Version: "0", Token: "secret", Font: font, Ask: ask,
+		Name: "test", Version: "0", Token: "secret", Font: font, Provider: asProvider(ask, nil),
 		Report:   func(string, any) {},
 		Settings: func() protocol.Settings { return protocol.Settings{} }, SetSettings: func(protocol.Settings) error { return nil }, Log: log.New(io.Discard, "", 0),
 	}
@@ -201,7 +222,7 @@ func TestReportsClaudeFailure(t *testing.T) {
 	got := converse(t, url, []any{hello,
 		map[string]any{"type": "ask", "id": "q2", "question": "x", "lang": "en", "layout": layout},
 	}, func(m msg) bool { return m["type"] == "error" })
-	if last := got[len(got)-1]; last["code"] != "claude_failed" {
+	if last := got[len(got)-1]; last["code"] != "provider_failed" {
 		t.Fatalf("got %v", last)
 	}
 }
@@ -552,7 +573,7 @@ func TestARunningAnswerSaysItIsAlive(t *testing.T) {
 // withActivity makes the test AI one that reports signs of life.
 func withActivity(f AskActiveFunc, tweak func(*Deps)) func(*Deps) {
 	return func(d *Deps) {
-		d.AskActive = f
+		d.Provider = asProvider(nil, f)
 		if tweak != nil {
 			tweak(d)
 		}
@@ -783,7 +804,7 @@ func TestFinishedAnswersAreForgottenAfterTheirRetention(t *testing.T) {
 	rs.Retention = 30 * time.Millisecond
 	quiet := log.New(io.Discard, "", 0)
 	first, _ := rs.start("old", func() {}, quiet, 0)
-	first.fire(reProviderFail, failInfo{"claude_failed", "x"}) // ends it: FA or FD
+	first.fire(reProviderFail, failInfo{"provider_failed", "x"}) // ends it: FA or FD
 	if !first.isFinished() {
 		t.Fatal("a failure ends the run")
 	}
@@ -813,5 +834,25 @@ func TestAKeepAliveIsNotSentToANobody(t *testing.T) {
 	r.fire(reKeepalive, nil)
 	if r.state() != rsRd {
 		t.Fatal("a keep-alive does not change the state")
+	}
+}
+
+func TestTheWelcomeNamesTheAIBehindTheBridge(t *testing.T) {
+	url := startTest(t, nil)
+	got := converse(t, url, []any{hello}, func(m msg) bool { return m["type"] == "welcome" })
+	if got[0]["provider"] != "test AI" {
+		t.Fatalf("the plugin shows this name in its settings: %v", got[0])
+	}
+}
+
+func TestAFailureOfTheAIEndsTheAnswerWithAProviderErrorNotNamingAnyAI(t *testing.T) {
+	url := startTest(t, func(context.Context, string, string, func(string)) (string, error) {
+		return "", errors.New("the service is overloaded")
+	})
+	c, read := dial(t, url)
+	send(t, c, ask("pf1", "", "q"))
+	m := lastFrame(read)
+	if m["code"] != "provider_failed" || m["message"] != "the service is overloaded" || m["seq"] == nil {
+		t.Fatalf("got %v", m)
 	}
 }

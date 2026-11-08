@@ -39,6 +39,8 @@ export class BridgeConnection {
     readonly url: string,
     readonly mode: ConnectionMode,
     readonly settings: Settings,
+    /** The AI the bridge asks, as the bridge names it ("" if it did not say). */
+    readonly provider = '',
   ) {
     ws.onmessage = e => {
       let m: {value: unknown} | null;
@@ -229,6 +231,9 @@ export function connectFirst(
               url,
               mode,
               parseSettings(w.settings),
+              typeof w.provider === 'string' && w.provider.length <= 128
+                ? w.provider
+                : '',
             ),
           );
         };

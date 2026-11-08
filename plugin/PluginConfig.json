@@ -1,6 +1,6 @@
 {
   "name": "Spellink",
-  "desc": "Lasso your handwriting to ask Claude; the answer is written back in handwriting.",
+  "desc": "Lasso your handwriting to ask an AI; the answer is written back in handwriting.",
   "iconPath": "assets/icon.png",
   "versionName": "0.0.1",
   "versionCode": "1",

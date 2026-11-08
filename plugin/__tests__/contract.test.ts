@@ -53,6 +53,7 @@ describe('the frames the bridge sends are accepted by the plugin', () => {
       settings: Record<string, unknown>;
     };
     expect(typeof w.bridge).toBe('string');
+    expect(typeof (w as {provider?: unknown}).provider).toBe('string'); // shown in the settings
     expect(w.protocol).toBe(1);
     const s = parseSettings(w.settings);
     // what the bridge sent survives the plugin's checks unchanged

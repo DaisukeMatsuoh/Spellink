@@ -1,4 +1,4 @@
-// Runs "Ask Claude" in the background (the lasso button has no UI of its own) so the answer can
+// Runs "Ask AI" in the background (the lasso button has no UI of its own) so the answer can
 // be watched appearing on the page. The progress panel opens only when the user turned it on
 // (Settings → show progress) or when something went wrong.
 import {AskFlow, knownSettings, type AskState} from './askFlow';

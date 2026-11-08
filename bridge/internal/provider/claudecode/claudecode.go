@@ -1,6 +1,7 @@
-// Package claude asks the locally installed, unmodified Claude Code CLI — signed in with the
-// user's own account — and streams the answer back. The bridge never touches credentials.
-package claude
+// Package claudecode is the provider that asks the locally installed, unmodified Claude Code CLI
+// — signed in with the user's own account — and streams the answer back. The bridge never
+// touches credentials (ADR 0005).
+package claudecode
 
 import (
 	"bufio"
@@ -12,6 +13,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/provider"
 )
 
 type Runner struct {
@@ -30,38 +33,24 @@ func NewRunner(executable, model string) (*Runner, error) {
 	return &Runner{Executable: executable, Model: model, workDir: dir}, nil
 }
 
-// SystemPrompt asks for plain sentences of roughly budget characters (ja) or budget/5 words (en).
-func SystemPrompt(lang string, budget int) string {
-	if lang == "en" {
-		words := max(30, budget/5)
-		return strings.Join([]string{
-			"You answer questions inside a handwritten notebook.",
-			"Your answer will be written onto the page as handwriting.",
-			"Use plain sentences only: no Markdown, headings, bullet symbols, tables, emoji or code blocks.",
-			fmt.Sprintf("Be concise: aim for at most %d words so the answer fits the space on the page. Use line breaks between paragraphs.", words),
-			"The question was read by handwriting recognition and may contain recognition errors; infer the intent from context.",
-		}, "\n")
+// Name is what the settings screen shows as the destination.
+func (r *Runner) Name() string { return "Claude Code" }
+
+// Ask runs `claude -p` and streams the answer. The question goes in on standard input; the
+// earlier conversation of the note is put in front of it. Signs of life: onActivity(false) for
+// anything the process emits (it started), onActivity(true) once the model itself has begun
+// (message and thinking events, not only visible text). A process that has started but whose
+// model never answers — the network to the AI is down, the service is overloaded — is told apart
+// from one that is working, long before any text exists.
+func (r *Runner) Ask(ctx context.Context, req provider.Request, sink provider.Sink) (string, error) {
+	question, systemPrompt := req.Flat(), req.System
+	onText, onActivity := sink.Text, sink.Activity
+	if onText == nil {
+		onText = func(string) {}
 	}
-	return strings.Join([]string{
-		"あなたは手書きノートの中で質問に答えるアシスタントです。",
-		"あなたの回答は手書きの文字としてノートのページに書き込まれます。",
-		"Markdown、見出し、箇条書き記号、表、絵文字、コードブロックは使わず、プレーンな文章で答えてください。",
-		fmt.Sprintf("ページの余白に収まるよう、要点を簡潔に、%d字以内を目安に答えてください。段落を分けるときは改行を使ってください。", max(60, budget)),
-		"質問は手書き文字認識で読み取ったものなので、誤認識が含まれることがあります。文脈から意図を汲み取ってください。",
-	}, "\n")
-}
-
-// Ask runs `claude -p` and calls onText for every streamed text delta. It returns the full answer.
-func (r *Runner) Ask(ctx context.Context, question, systemPrompt string, onText func(string)) (string, error) {
-	return r.AskActive(ctx, question, systemPrompt, onText, func(bool) {})
-}
-
-// AskActive is Ask that also reports signs of life: onActivity(false) for anything the process
-// emits (it started), onActivity(true) once the model itself has begun (message and thinking
-// events, not only visible text). A process that has started but whose model never answers —
-// the network to the AI is down, the service is overloaded — is told apart from one that is
-// working, long before any text exists.
-func (r *Runner) AskActive(ctx context.Context, question, systemPrompt string, onText func(string), onActivity func(model bool)) (string, error) {
+	if onActivity == nil {
+		onActivity = func(bool) {}
+	}
 	args := []string{
 		"-p",
 		"--output-format", "stream-json",

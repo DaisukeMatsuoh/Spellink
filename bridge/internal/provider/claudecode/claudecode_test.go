@@ -1,4 +1,4 @@
-package claude
+package claudecode
 
 import (
 	"context"
@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/history"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/provider"
 )
 
 // fakeClaude writes a script that prints the given stream-json lines and exits with `code`.
@@ -40,7 +43,7 @@ func TestAskStreamsTextDeltas(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got []string
-	answer, err := r.Ask(context.Background(), "q", "sys", func(s string) { got = append(got, s) })
+	answer, err := r.Ask(context.Background(), provider.Request{System: "sys", Question: "q"}, provider.Sink{Text: func(s string) { got = append(got, s) }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +55,7 @@ func TestAskStreamsTextDeltas(t *testing.T) {
 func TestAskReportsResultErrors(t *testing.T) {
 	exe := fakeClaude(t, []string{`{"type":"result","is_error":true,"result":"Not logged in"}`}, 0)
 	r, _ := NewRunner(exe, "")
-	if _, err := r.Ask(context.Background(), "q", "sys", func(string) {}); err == nil || !strings.Contains(err.Error(), "Not logged in") {
+	if _, err := r.Ask(context.Background(), provider.Request{System: "sys", Question: "q"}, provider.Sink{}); err == nil || !strings.Contains(err.Error(), "Not logged in") {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -60,7 +63,7 @@ func TestAskReportsResultErrors(t *testing.T) {
 func TestAskReportsNonZeroExit(t *testing.T) {
 	exe := fakeClaude(t, nil, 3)
 	r, _ := NewRunner(exe, "")
-	if _, err := r.Ask(context.Background(), "q", "sys", func(string) {}); err == nil {
+	if _, err := r.Ask(context.Background(), provider.Request{System: "sys", Question: "q"}, provider.Sink{}); err == nil {
 		t.Fatal("expected an error for exit status 3")
 	}
 }
@@ -73,21 +76,9 @@ func TestAskStopsWhenCancelled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err := r.Ask(ctx, "q", "sys", func(string) {})
+	_, err := r.Ask(ctx, provider.Request{System: "sys", Question: "q"}, provider.Sink{})
 	if err == nil || time.Since(start) > 5*time.Second {
 		t.Fatalf("cancel should stop the process quickly (err=%v, took %v)", err, time.Since(start))
-	}
-}
-
-func TestSystemPromptCarriesTheLengthBudget(t *testing.T) {
-	if p := SystemPrompt("ja", 300); !strings.Contains(p, "300字以内") {
-		t.Errorf("ja prompt: %q", p)
-	}
-	if p := SystemPrompt("en", 300); !strings.Contains(p, "60 words") {
-		t.Errorf("en prompt: %q", p)
-	}
-	if p := SystemPrompt("ja", 1); !strings.Contains(p, "60字以内") {
-		t.Errorf("budget must have a floor: %q", p)
 	}
 }
 
@@ -102,7 +93,7 @@ func TestAskActiveTellsTheProcessStartingFromTheModelWorking(t *testing.T) {
 	}, 0)
 	r, _ := NewRunner(exe, "")
 	var signs []bool
-	if _, err := r.AskActive(context.Background(), "q", "sys", func(string) {}, func(model bool) { signs = append(signs, model) }); err != nil {
+	if _, err := r.Ask(context.Background(), provider.Request{System: "sys", Question: "q"}, provider.Sink{Activity: func(model bool) { signs = append(signs, model) }}); err != nil {
 		t.Fatal(err)
 	}
 	want := []bool{false, false, true, true, true, true}
@@ -120,10 +111,40 @@ func TestAskActiveIgnoresLinesThatAreNotEvents(t *testing.T) {
 	exe := fakeClaude(t, []string{`not json at all`, `{"type":"system"}`, `{"type":"result","is_error":false}`}, 0)
 	r, _ := NewRunner(exe, "")
 	n := 0
-	if _, err := r.AskActive(context.Background(), "q", "sys", func(string) {}, func(bool) { n++ }); err != nil {
+	if _, err := r.Ask(context.Background(), provider.Request{System: "sys", Question: "q"}, provider.Sink{Activity: func(bool) { n++ }}); err != nil {
 		t.Fatal(err)
 	}
 	if n != 2 {
 		t.Fatalf("a line that is not JSON is no sign of life: got %d signs", n)
+	}
+}
+
+func TestTheEarlierConversationIsPutInFrontOfTheQuestion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "claude")
+	script := "#!/bin/sh\ncat > " + filepath.Join(dir, "stdin.txt") + "\nprintf '%s\\n' '{\"type\":\"result\",\"is_error\":false}'\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := NewRunner(path, "")
+	_, err := r.Ask(context.Background(), provider.Request{
+		System: "sys", Question: "それを3倍して", Lang: "ja",
+		Earlier: []history.Turn{{Q: "1+1は？", A: "2です。"}},
+	}, provider.Sink{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, "stdin.txt"))
+	for _, want := range []string{"1+1は？", "2です。", "それを3倍して"} {
+		if !strings.Contains(string(got), want) {
+			t.Fatalf("the CLI must be given %q, got %q", want, got)
+		}
+	}
+}
+
+func TestItIsAProviderAndHasAName(t *testing.T) {
+	var p provider.Provider = &Runner{}
+	if p.Name() != "Claude Code" {
+		t.Fatal(p.Name())
 	}
 }

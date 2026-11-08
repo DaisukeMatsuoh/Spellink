@@ -2,7 +2,7 @@ import {PluginManager} from 'sn-plugin-lib';
 
 const STRINGS = {
   en: {
-    askButton: 'Ask Claude',
+    askButton: 'Ask AI',
     diagButton: 'Spellink diagnostics',
     permissions: 'Checking permissions…',
     permissionDenied: 'Permission not granted: {list}',
@@ -11,7 +11,7 @@ const STRINGS = {
     connecting: 'Connecting to the bridge…',
     noBridge:
       'No bridge reachable. Is spellink-bridge running on a computer on this network?',
-    thinking: 'Claude is thinking…',
+    thinking: 'The AI is thinking…',
     reconnecting: 'Reconnecting ({n}/{max})…',
     badFrame: 'The bridge sent data that could not be used.',
     busy: 'An answer is already being written.',
@@ -40,14 +40,14 @@ const STRINGS = {
       'Off: the answer is simply written onto the page. The panel still opens when something goes wrong.',
     thinkingAnimation: 'Thinking animation',
     thinkingAnimationHelp:
-      'Draws a wavy line on the page while Claude is thinking, and removes it before the answer.',
+      'Draws a wavy line on the page while the AI is thinking, and removes it before the answer.',
     fullWidthSpacing: 'Spacing: kanji / kana',
     halfWidthSpacing: 'Spacing: letters / digits',
     spacingHelp:
       '100% is the tightest. Widen it if characters touch; full-width and half-width are set separately.',
     forgetHistory: 'Forget conversations',
     forgetHistoryHelp:
-      'Claude remembers earlier questions written in the same note. This makes it forget them in every note.',
+      'The AI is given earlier questions written in the same note. This makes it forget them in every note.',
     forgotten: 'Forgot the conversations of {n} note(s).',
     lineTilt: 'Writing slope',
     lineTiltHelp:
@@ -56,10 +56,11 @@ const STRINGS = {
     fallsRight: 'falls to the right {deg}°',
     level: 'level',
     connectedTo: 'Connected to {name}',
+    destination: 'Asking: {name}',
     saved: 'Saved.',
   },
   ja: {
-    askButton: 'Claudeに聞く',
+    askButton: 'AIに聞く',
     diagButton: 'Spellink 診断',
     permissions: '権限を確認しています…',
     permissionDenied: '権限が許可されていません: {list}',
@@ -68,7 +69,7 @@ const STRINGS = {
     connecting: 'ブリッジに接続しています…',
     noBridge:
       'ブリッジに接続できません。同じネットワークのPCで spellink-bridge が動いているか確認してください。',
-    thinking: 'Claude が考えています…',
+    thinking: 'AI が考えています…',
     reconnecting: '再接続中 ({n}/{max})…',
     badFrame: 'ブリッジから、使えないデータが届きました。',
     busy: '回答を書いている最中です。',
@@ -97,7 +98,7 @@ const STRINGS = {
       'OFF のときは、回答をそのままページに書き込みます。エラーのときだけパネルが開きます。',
     thinkingAnimation: '待機中のアニメーション',
     thinkingAnimationHelp:
-      'Claude が考えている間、ページに波線を描き、回答の直前に消します。',
+      'AI が考えている間、ページに波線を描き、回答の直前に消します。',
     fullWidthSpacing: '字間: 漢字・かな',
     halfWidthSpacing: '字間: 英字・数字',
     spacingHelp:
@@ -113,6 +114,7 @@ const STRINGS = {
     fallsRight: '右下がり {deg}°',
     level: '水平',
     connectedTo: '{name} に接続しました',
+    destination: '接続先の AI: {name}',
     saved: '保存しました。',
   },
 } as const;

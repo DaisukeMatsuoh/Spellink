@@ -21,6 +21,7 @@ export function SettingsScreen() {
   const [status, setStatus] = useState(t('connecting'));
   const [settings, setSettings] = useState<Settings | null>(null);
   const [conn, setConn] = useState<BridgeConnection | null>(null);
+  const [destination, setDestination] = useState('');
 
   useEffect(() => {
     let c: BridgeConnection | null = null;
@@ -41,6 +42,7 @@ export function SettingsScreen() {
         }
       };
       setConn(c);
+      setDestination(c.provider);
       setSettings(c.settings);
       setStatus(t('connectedTo', {name: c.name}));
     })();
@@ -75,6 +77,11 @@ export function SettingsScreen() {
     <View style={styles.screen}>
       <Text style={styles.title}>{t('settingsTitle')}</Text>
       <Text style={styles.text}>{status}</Text>
+      {destination ? (
+        <Text style={styles.small}>
+          {t('destination', {name: destination})}
+        </Text>
+      ) : null}
       <View style={styles.row}>
         <Button
           disabled={!settings}

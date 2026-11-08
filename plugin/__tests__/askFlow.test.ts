@@ -323,7 +323,7 @@ describe('AskFlow', () => {
 
   it('shows an error when the bridge reports one', async () => {
     mockScript = (send, id) =>
-      send({type: 'error', id, code: 'claude_failed', message: 'boom'});
+      send({type: 'error', id, code: 'provider_failed', message: 'boom'});
     const last = await run(layout);
     expect(last.failed).toBe(true);
     expect(last.message).toContain('boom');
@@ -347,7 +347,7 @@ describe('AskFlow', () => {
     it('is removed even when the bridge fails', async () => {
       mockScript = async (send, id) => {
         await pause(700);
-        send({type: 'error', id, code: 'claude_failed', message: 'boom'});
+        send({type: 'error', id, code: 'provider_failed', message: 'boom'});
       };
       await run(layout);
       expect(waveStrokes(0)).toHaveLength(0);

@@ -79,8 +79,10 @@ type HistoryCleared struct {
 }
 
 type Welcome struct {
-	Type     string   `json:"type"` // "welcome"
-	Bridge   string   `json:"bridge"`
+	Type   string `json:"type"` // "welcome"
+	Bridge string `json:"bridge"`
+	// Provider is the AI the bridge asks ("Claude Code"), shown in the plugin's settings.
+	Provider string   `json:"provider,omitempty"`
 	Version  string   `json:"version"`
 	Protocol int      `json:"protocol"`
 	Settings Settings `json:"settings"`
@@ -93,8 +95,9 @@ type Status struct {
 	// Phase and IdleMs accompany a keep-alive: where the AI is ("starting": the process runs but
 	// the model has not begun; "working": it has begun, no text yet; "writing") and how long
 	// since it last showed a sign of life.
-	Phase  string `json:"phase,omitempty"`
-	IdleMs int64  `json:"idleMs,omitempty"`
+	Phase string `json:"phase,omitempty"`
+	// IdleMs is a pointer so that a keep-alive always carries it, even when it is 0.
+	IdleMs *int64 `json:"idleMs,omitempty"`
 }
 
 type Line struct {
@@ -115,7 +118,7 @@ type Done struct {
 	ElapsedMs int64    `json:"elapsedMs"`
 }
 
-// Error codes: unauthorized, bad_request, busy, claude_failed, cancelled, unknown_ask, provider_timeout.
+// Error codes: unauthorized, bad_request, busy, provider_failed, cancelled, unknown_ask, provider_timeout.
 type Error struct {
 	Type    string `json:"type"` // "error"
 	ID      string `json:"id,omitempty"`

@@ -33,7 +33,7 @@ export interface Settings {
   lineTilt: boolean;
   /** The agent's own habit (positive rises to the right); chosen by the bridge, read-only. */
   tiltDegrees?: number;
-  /** Draw a wave on the page while Claude thinks. */
+  /** Draw a wave on the page while the AI thinks. */
   thinkingAnimation: boolean;
   /** Letter spacing in percent of the glyph's own advance (100 = tightest). */
   fullWidthSpacing?: number;
@@ -53,7 +53,7 @@ export type ClientMessage =
       type: 'ask';
       id: string;
       question: string;
-      /** Key of the open note: the bridge hands earlier questions of the same note to Claude. */
+      /** Key of the open note: the bridge hands earlier questions of the same note to the AI. */
       note: string;
       lang: Lang;
       layout: LayoutParams;

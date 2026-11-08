@@ -208,7 +208,8 @@ func (r *run) handlers() map[runAction]func(any) {
 		raR14: func(any) { r.stopOrphan() }, // SWEEP: the registry forgets a run that reached N
 		raR15: func(any) { // KEEPALIVE
 			phase, idle := r.vitals()
-			r.notifyLocked(protocol.Status{Type: "status", ID: r.id, Stage: "alive", Phase: phase, IdleMs: idle.Milliseconds()})
+			ms := idle.Milliseconds()
+			r.notifyLocked(protocol.Status{Type: "status", ID: r.id, Stage: "alive", Phase: phase, IdleMs: &ms})
 		},
 		raE1: func(arg any) {
 			a := arg.(reply)

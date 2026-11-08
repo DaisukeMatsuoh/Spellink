@@ -189,3 +189,42 @@ func TestBusyNoticeIsOnUnlessTurnedOff(t *testing.T) {
 		t.Fatal("the busy notice defaults to on and can be turned off")
 	}
 }
+
+func TestProviderDefaultsToClaudeCodeAndTheOlderFieldsStillWork(t *testing.T) {
+	kind, model, exe := (&Config{}).ProviderSettings()
+	if kind != "claude-code" || model != "" || exe != "claude" {
+		t.Fatalf("defaults: %s %q %s", kind, model, exe)
+	}
+	kind, model, exe = (&Config{Model: "haiku", ClaudeExecutable: "/opt/claude"}).ProviderSettings()
+	if kind != "claude-code" || model != "haiku" || exe != "/opt/claude" {
+		t.Fatalf("the older top-level fields must still count: %s %q %s", kind, model, exe)
+	}
+	kind, model, exe = (&Config{Model: "haiku", Provider: &ProviderConfig{Model: "sonnet", Executable: "/x/claude"}}).ProviderSettings()
+	if kind != "claude-code" || model != "sonnet" || exe != "/x/claude" {
+		t.Fatalf("provider.* wins over the older fields: %s %q %s", kind, model, exe)
+	}
+}
+
+func TestAnUnknownProviderIsRefusedByNameAndWithTheChoices(t *testing.T) {
+	dir := isolate(t)
+	file := filepath.Join(dir, "spellink-bridge", "config.json")
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for body, ok := range map[string]bool{
+		`{"token":"x"}`: true,
+		`{"token":"x","provider":{"kind":"claude-code"}}`: true,
+		`{"token":"x","provider":{"kind":"gpt-9"}}`:       false,
+	} {
+		if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Load()
+		if ok && err != nil {
+			t.Errorf("%s: %v", body, err)
+		}
+		if !ok && (err == nil || !strings.Contains(err.Error(), "gpt-9") || !strings.Contains(err.Error(), "claude-code") || !strings.Contains(err.Error(), "config.json")) {
+			t.Errorf("%s: the error must name the file, the kind and the choices: %v", body, err)
+		}
+	}
+}

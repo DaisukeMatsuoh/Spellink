@@ -22,30 +22,22 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/claude"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/history"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/provider"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/securechan"
 )
-
-// AskFunc asks the model and streams text deltas through onText.
-type AskFunc func(ctx context.Context, question, systemPrompt string, onText func(string)) (string, error)
-
-// AskActiveFunc is AskFunc that also reports signs of life (see claude.Runner.AskActive). When a
-// provider has one, the silence limits count any activity, not only visible text.
-type AskActiveFunc func(ctx context.Context, question, systemPrompt string, onText func(string), onActivity func(model bool)) (string, error)
 
 type Deps struct {
 	Name    string
 	Version string
 	Token   string
 	Font    *ink.Font
-	Ask     AskFunc
-	// AskActive, when set, is used instead of Ask.
-	AskActive AskActiveFunc
-	Report    func(peer string, data any)
-	Log       *log.Logger
+	// Provider is the AI behind the bridge (ADR 0015); the server does not know which one.
+	Provider provider.Provider
+	Report   func(peer string, data any)
+	Log      *log.Logger
 	// Settings returns the stored user settings; SetSettings changes and persists them.
 	Settings    func() protocol.Settings
 	SetSettings func(protocol.Settings) error
@@ -153,6 +145,14 @@ func (s *session) sendRaw(ctx context.Context, b []byte) error {
 	return werr
 }
 
+// providerName is what the plugin shows as the destination of its questions.
+func (s *session) providerName() string {
+	if s.deps.Provider == nil {
+		return ""
+	}
+	return s.deps.Provider.Name()
+}
+
 func (s *session) fail(ctx context.Context, code, msg string) {
 	s.send(ctx, protocol.Error{Type: "error", Code: code, Message: msg})
 	_ = s.conn.Close(websocket.StatusPolicyViolation, code)
@@ -225,7 +225,7 @@ func (s *session) run(parent context.Context) {
 	}
 	s.deps.Log.Printf("connected: %s (%.80s)", s.peer, client)
 	s.send(ctx, protocol.Welcome{
-		Type: "welcome", Bridge: s.deps.Name, Version: s.deps.Version, Protocol: protocol.Version,
+		Type: "welcome", Bridge: s.deps.Name, Provider: s.providerName(), Version: s.deps.Version, Protocol: protocol.Version,
 		Settings: s.deps.Settings(),
 	})
 
@@ -369,7 +369,7 @@ func (s *session) startAsk(ctx context.Context, m *protocol.ClientMessage) {
 	go func() {
 		defer func() {
 			if !r.isFinished() { // an answer must end in a frame, whatever happened
-				r.fire(reProviderFail, failInfo{"claude_failed", "the answer ended without a result"})
+				r.fire(reProviderFail, failInfo{"provider_failed", "the answer ended without a result"})
 			}
 			cancel()
 			s.askMu.Lock()
@@ -479,15 +479,11 @@ func (s *session) answer(askCtx context.Context, r *run, id, q, lang, note strin
 		}
 	}
 
-	ask := s.deps.AskActive
-	if ask == nil { // a provider that only reports text: text is its only sign of life
-		ask = func(ctx context.Context, q, sys string, onText func(string), _ func(bool)) (string, error) {
-			return s.deps.Ask(ctx, q, sys, onText)
-		}
-	}
-	text, err := ask(askCtx, history.Transcript(earlier, q, lang), claude.SystemPrompt(lang, budget(layout)), onText, onActivity)
+	text, err := s.deps.Provider.Ask(askCtx, provider.Request{
+		System: provider.SystemPrompt(lang, budget(layout)), Earlier: earlier, Question: q, Lang: lang,
+	}, provider.Sink{Text: onText, Activity: onActivity})
 	if err != nil && !composer.Truncated {
-		code, msg := "claude_failed", err.Error()
+		code, msg := "provider_failed", err.Error()
 		if askCtx.Err() != nil {
 			code, msg = "cancelled", "cancelled"
 		}

@@ -1,6 +1,6 @@
 # 0015. 問い合わせ先の AI を差し替え可能な「プロバイダ」にし、利用者向けの呼称を中立にする
 
-- 状態: Proposed（ユーザー要望 2026-11-07。実装はユーザーによる状態遷移表の確認後）
+- 状態: Accepted（実装済み 2026-11-08。実機未確認）
 - 日付: 2026-11-07
 
 ## 背景
@@ -44,3 +44,13 @@
 - 履歴（ADR 0012）は、すでにプロバイダ非依存の形（質問と回答の組）で保存している。プロバイダを替えても、会話は続く。
 - AI ごとに、回答の長さの指示への従い方や、「考えている時間」が違う。時間切れの値は設定で変えられるようにする（`bridge-run.md` の R13）。
 - 他社の AI の規約・料金・認証方式は、追加するときに調べる。このファイルでは決めない。
+
+## 追記（2026-11-08）: 実装
+- `internal/provider`: `Request`（`System` / `Earlier` / `Question` / `Lang`）、`Sink`（`Text` / `Activity`）、`Provider`（`Name` / `Ask`）、`Flat()`（1 本のプロンプトにする）、`Func`（関数を Provider にする。テスト用）、`SystemPrompt`（AI に依存しない文面）。
+- `internal/provider/claudecode`: 最初のプロバイダ（旧 `internal/claude`）。
+- `config.json` の `provider: {kind, model, executable}`。以前の `claudeExecutable` / `model` は、そのまま効く（`provider.*` が優先）。未知の `kind` は、ファイル名・値・選べる値を示して起動を止める。AI を足すときは、`internal/provider/<名前>` と、`main.go` の `newProvider` に 1 つ `case`、`config.KnownProviders` に名前。
+- `welcome` に `provider`（表示名）を追加。端末の設定画面に「接続先の AI: …」を表示。
+- 端末の文言は「AIに聞く」/ "Ask AI"。エラーの種類 `claude_failed` を `provider_failed` に改名。
+- 契約テスト（Go が送るフレームの記録 → 端末の検証）が、`welcome` の変更を検出して更新した。同じテストが、**生存通知の `idleMs` が 0 のとき欠ける不具合**（`omitempty`）を見つけて、直した。
+- 他社の AI は、追加する前に、規約と料金を確認する（このファイルでは決めない）。
+

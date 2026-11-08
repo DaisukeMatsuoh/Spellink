@@ -3,8 +3,10 @@ package relay
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -164,5 +166,62 @@ func TestTheRelayRefusesNewRoomsAtItsLimit(t *testing.T) {
 	defer stop()
 	if _, _, err := again.Read(readCtx); websocket.CloseStatus(err) == StatusRelayFull {
 		t.Fatal("a bridge whose room already exists must not be refused")
+	}
+}
+
+func TestOneAddressCannotUseTheRelayUp(t *testing.T) {
+	s := NewServer(log.New(io.Discard, "", 0))
+	s.clients = newLimiter(3, time.Minute)
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	url := srv.URL + ClientPath + "?room=" + RoomID("x")
+	status := func(header string) int {
+		req, _ := http.NewRequest("GET", url, nil) // not a WebSocket upgrade: the answer is only about admission
+		if header != "" {
+			req.Header.Set("Cf-Connecting-Ip", header)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	for i := 0; i < 3; i++ {
+		if c := status(""); c == http.StatusTooManyRequests {
+			t.Fatalf("attempt %d is within the limit", i+1)
+		}
+	}
+	if c := status(""); c != http.StatusTooManyRequests {
+		t.Fatalf("the fourth attempt from one address must be refused, got %d", c)
+	}
+	// the header means nothing unless the operator trusts the proxy that set it
+	if c := status("203.0.113.9"); c != http.StatusTooManyRequests {
+		t.Fatalf("an untrusted header must not buy a fresh allowance, got %d", c)
+	}
+	s.TrustProxy = true
+	if c := status("203.0.113.9"); c == http.StatusTooManyRequests {
+		t.Fatalf("behind a trusted proxy each real address has its own allowance, got %d", c)
+	}
+}
+
+func TestTheLimiterForgetsQuietAddressesAndStartsANewWindow(t *testing.T) {
+	l := newLimiter(2, time.Minute)
+	t0 := time.Unix(1000, 0)
+	if !l.allow("a", t0) || !l.allow("a", t0) || l.allow("a", t0) {
+		t.Fatal("two allowed, the third refused")
+	}
+	if !l.allow("b", t0) {
+		t.Fatal("another address has its own allowance")
+	}
+	if !l.allow("a", t0.Add(61*time.Second)) {
+		t.Fatal("a new window starts after the old one ends")
+	}
+	for i := 0; i < 5000; i++ {
+		l.allow(fmt.Sprint("ip", i), t0)
+	}
+	l.allow("late", t0.Add(2*time.Minute)) // the sweep runs on a big table
+	if len(l.hits) > 10 {
+		t.Fatalf("quiet addresses must be forgotten, still %d", len(l.hits))
 	}
 }

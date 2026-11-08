@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -215,21 +216,26 @@ func serve() error {
 	}
 
 	// Direct wss:// on the LAN (a plugin refuses cleartext and untrusted certificates).
-	var lanSrv *http.Server
+	// The certificate is obtained in the background, with a time limit: a wrong token or a DNS
+	// problem must not keep the bridge itself from starting.
+	var lanSrv atomic.Pointer[http.Server]
 	if cfg.LAN != nil {
 		cfg.LAN.StorageDir = filepath.Join(dir0(), "certs")
-		tlsCfg, err := lantls.Setup(ctx, cfg.LAN)
-		if err != nil {
-			logger.Printf("lan wss disabled: %v", err)
-		} else {
-			lanSrv = &http.Server{Addr: ":8766", Handler: handler, TLSConfig: tlsCfg, ReadHeaderTimeout: 10 * time.Second}
-			go func() {
-				if err := lanSrv.ListenAndServeTLS("", ""); !errors.Is(err, http.ErrServerClosed) {
-					logger.Printf("lan wss: %v", err)
-				}
-			}()
+		go func() {
+			setupCtx, cancel := context.WithTimeout(ctx, lantls.SetupTimeout)
+			defer cancel()
+			tlsCfg, err := lantls.Setup(setupCtx, cfg.LAN)
+			if err != nil {
+				logger.Printf("lan wss disabled: %v", err)
+				return
+			}
+			srv := &http.Server{Addr: ":8766", Handler: handler, TLSConfig: tlsCfg, ReadHeaderTimeout: 10 * time.Second}
+			lanSrv.Store(srv)
 			logger.Printf("lan wss: wss://%s:8766%s", cfg.LAN.Host, protocol.WSPath)
-		}
+			if err := srv.ListenAndServeTLS("", ""); !errors.Is(err, http.ErrServerClosed) {
+				logger.Printf("lan wss: %v", err)
+			}
+		}()
 	}
 
 	dir, _ := config.Dir()
@@ -242,8 +248,8 @@ func serve() error {
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(shutdown)
-		if lanSrv != nil {
-			_ = lanSrv.Shutdown(shutdown)
+		if srv := lanSrv.Load(); srv != nil {
+			_ = srv.Shutdown(shutdown)
 		}
 	}()
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
@@ -294,11 +300,14 @@ func pairURLs(cfg *config.Config) []string {
 func runRelay(args []string) error {
 	fs := flag.NewFlagSet("relay", flag.ContinueOnError)
 	listen := fs.String("listen", ":8780", "address to listen on")
+	trust := fs.Bool("trust-proxy", false, "take client addresses from Cf-Connecting-Ip / X-Forwarded-For (only behind a proxy or tunnel you control)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	logger := log.New(os.Stdout, "", log.LstdFlags)
-	srv := &http.Server{Addr: *listen, Handler: relay.NewServer(logger).Handler(), ReadHeaderTimeout: 10 * time.Second}
+	rs := relay.NewServer(logger)
+	rs.TrustProxy = *trust
+	srv := &http.Server{Addr: *listen, Handler: rs.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

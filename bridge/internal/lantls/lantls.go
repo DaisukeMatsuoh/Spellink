@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/caddyserver/certmagic"
@@ -36,13 +38,53 @@ type Config struct {
 	StorageDir string `json:"-"`
 }
 
-// Valid reports what is missing, or "" when usable.
+// SetupTimeout bounds getting the first certificate. The bridge itself must not wait for it:
+// a wrong token or a DNS problem would otherwise keep the whole bridge from starting.
+const SetupTimeout = 3 * time.Minute
+
+// dnsName reports whether s is a plain DNS name of at least two labels: letters, digits and
+// hyphens, no wildcard, no scheme or port, no trailing dot.
+func dnsName(s string) bool {
+	if len(s) == 0 || len(s) > 253 || strings.Count(s, ".") < 1 {
+		return false
+	}
+	for _, label := range strings.Split(s, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// Valid reports what is wrong with the setting, or "" when usable. The values end up in public
+// DNS and in a certificate request, so they are checked, not trusted.
 func (c *Config) Valid() string {
 	switch {
 	case c == nil || c.Host == "":
 		return "lan.host is empty"
+	case !dnsName(c.Host):
+		return fmt.Sprintf("lan.host %q is not a plain DNS name like rock.lan.example.com", c.Host)
 	case c.CloudflareToken == "":
 		return "lan.cloudflareToken is empty"
+	case c.Zone != "" && !dnsName(c.Zone):
+		return fmt.Sprintf("lan.zone %q is not a DNS name", c.Zone)
+	case c.Zone != "" && !strings.EqualFold(c.Host, c.Zone) && !strings.HasSuffix(strings.ToLower(c.Host), "."+strings.ToLower(c.Zone)):
+		return fmt.Sprintf("lan.host %q is not inside lan.zone %q", c.Host, c.Zone)
+	}
+	if c.IP != "" {
+		ip, err := netip.ParseAddr(c.IP)
+		switch {
+		case err != nil:
+			return fmt.Sprintf("lan.ip %q is not an address", c.IP)
+		case !ip.Is4() || !ip.IsPrivate():
+			// The address is published in public DNS: only a private IPv4 address belongs there.
+			return fmt.Sprintf("lan.ip %q must be a private IPv4 address (it is published in DNS)", c.IP)
+		}
 	}
 	return ""
 }
@@ -87,6 +129,9 @@ func Setup(ctx context.Context, c *Config) (*tls.Config, error) {
 		return nil, fmt.Errorf("publishing A record: %w", err)
 	}
 
+	if err := os.MkdirAll(c.StorageDir, 0o700); err != nil {
+		return nil, fmt.Errorf("certificate storage: %w", err)
+	}
 	cm := certmagic.NewDefault()
 	cm.Storage = &certmagic.FileStorage{Path: c.StorageDir}
 	issuer := certmagic.NewACMEIssuer(cm, certmagic.ACMEIssuer{
@@ -101,7 +146,9 @@ func Setup(ctx context.Context, c *Config) (*tls.Config, error) {
 	if err := cm.ManageSync(ctx, []string{c.Host}); err != nil {
 		return nil, fmt.Errorf("certificate for %s: %w", c.Host, err)
 	}
-	return cm.TLSConfig(), nil
+	cfg := cm.TLSConfig()
+	cfg.MinVersion = tls.VersionTLS12
+	return cfg, nil
 }
 
 func publishA(ctx context.Context, p *cloudflare.Provider, c *Config, ip netip.Addr) error {

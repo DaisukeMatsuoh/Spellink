@@ -69,12 +69,22 @@ type Server struct {
 	Log *log.Logger
 	// MaxRooms bounds the number of rooms (default maxRooms).
 	MaxRooms int
-	mu       sync.Mutex
-	rooms    map[string]*room
+	// TrustProxy: take the client's address from Cf-Connecting-Ip / X-Forwarded-For. Set it only
+	// when the relay is reachable solely through such a proxy or tunnel.
+	TrustProxy bool
+	// Attempts per address per minute, per kind of connection.
+	clients, bridges, accepts *limiter
+	mu                        sync.Mutex
+	rooms                     map[string]*room
 }
 
 func NewServer(logger *log.Logger) *Server {
-	return &Server{Log: logger, MaxRooms: maxRooms, rooms: map[string]*room{}}
+	return &Server{
+		Log: logger, MaxRooms: maxRooms, rooms: map[string]*room{},
+		// a plugin connects once per question (and when reconnecting); a bridge keeps one control
+		// connection and opens one more per plugin session
+		clients: newLimiter(60, time.Minute), bridges: newLimiter(12, time.Minute), accepts: newLimiter(120, time.Minute),
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -115,6 +125,9 @@ func (s *Server) dropIfIdle(id string, rm *room) {
 
 // handleBridge holds a bridge's control connection open; a newer one for the same room wins.
 func (s *Server) handleBridge(w http.ResponseWriter, r *http.Request) {
+	if !s.admit(w, r, s.bridges) {
+		return
+	}
 	c, id, ok := accept(w, r)
 	if !ok {
 		return
@@ -155,6 +168,9 @@ func (s *Server) handleBridge(w http.ResponseWriter, r *http.Request) {
 
 // handleClient asks the room's bridge to open a session and waits until it is piped through.
 func (s *Server) handleClient(w http.ResponseWriter, r *http.Request) {
+	if !s.admit(w, r, s.clients) {
+		return
+	}
 	c, id, ok := accept(w, r)
 	if !ok {
 		return
@@ -213,6 +229,9 @@ func (s *Server) handleClient(w http.ResponseWriter, r *http.Request) {
 
 // handleAccept is the bridge's per-session connection; it pipes frames to the waiting plugin.
 func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request) {
+	if !s.admit(w, r, s.accepts) {
+		return
+	}
 	sid := r.URL.Query().Get("session")
 	c, id, ok := accept(w, r)
 	if !ok {

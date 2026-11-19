@@ -145,7 +145,6 @@ export async function probeFiles(log: Log): Promise<void> {
 type FileUtilsModule = {
   exists(p: string): Promise<boolean>;
   makeDir(p: string): Promise<boolean>;
-  deleteDir(p: string): Promise<boolean>;
   listFiles(
     p: string,
   ): Promise<Array<{type: number; path: string}> | null | undefined>;
@@ -157,9 +156,10 @@ const ENTRY_PREFIX = 'seed-';
 
 /**
  * Experiment 5: can a short secret be kept in a directory NAME? The SDK has no call that writes a
- * file's contents, but makeDir / listFiles / deleteDir exist. First press: creates the entry and reads
- * it back. After a restart of the note app, press again: it must still be listed ("survived").
- * Pressing it a third time removes the entry.
+ * file's contents, but makeDir / listFiles exist. This probe never deletes anything (a delete in an
+ * earlier version hung the plugin): it lists the entry, and creates it only if it is not there.
+ * First press: "created" (and read back). After the device has been restarted, press again:
+ * "survived" means the name is still there.
  */
 export async function probeNameStore(log: Log): Promise<void> {
   const fu = TurboModuleRegistry.get(
@@ -168,7 +168,9 @@ export async function probeNameStore(log: Log): Promise<void> {
   if (!fu) {
     return log('name store: RTNFileUtils absent');
   }
+  const name = `${ENTRY_PREFIX}Zk3_Qw-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGH`; // 62 chars, url-safe
   const list = async (): Promise<string[]> => {
+    log('name store: listFiles…');
     const raw = await withTimeout(fu.listFiles(STORE), 'listFiles');
     if (!Array.isArray(raw)) {
       return [];
@@ -180,24 +182,25 @@ export async function probeNameStore(log: Log): Promise<void> {
       .filter(n => n.startsWith(ENTRY_PREFIX));
   };
   try {
-    const existing = (await withTimeout(fu.exists(STORE), 'exists'))
-      ? await list()
-      : [];
-    if (existing.length > 0) {
-      log(
-        `name store: survived — ${JSON.stringify(existing)}; removing it now`,
+    log('name store: exists…');
+    const there = await withTimeout(fu.exists(STORE), 'exists');
+    const found = there ? await list() : [];
+    if (found.length > 0) {
+      return log(
+        `name store: survived — ${JSON.stringify(found)} (${
+          found.includes(name) ? 'EXACT' : 'DIFFERENT'
+        })`,
       );
-      const ok = await withTimeout(fu.deleteDir(STORE), 'deleteDir');
-      const gone = !(await withTimeout(fu.exists(STORE), 'exists'));
-      return log(`name store: deleteDir=${ok}, gone=${gone}`);
     }
-    const name = `${ENTRY_PREFIX}Zk3_Qw-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGH`; // 62 chars, url-safe
+    log('name store: makeDir…');
     const made = await withTimeout(fu.makeDir(`${STORE}/${name}`), 'makeDir');
     const back = await list();
     log(
-      `name store: makeDir=${made}, listed ${JSON.stringify(back)}, read back ${
+      `name store: created makeDir=${made}, listed ${JSON.stringify(
+        back,
+      )}, read back ${
         back.includes(name) ? 'EXACT' : 'DIFFERENT'
-      }; restart the note app and press again to see whether it survives`,
+      }; restart the device and press again`,
     );
   } catch (e) {
     log(`name store: ERROR ${(e as Error).message}`);

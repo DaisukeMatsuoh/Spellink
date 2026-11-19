@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Text, View} from 'react-native';
+import {ScrollView, Text, View} from 'react-native';
 import {connectFirst, type BridgeConnection} from '../bridgeClient';
 import {loadBridges} from '../bridgeConfig';
 import {t} from '../i18n';
@@ -77,109 +77,112 @@ export function SettingsScreen() {
   return (
     <View style={styles.screen}>
       <Text style={styles.title}>{t('settingsTitle')}</Text>
-      <Text style={styles.text}>{status}</Text>
-      {destination ? (
-        <Text style={styles.small}>
-          {t('destination', {name: destination})}
-        </Text>
-      ) : null}
-      <View style={styles.row}>
-        <Button
-          disabled={!settings}
-          label={`${t('showProgress')}: ${
-            settings?.showProgress ? 'ON' : 'OFF'
-          }`}
-          onPress={() => toggle('showProgress')}
-        />
-      </View>
-      <Text style={styles.small}>{t('showProgressHelp')}</Text>
-      <View style={styles.row}>
-        <Button
-          disabled={!settings}
-          label={`${t('lineTilt')}: ${settings?.lineTilt ? 'ON' : 'OFF'}`}
-          onPress={() => toggle('lineTilt')}
-        />
-      </View>
-      <Text style={styles.small}>
-        {t('lineTiltHelp', {angle: describeAngle(settings?.tiltDegrees)})}
-      </Text>
-      <View style={styles.row}>
-        <Button
-          disabled={!settings}
-          label={`${t('thinkingAnimation')}: ${
-            settings?.thinkingAnimation ? 'ON' : 'OFF'
-          }`}
-          onPress={() => toggle('thinkingAnimation')}
-        />
-      </View>
-      <Text style={styles.small}>{t('thinkingAnimationHelp')}</Text>
-      <View style={styles.row}>
-        <Button
-          disabled={!settings}
-          label={`${t('avoidOverwritingLabel')}: ${
-            settings?.avoidOverwriting ? 'ON' : 'OFF'
-          }`}
-          onPress={() => toggle('avoidOverwriting')}
-        />
-      </View>
-      <Text style={styles.small}>{t('avoidOverwritingHelp')}</Text>
-      <View style={styles.row}>
-        <Button
-          disabled={!settings}
-          label={`${t('busyNoticeLabel')}: ${
-            settings?.busyNotice ? 'ON' : 'OFF'
-          }`}
-          onPress={() => toggle('busyNotice')}
-        />
-      </View>
-      <Text style={styles.small}>{t('busyNoticeHelp')}</Text>
-      <Slider
-        label={t('fullWidthSpacing')}
-        value={settings?.fullWidthSpacing ?? 100}
-        min={100}
-        max={140}
-        step={5}
-        disabled={!settings}
-        onCommit={v => change({fullWidthSpacing: v})}
-      />
-      <Slider
-        label={t('halfWidthSpacing')}
-        value={settings?.halfWidthSpacing ?? 110}
-        min={100}
-        max={160}
-        step={5}
-        disabled={!settings}
-        onCommit={v => change({halfWidthSpacing: v})}
-      />
-      <Text style={styles.small}>{t('spacingHelp')}</Text>
-      <View style={styles.row}>
-        <Button
-          disabled={!conn}
-          label={t('forgetThisNote')}
-          onPress={() => {
-            if (conn) {
-              void forgetThisNote(conn).then(r => {
-                if (r === 'noNote') {
-                  setStatus(t('noNoteOpen'));
-                }
-              });
-            }
-          }}
-        />
-      </View>
-      <Text style={styles.small}>{t('forgetThisNoteHelp')}</Text>
-      <View style={styles.row}>
-        <Button
-          disabled={!conn}
-          label={t('forgetHistory')}
-          onPress={() => conn?.send({type: 'clearHistory'})}
-        />
-      </View>
-      <Text style={styles.small}>{t('forgetHistoryHelp')}</Text>
+      {/* Close and diagnostics sit at the top: the page is longer than the screen. */}
       <View style={styles.row}>
         <Button label={t('diagButton')} onPress={() => show('diagnostics')} />
         <Button label={t('close')} onPress={() => void closeView()} />
       </View>
+      <ScrollView style={styles.fill}>
+        <Text style={styles.text}>{status}</Text>
+        {destination ? (
+          <Text style={styles.small}>
+            {t('destination', {name: destination})}
+          </Text>
+        ) : null}
+        <View style={styles.row}>
+          <Button
+            disabled={!settings}
+            label={`${t('showProgress')}: ${
+              settings?.showProgress ? 'ON' : 'OFF'
+            }`}
+            onPress={() => toggle('showProgress')}
+          />
+        </View>
+        <Text style={styles.small}>{t('showProgressHelp')}</Text>
+        <View style={styles.row}>
+          <Button
+            disabled={!settings}
+            label={`${t('lineTilt')}: ${settings?.lineTilt ? 'ON' : 'OFF'}`}
+            onPress={() => toggle('lineTilt')}
+          />
+        </View>
+        <Text style={styles.small}>
+          {t('lineTiltHelp', {angle: describeAngle(settings?.tiltDegrees)})}
+        </Text>
+        <View style={styles.row}>
+          <Button
+            disabled={!settings}
+            label={`${t('thinkingAnimation')}: ${
+              settings?.thinkingAnimation ? 'ON' : 'OFF'
+            }`}
+            onPress={() => toggle('thinkingAnimation')}
+          />
+        </View>
+        <Text style={styles.small}>{t('thinkingAnimationHelp')}</Text>
+        <View style={styles.row}>
+          <Button
+            disabled={!settings}
+            label={`${t('avoidOverwritingLabel')}: ${
+              settings?.avoidOverwriting ? 'ON' : 'OFF'
+            }`}
+            onPress={() => toggle('avoidOverwriting')}
+          />
+        </View>
+        <Text style={styles.small}>{t('avoidOverwritingHelp')}</Text>
+        <View style={styles.row}>
+          <Button
+            disabled={!settings}
+            label={`${t('busyNoticeLabel')}: ${
+              settings?.busyNotice ? 'ON' : 'OFF'
+            }`}
+            onPress={() => toggle('busyNotice')}
+          />
+        </View>
+        <Text style={styles.small}>{t('busyNoticeHelp')}</Text>
+        <Slider
+          label={t('fullWidthSpacing')}
+          value={settings?.fullWidthSpacing ?? 100}
+          min={100}
+          max={140}
+          step={5}
+          disabled={!settings}
+          onCommit={v => change({fullWidthSpacing: v})}
+        />
+        <Slider
+          label={t('halfWidthSpacing')}
+          value={settings?.halfWidthSpacing ?? 110}
+          min={100}
+          max={160}
+          step={5}
+          disabled={!settings}
+          onCommit={v => change({halfWidthSpacing: v})}
+        />
+        <Text style={styles.small}>{t('spacingHelp')}</Text>
+        <View style={styles.row}>
+          <Button
+            disabled={!conn}
+            label={t('forgetThisNote')}
+            onPress={() => {
+              if (conn) {
+                void forgetThisNote(conn).then(r => {
+                  if (r === 'noNote') {
+                    setStatus(t('noNoteOpen'));
+                  }
+                });
+              }
+            }}
+          />
+        </View>
+        <Text style={styles.small}>{t('forgetThisNoteHelp')}</Text>
+        <View style={styles.row}>
+          <Button
+            disabled={!conn}
+            label={t('forgetHistory')}
+            onPress={() => conn?.send({type: 'clearHistory'})}
+          />
+        </View>
+        <Text style={styles.small}>{t('forgetHistoryHelp')}</Text>
+      </ScrollView>
     </View>
   );
 }

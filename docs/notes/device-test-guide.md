@@ -43,6 +43,21 @@ spellink-bridge serve    # ポート 8765。初回だけ KanjiVG / Hershey を�
 - 書かれた回答を消しゴム・ラッソで普通に扱えるか
 - 「Claudeに聞く」のパネルの大きさ・位置
 
+## 5. ペアリングの実験（診断 11〜14。設計: `docs/notes/research/2026-11-08-pairing.md`）
+**実験 1: 書き換えた `.snplg` が入るか、入れ直しで置き換わるか**（最重要）
+1. `cd plugin && npm run build` → `node scripts/patch-snplg.js build/outputs/Spellink.snplg build/outputs/Spellink-seedA.snplg seedA-0001`（同様に `seedB-0002` で `Spellink-seedB.snplg`）。
+2. `Spellink-seedA.snplg` を端末に入れる → 診断「11. Seed in package」→ `present, "seedA-0001"` が出るか。**入らない・起動しないなら、署名や整合性の検査がある**（エラーの文言を記録）。
+3. `Spellink-seedB.snplg` を、**削除せずに**入れる → 診断 11 が `seedB-0002` に変わるか。変わらない・入らないなら、先にアンインストールが要るか（その手順で再試行）。
+4. 「Send log to bridge」。
+
+**実験 3: 端末の ID と、ファイルを書く手段**（診断 12・13）
+- 「12. SDK names」: SDK とネイティブモジュールの全名前。`names that look like an id` に、シリアルや端末 ID らしきものがあるか。
+- 「13. Files」: `file://` で読めるファイル（シリアル、MAC、boot_id、`bridges.json`）と、`MyStyle` の中身。読めた内容の先頭 48 文字だけがログに出る。
+
+**実験 4: QR**（診断 14）
+- 「14. QR: show」で、端末に QR（640px）が出る。ログに最初の描画までの時間が出る。
+- PC で `cd plugin/scripts && python3 -m http.server 8099` → ブラウザで `http://127.0.0.1:8099/qr-scan.html` → カメラで端末を読む。距離・角度・部屋の明るさを変えて、読めるまでの時間と、読めた文字列（`spellink://pair?...`）を記録。
+
 ## 端末に行く前の確認（開発機で）
 `spellink-bridge check` が、端末と同じ道（LAN とトンネル）で、暗号化の握手まで確かめる。`OK` なら道は通っている。`.local` の行は、端末からは引けないので、`NG` でも気にしない。
 

@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Spellink QR scan test</title>
+<!-- Pairing experiment 4: read the QR code that the device shows, with this computer's camera.
+     Serve it from localhost (a secure context, so the camera is allowed):
+       cd plugin/scripts && python3 -m http.server 8099   →   http://127.0.0.1:8099/qr-scan.html
+     Uses the browser's BarcodeDetector where there is one, jsQR otherwise. -->
+<style>body{font:16px sans-serif;margin:16px}video{max-width:100%;border:1px solid #000}#out{font:20px monospace;white-space:pre-wrap}</style>
+<h1>Spellink QR scan test</h1>
+<p>Hold the device's QR code in front of the camera.</p>
+<video id="v" playsinline muted></video>
+<p id="engine"></p>
+<p id="out">waiting…</p>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script>
+const out = document.getElementById('out');
+const detector = 'BarcodeDetector' in window ? new BarcodeDetector({formats: ['qr_code']}) : null;
+document.getElementById('engine').textContent = 'engine: ' + (detector ? 'BarcodeDetector' : 'jsQR');
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d', {willReadFrequently: true});
+const started = performance.now();
+let found = null;
+async function scan(v) {
+  if (v.readyState >= 2 && v.videoWidth > 0) {
+    canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+    ctx.drawImage(v, 0, 0);
+    let text = null;
+    if (detector) {
+      const r = await detector.detect(canvas);
+      text = r.length ? r[0].rawValue : null;
+    } else {
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const r = jsQR(img.data, img.width, img.height);
+      text = r ? r.data : null;
+    }
+    if (text !== null && text !== found) {
+      found = text;
+      out.textContent = 'read after ' + Math.round(performance.now() - started) + ' ms:\n' + text;
+    }
+  }
+  requestAnimationFrame(() => scan(v));
+}
+navigator.mediaDevices.getUserMedia({video: {facingMode: 'user', width: {ideal: 1280}}}).then(s => {
+  const v = document.getElementById('v'); v.srcObject = s; v.play(); scan(v);
+}, e => { out.textContent = 'camera: ' + e.name + ' ' + e.message; });
+</script>

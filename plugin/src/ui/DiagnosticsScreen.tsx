@@ -3,12 +3,15 @@ import {ScrollView, Text, View} from 'react-native';
 import * as diag from '../diagnostics';
 import {t} from '../i18n';
 import {closeView} from '../sdk';
+import * as probe from '../pairingProbe';
+import {QrView} from './QrView';
 import {Button, styles} from './common';
 
 /** Developer screen for verifying device behaviour; results can be sent to the bridge's log. */
 export function DiagnosticsScreen() {
   const [lines, setLines] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [qr, setQr] = useState<{text: string; size: number} | null>(null);
   const all = useRef<string[]>([]);
   const log = useCallback((line: string) => {
     all.current = [...all.current, line];
@@ -82,6 +85,38 @@ export function DiagnosticsScreen() {
         />
         <Button
           disabled={busy}
+          label="11. Seed in package"
+          onPress={run('seed', probe.probeSeed)}
+        />
+        <Button
+          disabled={busy}
+          label="12. SDK names"
+          onPress={run('sdk names', probe.probeApis)}
+        />
+        <Button
+          disabled={busy}
+          label="13. Files (file://)"
+          onPress={run('files', probe.probeFiles)}
+        />
+        <Button
+          disabled={busy}
+          label={qr ? '14. QR: hide' : '14. QR: show'}
+          onPress={() => {
+            if (qr) {
+              return setQr(null);
+            }
+            const t0 = Date.now();
+            setQr({
+              text: 'spellink://pair?v=1&n=0123456789abcdef&h=192.168.2.180:8766',
+              size: 640,
+            });
+            requestAnimationFrame(() =>
+              log(`qr: first frame after ${Date.now() - t0}ms`),
+            );
+          }}
+        />
+        <Button
+          disabled={busy}
           label="Reload file"
           onPress={run('reload', diag.reloadFile)}
         />
@@ -92,6 +127,7 @@ export function DiagnosticsScreen() {
         />
         <Button label={t('close')} onPress={() => void closeView()} />
       </View>
+      {qr ? <QrView text={qr.text} size={qr.size} /> : null}
       <ScrollView style={styles.fill}>
         {lines.map((l, i) => (
           <Text key={i} style={styles.small}>

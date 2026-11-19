@@ -100,6 +100,16 @@ export function DiagnosticsScreen() {
         />
         <Button
           disabled={busy}
+          label="15. Name store"
+          onPress={run('name store', probe.probeNameStore)}
+        />
+        <Button
+          disabled={busy}
+          label="16. Read existing"
+          onPress={run('read existing', probe.probeReadExisting)}
+        />
+        <Button
+          disabled={busy}
           label={qr ? '14. QR: hide' : '14. QR: show'}
           onPress={() => {
             if (qr) {

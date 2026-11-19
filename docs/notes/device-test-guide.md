@@ -58,6 +58,8 @@ spellink-bridge serve    # ポート 8765。初回だけ KanjiVG / Hershey を�
 - 「14. QR: show」で、端末に QR（640px）が出る。ログに最初の描画までの時間が出る。
 - PC で `cd plugin/scripts && python3 -m http.server 8099` → ブラウザで `http://127.0.0.1:8099/qr-scan.html` → カメラで端末を読む。距離・角度・部屋の明るさを変えて、読めるまでの時間と、読めた文字列（`spellink://pair?...`）を記録。
 
+**実験 5・3c（診断 15・16）**: 「15. Name store」= ディレクトリ名に秘密を保存できるか（`makeDir` → `listFiles` で読み戻し）。1 回目は作成、**ノートアプリを再起動**してもう一度押すと `survived`（残っていた）と出て削除する。「16. Read existing」= `MyStyle` に実在するファイルを `file://` で読めるか。
+
 ## 端末に行く前の確認（開発機で）
 `spellink-bridge check` が、端末と同じ道（LAN とトンネル）で、暗号化の握手まで確かめる。`OK` なら道は通っている。`.local` の行は、端末からは引けないので、`NG` でも気にしない。
 

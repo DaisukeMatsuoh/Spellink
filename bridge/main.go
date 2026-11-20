@@ -40,7 +40,8 @@ var version = "dev"
 
 const usage = `usage:
   spellink-bridge serve                 run the bridge (builds glyph data on first run)
-  spellink-bridge pair [out.json]       print the connection file for the plugin
+  spellink-bridge pair [out.json]       print the connection file for the plugin (one shared token)
+  spellink-bridge device <command>      add, pair, list and revoke devices one by one (run with no command for help)
   spellink-bridge build-glyphs          (re)download KanjiVG/Hershey and build glyph data
   spellink-bridge check [url...]        reach this bridge the way the plugin does (encrypted handshake)
   spellink-bridge service install|uninstall|status [--dry-run]   start the bridge by itself with the computer
@@ -64,6 +65,8 @@ func main() {
 			out = args[1]
 		}
 		err = pair(out)
+	case "device":
+		err = deviceCmd(args[1:])
 	case "build-glyphs":
 		_, err = buildGlyphs()
 	case "preview":
@@ -205,15 +208,17 @@ func serve() error {
 			return config.Save(cfg)
 		},
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := startDevices(ctx, cfg, logger, &deps); err != nil {
+		return err
+	}
 	handler := server.Handler(deps)
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	if cfg.RelayURL != "" {
 		go relay.Connect(ctx, cfg.RelayURL, cfg.Token, func(ctx context.Context, c *websocket.Conn, peer string) {
 			server.ServeConn(ctx, deps, c, peer, true)
@@ -248,6 +253,7 @@ func serve() error {
 	for _, u := range pairURLs(cfg) {
 		logger.Printf("  %s", u)
 	}
+	logger.Printf("devices are told: %s", describeURLs(cfg))
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)

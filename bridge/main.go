@@ -78,6 +78,12 @@ func main() {
 		err = runRelay(args[1:])
 	case "check":
 		err = check(args[1:])
+	case "compose": // measurement: same as experiments/bridge-rs
+		err = composeCmd(args[1:])
+	case "bench":
+		err = benchCmd(args[1:])
+	case "idle":
+		err = idleCmd(args[1:])
 	case "service":
 		err = serviceCmd(args[1:])
 	case "testfont":

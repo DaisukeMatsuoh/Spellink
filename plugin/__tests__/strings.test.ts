@@ -37,7 +37,7 @@ describe('the words of the plugin (locales/strings.tsv)', () => {
   });
 
   it('offers the languages it lists, with the same messages in each', () => {
-    expect([...LOCALES]).toEqual(['en', 'ja']);
+    expect([...LOCALES]).toEqual(['en', 'ja', 'es', 'fr']);
     const en = Object.keys(STRINGS.en);
     for (const l of LOCALES) {
       expect(Object.keys(STRINGS[l])).toEqual(en);
@@ -121,7 +121,10 @@ describe('choosing the language', () => {
     ['ja-JP', 'ja'],
     ['JA', 'ja'],
     ['zh_CN', 'en'], // no Chinese column yet
-    ['fr', 'en'],
+    ['fr', 'fr'],
+    ['fr_CA', 'fr'], // Canada
+    ['es_MX', 'es'], // the Americas
+    ['de', 'en'], // no German column
     ['', 'en'],
     [undefined, 'en'],
   ])('%s → %s', (code, want) => {

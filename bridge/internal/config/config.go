@@ -3,6 +3,7 @@
 package config
 
 import (
+	"bytes"
 	"cmp"
 	"crypto/rand"
 	"encoding/base64"
@@ -15,12 +16,17 @@ import (
 	mrand "math/rand/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
 )
 
 type Config struct {
+	// unknown keeps the keys of config.json this version does not know (written by a newer
+	// version, or by hand), so that saving never deletes them.
+	unknown map[string]json.RawMessage
+
 	// Name shown to the user in the plugin; defaults to the host name.
 	Name string `json:"name"`
 	Port int    `json:"port"`
@@ -258,15 +264,64 @@ func (c *Config) BusyNoticeOn() bool { return c.BusyNotice == nil || *c.BusyNoti
 func (c *Config) LineTiltOn() bool { return c.LineTilt == nil || *c.LineTilt }
 
 // Save writes the config back (used when the plugin changes a setting).
+// unknownKeys returns the top-level keys of raw that c's fields do not use.
+func unknownKeys(raw []byte, c *Config) (map[string]json.RawMessage, error) {
+	var all map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &all); err != nil {
+		return nil, err
+	}
+	known, err := json.Marshal(c)
+	if err != nil {
+		return nil, err
+	}
+	var used map[string]json.RawMessage
+	if err := json.Unmarshal(known, &used); err != nil {
+		return nil, err
+	}
+	// Fields with omitempty and an empty value are absent from `used` but are still ours.
+	t := reflect.TypeOf(*c)
+	for i := 0; i < t.NumField(); i++ {
+		if name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ","); name != "" && name != "-" {
+			used[name] = nil
+		}
+	}
+	out := map[string]json.RawMessage{}
+	for k, v := range all {
+		if _, ok := used[k]; !ok {
+			out[k] = v
+		}
+	}
+	return out, nil
+}
+
 func Save(c *Config) error {
 	file, err := ConfigFile()
 	if err != nil {
 		return err
 	}
-	out, err := json.MarshalIndent(c, "", "  ")
+	out, err := json.Marshal(c)
 	if err != nil {
 		return err
 	}
+	if len(c.unknown) > 0 {
+		var merged map[string]json.RawMessage
+		if err := json.Unmarshal(out, &merged); err != nil {
+			return err
+		}
+		for k, v := range c.unknown {
+			if _, known := merged[k]; !known {
+				merged[k] = v
+			}
+		}
+		if out, err = json.Marshal(merged); err != nil {
+			return err
+		}
+	}
+	var pretty bytes.Buffer
+	if err := json.Indent(&pretty, out, "", "  "); err != nil {
+		return err
+	}
+	out = pretty.Bytes()
 	tmp := file + ".tmp"
 	if err := os.WriteFile(tmp, append(out, '\n'), 0o600); err != nil {
 		return err
@@ -344,6 +399,9 @@ func Load() (*Config, error) {
 	if err == nil {
 		c := &Config{}
 		if err := json.Unmarshal(b, c); err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		if c.unknown, err = unknownKeys(b, c); err != nil {
 			return nil, fmt.Errorf("%s: %w", file, err)
 		}
 		if err := c.validate(file); err != nil {

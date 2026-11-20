@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -300,5 +301,44 @@ func TestDevicesFileLivesInTheConfigDirectory(t *testing.T) {
 	f, err := DevicesFile()
 	if err != nil || filepath.Dir(f) != filepath.Join(dir, "spellink-bridge") || filepath.Base(f) != "devices.json" {
 		t.Errorf("%q %v", f, err)
+	}
+}
+
+func TestSavingKeepsKeysThisVersionDoesNotKnow(t *testing.T) {
+	dir := isolate(t)
+	file := filepath.Join(dir, "spellink-bridge", "config.json")
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// written by a newer version (or by hand): a key and a nested object this version has never heard of
+	body := `{"token":"keep-me","port":8765,"tiltDegrees":0.4,"futureFeature":{"on":true,"level":3},"note":"hand-written"}`
+	if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.ShowProgress = true // a setting changed from the device
+	if err := Save(c); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(file)
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("saved file is not JSON: %v\n%s", err, raw)
+	}
+	if got["token"] != "keep-me" || got["showProgress"] != true || got["note"] != "hand-written" {
+		t.Fatalf("lost or wrong values: %s", raw)
+	}
+	if f, ok := got["futureFeature"].(map[string]any); !ok || f["level"] != 3.0 {
+		t.Fatalf("an unknown key must survive a save: %s", raw)
+	}
+	again, err := Load()
+	if err != nil || again.Token != "keep-me" || !again.ShowProgress {
+		t.Fatalf("reload: %+v %v", again, err)
+	}
+	if info, _ := os.Stat(file); info.Mode().Perm() != 0o600 {
+		t.Fatalf("the file stays readable by its owner only: %v", info.Mode())
 	}
 }

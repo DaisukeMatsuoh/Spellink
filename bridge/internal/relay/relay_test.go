@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -373,4 +374,58 @@ func TestANormalAnswerIsNotSlowedAtAll(t *testing.T) {
 	if d := time.Since(start); d > time.Second {
 		t.Errorf("a normal answer took %v", d)
 	}
+}
+
+// The privacy policy says the relay does not write a client's address to its log. Hold it to that.
+func TestTheRelayLogNeverHoldsAClientAddressOrAWholeRoomId(t *testing.T) {
+	logs := &lockedLog{}
+	srv := NewServer(log.New(logs, "", 0))
+	srv.RoomBytesPerSec, srv.RoomBurst = 1<<20, 1<<20
+	plugin, bridge, ctx := through(t, srv)
+	if err := plugin.Write(ctx, websocket.MessageText, []byte("hi")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := bridge.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	plugin.CloseNow()
+	bridge.CloseNow()
+	time.Sleep(100 * time.Millisecond)
+	// too many connections from one address: refused, and still nothing about the address in the log
+	hs := httptest.NewServer(srv.Handler())
+	defer hs.Close()
+	base := "ws" + strings.TrimPrefix(hs.URL, "http")
+	for i := 0; i < 70; i++ {
+		c, _, err := websocket.Dial(ctx, ClientURL(base, "secret"), nil)
+		if err == nil {
+			c.CloseNow()
+		}
+	}
+	out := logs.String()
+	if !strings.Contains(out, "bridge up: room") {
+		t.Fatalf("the test saw no log at all: %q", out)
+	}
+	for _, bad := range []string{"127.0.0.1", "::1", "localhost", RoomID("secret"), "RemoteAddr"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("the relay's log contains %q:\n%s", bad, out)
+		}
+	}
+}
+
+// lockedLog is a log destination that can be written by the server's goroutines and read by the test.
+type lockedLog struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedLog) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }

@@ -24,7 +24,7 @@
 
 ## 4. 運用
 - 限度（既定）: 接続元ごとの回数（端末 60／ブリッジ 12／受け口 120 回・分）、部屋数 10,000、部屋あたり 4 セッション、**部屋ごとの帯域 4 MiB/s（バースト 16 MiB。超えると遅くなる。切れはしない）**、**無通信 15 分でセッションを閉じる**。値は `relay.Server` のフィールド（`MaxRooms`、`IdleTimeout`、`RoomBytesPerSec`、`RoomBurst`）。
-- 監視: `/health` の `bridges`（いま登録されているブリッジ＝部屋の数）。`journalctl -u spellink-relay` に出るのは、`bridge up/down: room xxxxxxxx…`、`relay full`、回数制限の拒否だけ。
+- 監視: `/health` の `bridges`（いま登録されているブリッジ＝部屋の数）。`journalctl -u spellink-relay` に出るのは、`bridge up/down: room xxxxxxxx…` と `relay full`（部屋が上限）だけ。回数制限で断ったとき（429）は、ログに出ない。
 - 更新: バイナリを入れ替えて `systemctl restart spellink-relay`。中継は状態を持たないので、ブリッジは自動で再接続する（数秒）。
 - 止めるとき: 利用者に先に知らせる（ブリッジの `relayUrl` を変えるだけで、自前の中継へ移れる）。
 

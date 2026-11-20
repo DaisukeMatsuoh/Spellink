@@ -31,6 +31,12 @@ redistribute them. `glyphs.bin` is derived from KanjiVG: if you share it, share 
 | go.uber.org/multierr, go.uber.org/zap, go.uber.org/zap/exp | MIT |
 | golang.org/x/crypto, x/net, x/sys, x/text | BSD-3-Clause |
 
+The bridge's pairing page (`bridge/internal/server/pairpage`) carries, inside the binary:
+
+| File | License |
+|---|---|
+| jsQR 1.4.0 (`jsQR.js`, reads the QR code from the camera image; its license text is `jsQR.LICENSE` next to it) | Apache-2.0 |
+
 (`github.com/kr/pretty` and `gopkg.in/check.v1` appear in the module graph for tests only.)
 
 ## Plugin (JavaScript)
@@ -40,6 +46,7 @@ redistribute them. `glyphs.bin` is derived from KanjiVG: if you share it, share 
 | react, react-native | MIT |
 | @noble/ciphers, @noble/curves, @noble/hashes | MIT |
 | sn-plugin-lib (Supernote's official SDK) | MIT |
+| qrcode-generator (draws the pairing QR code) | MIT |
 
 Development-only packages (jest, eslint, prettier, typescript, ws, …) are not part of the shipped plugin.
 

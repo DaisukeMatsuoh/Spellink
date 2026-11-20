@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -161,8 +163,30 @@ func deviceCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	c := &devicecli.Client{Base: fmt.Sprintf("http://127.0.0.1:%d", cfg.Port), Token: tok}
+	c := &devicecli.Client{Base: fmt.Sprintf("http://127.0.0.1:%d", cfg.Port), Token: tok, Open: openBrowser}
 	return devicecli.Run(c, args, os.Stdin, os.Stdout, cwd)
+}
+
+// openCommand is how this platform opens an address in the default browser.
+func openCommand(goos, url string) (name string, args []string) {
+	switch goos {
+	case "darwin":
+		return "open", []string{url}
+	case "windows":
+		return "rundll32", []string{"url.dll,FileProtocolHandler", url}
+	}
+	return "xdg-open", []string{url}
+}
+
+// openBrowser starts the default browser and does not wait for it.
+func openBrowser(url string) error {
+	name, args := openCommand(runtime.GOOS, url)
+	cmd := exec.Command(name, args...)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() { _ = cmd.Wait() }() // reap it; the browser keeps running
+	return nil
 }
 
 // describeURLs is for the log: the addresses a new device would be told.

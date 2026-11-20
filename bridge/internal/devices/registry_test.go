@@ -921,3 +921,52 @@ func TestStartingWithALedgerThatNeedsRewritingAndCannotBeWrittenStillServes(t *t
 		t.Errorf("not logged: %q", logs.String())
 	}
 }
+
+func TestConfirmForLooksOnlyAtTheNamedDevice(t *testing.T) {
+	h := newHarness(t)
+	one, two := h.add("one"), h.add("two")
+	c1, c2 := h.request(one, "11111111"), h.request(two, "22222222")
+	// the code of the other device, with this device's id: not accepted, and only this device is charged
+	if _, err := h.reg.ConfirmFor(one, "22222222"); !errors.Is(err, ErrCodeRejected) {
+		t.Fatalf("a code of another device: %v", err)
+	}
+	if len(c1.grants)+len(c2.grants) != 0 {
+		t.Error("a code with the wrong id granted a device")
+	}
+	if name, err := h.reg.ConfirmFor(two, "22222222"); err != nil || name != "two" || len(c2.grants) != 1 {
+		t.Errorf("ConfirmFor = %q %v", name, err)
+	}
+	h.mustStatus(one, "waiting")
+}
+
+func TestConfirmForCountsWrongCodesAgainstThatDeviceOnly(t *testing.T) {
+	h := newHarness(t)
+	one, two := h.add("one"), h.add("two")
+	c1 := h.request(one, "11111111")
+	h.request(two, "22222222")
+	for i := 0; i < 5; i++ {
+		h.reg.ConfirmFor(one, "00000000")
+	}
+	h.mustStatus(one, "issued") // its window is closed
+	if c1.reasons() != DenyWindowClosed {
+		t.Errorf("told %q", c1.reasons())
+	}
+	h.mustStatus(two, "waiting") // the other device is untouched
+}
+
+func TestConfirmForRefusals(t *testing.T) {
+	h := newHarness(t)
+	id := h.add("Nomad")
+	if _, err := h.reg.ConfirmFor("bad", "12345678"); !errors.Is(err, ErrUnknownDevice) {
+		t.Errorf("a malformed id: %v", err)
+	}
+	if _, err := h.reg.ConfirmFor("ffffffffffffffff", "12345678"); !errors.Is(err, ErrUnknownDevice) {
+		t.Errorf("an unknown device: %v", err)
+	}
+	if _, err := h.reg.ConfirmFor(id, "1"); !errors.Is(err, ErrBadCode) {
+		t.Errorf("a short code: %v", err)
+	}
+	if _, err := h.reg.ConfirmFor(id, "12345678"); !errors.Is(err, ErrNoPending) {
+		t.Errorf("a device that shows no code: %v", err)
+	}
+}

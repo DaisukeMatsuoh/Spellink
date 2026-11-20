@@ -297,3 +297,36 @@ func TestAnAnswerThatIsCutOffIsAnError(t *testing.T) {
 		t.Error("a truncated answer must not be taken as complete")
 	}
 }
+
+func TestPairWebOpensThePageWithTheTokenAfterTheHash(t *testing.T) {
+	e := newEnv(t)
+	var opened string
+	e.c.Open = func(url string) error { opened = url; return nil }
+	out := e.mustRun("pair", "--web")
+	if opened != e.srv.URL+"/pair#"+token || !strings.Contains(out, "Opened the pairing page") {
+		t.Errorf("opened %q, said %q", opened, out)
+	}
+	if strings.Contains(out, token) {
+		t.Error("when the browser opens, the token is not printed")
+	}
+}
+
+func TestPairWebPrintsTheAddressWhenTheBrowserCannotBeOpened(t *testing.T) {
+	e := newEnv(t)
+	for name, open := range map[string]func(string) error{"no opener": nil, "a failing opener": func(string) error { return io.ErrClosedPipe }} {
+		e.c.Open = open
+		out := e.mustRun("pair", "--web")
+		if !strings.Contains(out, e.srv.URL+"/pair#"+token) || !strings.Contains(out, "Open this address") {
+			t.Errorf("%s: %q", name, out)
+		}
+	}
+}
+
+func TestPairWebSaysSoWhenTheBridgeIsNotRunning(t *testing.T) {
+	e := newEnv(t)
+	e.srv.Close()
+	e.c.Open = func(string) error { t.Error("a browser was opened for a bridge that is not there"); return nil }
+	if _, err := e.run("pair", "--web"); err == nil || !strings.Contains(err.Error(), "is it running") {
+		t.Errorf("err = %v", err)
+	}
+}

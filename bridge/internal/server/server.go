@@ -28,6 +28,7 @@ import (
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/provider"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/securechan"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/server/pairpage"
 )
 
 type Deps struct {
@@ -100,6 +101,12 @@ func Handler(d Deps) http.Handler {
 	})
 	if d.Admin != nil {
 		mux.Handle("/admin/", d.Admin.Handler())
+		if page, err := pairpage.Handler(); err == nil { // the words are embedded and tested: an error here is a build mistake
+			mux.Handle("/pair", page)
+			mux.Handle("/pair/", page)
+		} else {
+			d.Log.Printf("pairing page disabled: %v", err)
+		}
 	}
 	return mux
 }

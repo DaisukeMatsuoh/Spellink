@@ -90,11 +90,19 @@ func (a *AdminDeps) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/pair", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Code string `json:"code"`
+			// ID is the device's id when the code was read from its QR code; then only that device is considered.
+			ID string `json:"id"`
 		}
 		if !readJSON(w, r, &in) {
 			return
 		}
-		name, err := a.Devices.Confirm(in.Code)
+		var name string
+		var err error
+		if in.ID != "" {
+			name, err = a.Devices.ConfirmFor(in.ID, in.Code)
+		} else {
+			name, err = a.Devices.Confirm(in.Code)
+		}
 		if err != nil {
 			adminError(w, err)
 			return

@@ -653,3 +653,47 @@ func TestServeConnIsTheSharedTokenEntrance(t *testing.T) {
 		t.Fatalf("got %s", types(got))
 	}
 }
+
+func TestAdminPairWithTheDevicesIdOnlyConsidersThatDevice(t *testing.T) {
+	e := newPairEnv(t)
+	one, b1 := e.addDevice("one")
+	two, b2 := e.addDevice("two")
+	d1, d2 := e.dial(one, b1), e.dial(two, b2)
+	d1.send(msg{"type": "pairRequest", "id": one, "gen": 1, "code": "11111111"})
+	d2.send(msg{"type": "pairRequest", "id": two, "gen": 1, "code": "22222222"})
+	e.waitWaiting(one, 1)
+	e.waitWaiting(two, 1)
+	if status, _ := e.admin("POST", "/admin/pair", msg{"id": one, "code": "22222222"}); status != 403 {
+		t.Errorf("the code of another device: %d", status)
+	}
+	if status, body := e.admin("POST", "/admin/pair", msg{"id": two, "code": "22222222"}); status != 200 || !strings.Contains(string(body), "two") {
+		t.Errorf("the right id and code: %d %s", status, body)
+	}
+	if g := d2.recv(); g["type"] != "pairGrant" {
+		t.Errorf("the device was not granted: %v", g)
+	}
+	if status, _ := e.admin("POST", "/admin/pair", msg{"id": "ffffffffffffffff", "code": "11111111"}); status != 404 {
+		t.Errorf("an unknown device: %d", status)
+	}
+}
+
+func TestThePairingPageIsServedWithTheAdminDoorAndOnlyThen(t *testing.T) {
+	e := newPairEnv(t)
+	resp, err := http.Get(e.http + "/pair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+		t.Errorf("/pair: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	url := httptestURL(t, func(d *Deps) { d.Admin = nil })
+	resp, err = http.Get(url + "/pair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Errorf("without the admin door the page must not exist: %d", resp.StatusCode)
+	}
+}

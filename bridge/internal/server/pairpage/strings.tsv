@@ -1,0 +1,18 @@
+# The words of the pairing page. One row per message, one column per language; \n is a newline.
+# {name} and {why} mark values filled in at run time. An empty cell in a language other than English uses the English text.
+# A language is added by adding a column here (the rules are the same as plugin/locales/strings.tsv).
+key	en	ja
+title	Spellink Bridge App: pair a device	Spellink Bridge App: 端末のペアリング
+hint	Show the QR code on your device to the camera.	端末に表示されたQRコードを、カメラに向けてください。
+manualLabel	No camera? Type the 8-digit code shown on the device:	カメラが使えないときは、端末に表示された8桁のコードを入力してください:
+manualButton	Pair	ペアリング
+sending	Pairing…	ペアリングしています…
+paired	Paired: {name}. The device finishes by itself.	ペアリングしました: {name}。端末が自動で仕上げます。
+notSpellink	That QR code is not from Spellink.	そのQRコードは、Spellinkのものではありません。
+badCode	A code is exactly eight digits.	コードは、ちょうど8桁の数字です。
+notAccepted	The code was not accepted. Check the device's screen and try again.	コードが受け付けられませんでした。端末の画面を確かめて、もう一度試してください。
+nobodyWaiting	No device is showing a code. Press Pair on the device first.	コードを表示している端末がありません。先に端末で「ペアリング」を押してください。
+unauthorized	This page is not allowed to pair. Open it with: spellink-bridge device pair --web	このページにはペアリングの権限がありません。「spellink-bridge device pair --web」で開いてください。
+noToken	Open this page with: spellink-bridge device pair --web	このページは「spellink-bridge device pair --web」で開いてください。
+cameraDenied	The camera cannot be used ({why}). Type the code below instead.	カメラを使えません（{why}）。下にコードを入力してください。
+failed	Could not pair ({why}).	ペアリングできませんでした（{why}）。

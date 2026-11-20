@@ -302,3 +302,19 @@ func TestDeviceCommandReportsABridgeThatIsNotRunning(t *testing.T) {
 		t.Errorf("no command: %v", err)
 	}
 }
+
+func TestOpenCommandPerPlatform(t *testing.T) {
+	for goos, want := range map[string]string{"darwin": "open", "windows": "rundll32", "linux": "xdg-open", "freebsd": "xdg-open"} {
+		name, args := openCommand(goos, "http://127.0.0.1:8765/pair#t")
+		if name != want || args[len(args)-1] != "http://127.0.0.1:8765/pair#t" {
+			t.Errorf("%s: %s %v", goos, name, args)
+		}
+	}
+}
+
+func TestOpenBrowserReportsACommandThatCannotStart(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // nothing to run: xdg-open / open / rundll32 are not there
+	if err := openBrowser("http://127.0.0.1:1/pair"); err == nil {
+		t.Error("a missing command must be an error, not a silent success")
+	}
+}

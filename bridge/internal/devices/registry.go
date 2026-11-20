@@ -627,10 +627,24 @@ func (r *Registry) Disconnect(c Conn) {
 	})
 }
 
-// Confirm is CONFIRM_OK or CONFIRM_BAD: the owner typed (or scanned) a code. It returns the name of the
+// Confirm is CONFIRM_OK or CONFIRM_BAD: the owner typed a code. It returns the name of the
 // device that is now granted. A code that matches no waiting request, or more than one, is
 // refused without saying which devices are waiting.
 func (r *Registry) Confirm(code string) (name string, err error) {
+	return r.confirm("", code)
+}
+
+// ConfirmFor is Confirm for a code that came with the device's id (the QR code the device shows
+// carries both): only that device's requests are looked at, and a wrong code counts against that
+// device alone.
+func (r *Registry) ConfirmFor(id, code string) (name string, err error) {
+	if !ValidID(id) {
+		return "", ErrUnknownDevice
+	}
+	return r.confirm(id, code)
+}
+
+func (r *Registry) confirm(onlyID, code string) (name string, err error) {
 	if !ValidCode(code) {
 		return "", ErrBadCode
 	}
@@ -639,9 +653,14 @@ func (r *Registry) Confirm(code string) (name string, err error) {
 		var hit *rec
 		var hitReq *pending
 		hits := 0
+		if onlyID != "" {
+			if _, err := r.get(onlyID); err != nil {
+				return err
+			}
+		}
 		for _, id := range r.order {
 			rc := r.recs[id]
-			if rc.state != dsQ {
+			if rc.state != dsQ || (onlyID != "" && id != onlyID) {
 				continue
 			}
 			waiting = append(waiting, rc)

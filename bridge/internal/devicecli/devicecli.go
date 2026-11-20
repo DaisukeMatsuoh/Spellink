@@ -23,6 +23,7 @@ import (
 const Usage = `usage: spellink-bridge device <command>
   add <name> [dir]        add a device and write its setup file (Spellink-<name>.snplg) into dir
   list                    show every device and its state
+  pair --web              open the pairing page: read the QR code a device shows with this computer's camera
   pair [code]             confirm the 8-digit code a device is showing (asked for if not given)
   package <name> [dir]    write the setup file again (nothing changes)
   revoke <name>           stop a device from connecting, now and for good
@@ -34,6 +35,8 @@ type Client struct {
 	Base  string // e.g. http://127.0.0.1:8765
 	Token string
 	HTTP  *http.Client
+	// Open shows an address in the user's browser (nil: only the address is printed).
+	Open func(url string) error
 }
 
 type device struct {
@@ -106,6 +109,9 @@ func Run(c *Client, args []string, in io.Reader, out io.Writer, dir string) erro
 	case "list":
 		return list(c, out)
 	case "pair":
+		if len(rest) == 1 && rest[0] == "--web" {
+			return pairWeb(c, out)
+		}
 		code := ""
 		if len(rest) > 0 {
 			code = rest[0]
@@ -279,6 +285,25 @@ func pair(c *Client, code string, in io.Reader, out io.Writer) error {
 		return errors.New("the bridge's answer to \"pair\" could not be read")
 	}
 	fmt.Fprintf(out, "Code accepted: %q is being paired. The device finishes by itself.\n", res.Name)
+	return nil
+}
+
+// pairWeb opens the bridge's pairing page. The command line's token travels in the part of the
+// address after # — a browser never sends that to a server — so the page can use it and nothing else sees it.
+func pairWeb(c *Client, out io.Writer) error {
+	// ask the bridge something first: a bridge that is not running should be said, not left to a blank browser tab
+	if _, err := fetch(c); err != nil {
+		return err
+	}
+	url := c.Base + "/pair#" + c.Token
+	if c.Open != nil {
+		if err := c.Open(url); err == nil {
+			fmt.Fprintln(out, "Opened the pairing page in your browser. Show the QR code on the device to the camera.")
+			return nil
+		}
+	}
+	fmt.Fprintln(out, "Open this address in a browser on this computer, then show the QR code on the device to the camera:")
+	fmt.Fprintln(out, "  "+url)
 	return nil
 }
 

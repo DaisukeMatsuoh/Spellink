@@ -335,3 +335,13 @@ func TestStatusSaysWhetherTheAIProgramCanBeFound(t *testing.T) {
 		t.Error("an empty bridge name")
 	}
 }
+
+func TestOpenCommandReportsABridgeThatIsNotRunning(t *testing.T) {
+	isolate(t)
+	file, _ := config.ConfigFile()
+	os.MkdirAll(filepath.Dir(file), 0o700)
+	os.WriteFile(file, []byte(`{"name":"t","port":9,"token":"x"}`), 0o600)
+	if err := openCmd(); err == nil || !strings.Contains(err.Error(), "is it running") {
+		t.Errorf("not running: %v", err)
+	}
+}

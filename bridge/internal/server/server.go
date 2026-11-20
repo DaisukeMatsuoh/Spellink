@@ -28,6 +28,7 @@ import (
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/provider"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/securechan"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/server/appui"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/server/pairpage"
 )
 
@@ -106,6 +107,12 @@ func Handler(d Deps) http.Handler {
 			mux.Handle("/pair/", page)
 		} else {
 			d.Log.Printf("pairing page disabled: %v", err)
+		}
+		if page, err := appui.Handler(); err == nil {
+			mux.Handle("/app", page)
+			mux.Handle("/app/", page)
+		} else {
+			d.Log.Printf("app page disabled: %v", err)
 		}
 	}
 	return mux

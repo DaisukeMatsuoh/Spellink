@@ -150,13 +150,22 @@ func startDevices(ctx context.Context, cfg *config.Config, logger *log.Logger, d
 	return nil
 }
 
-// deviceCmd is `spellink-bridge device …`.
-func deviceCmd(args []string) error {
+// adminClient is the command line's connection to the running bridge on this computer.
+func adminClient() (*devicecli.Client, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	tok, err := config.AdminToken()
+	if err != nil {
+		return nil, err
+	}
+	return &devicecli.Client{Base: fmt.Sprintf("http://127.0.0.1:%d", cfg.Port), Token: tok, Open: openBrowser}, nil
+}
+
+// deviceCmd is `spellink-bridge device …`.
+func deviceCmd(args []string) error {
+	c, err := adminClient()
 	if err != nil {
 		return err
 	}
@@ -164,8 +173,16 @@ func deviceCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	c := &devicecli.Client{Base: fmt.Sprintf("http://127.0.0.1:%d", cfg.Port), Token: tok, Open: openBrowser}
 	return devicecli.Run(c, args, os.Stdin, os.Stdout, cwd)
+}
+
+// openCmd is `spellink-bridge open`: the app page in the browser.
+func openCmd() error {
+	c, err := adminClient()
+	if err != nil {
+		return err
+	}
+	return devicecli.OpenApp(c, os.Stdout)
 }
 
 // statusFunc says what the app page shows about the bridge: its name, the AI program and where it is, and the

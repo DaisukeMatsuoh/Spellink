@@ -330,3 +330,25 @@ func TestPairWebSaysSoWhenTheBridgeIsNotRunning(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestOpenAppOpensTheAppPageWithTheTokenAfterTheHash(t *testing.T) {
+	e := newEnv(t)
+	var opened string
+	e.c.Open = func(url string) error { opened = url; return nil }
+	var out bytes.Buffer
+	if err := OpenApp(e.c, &out); err != nil {
+		t.Fatal(err)
+	}
+	if opened != e.srv.URL+"/app#"+token || !strings.Contains(out.String(), "Spellink Bridge App") || strings.Contains(out.String(), token) {
+		t.Errorf("opened %q, said %q", opened, out.String())
+	}
+	e.c.Open = nil
+	out.Reset()
+	if err := OpenApp(e.c, &out); err != nil || !strings.Contains(out.String(), e.srv.URL+"/app#"+token) {
+		t.Errorf("without a browser: %v %q", err, out.String())
+	}
+	e.srv.Close()
+	if err := OpenApp(e.c, &out); err == nil || !strings.Contains(err.Error(), "is it running") {
+		t.Errorf("a bridge that is not running: %v", err)
+	}
+}

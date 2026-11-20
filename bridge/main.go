@@ -41,6 +41,7 @@ var version = "dev"
 const usage = `usage:
   spellink-bridge serve                 run the bridge (builds glyph data on first run)
   spellink-bridge pair [out.json]       print the connection file for the plugin (one shared token)
+  spellink-bridge open                  open the Spellink Bridge App (status and devices) in your browser
   spellink-bridge device <command>      add, pair, list and revoke devices one by one (run with no command for help)
   spellink-bridge build-glyphs          (re)download KanjiVG/Hershey and build glyph data
   spellink-bridge check [url...]        reach this bridge the way the plugin does (encrypted handshake)
@@ -67,6 +68,8 @@ func main() {
 		err = pair(out)
 	case "device":
 		err = deviceCmd(args[1:])
+	case "open":
+		err = openCmd()
 	case "build-glyphs":
 		_, err = buildGlyphs()
 	case "preview":

@@ -288,21 +288,33 @@ func pair(c *Client, code string, in io.Reader, out io.Writer) error {
 	return nil
 }
 
-// pairWeb opens the bridge's pairing page. The command line's token travels in the part of the
-// address after # — a browser never sends that to a server — so the page can use it and nothing else sees it.
+// pairWeb opens the bridge's pairing page.
 func pairWeb(c *Client, out io.Writer) error {
+	return openPage(c, "/pair", "Opened the pairing page in your browser. Show the QR code on the device to the camera.",
+		"Open this address in a browser on this computer, then show the QR code on the device to the camera:", out)
+}
+
+// OpenApp opens the bridge's app page (status and devices) in the browser: `spellink-bridge open`.
+func OpenApp(c *Client, out io.Writer) error {
+	return openPage(c, "/app", "Opened the Spellink Bridge App in your browser.",
+		"Open this address in a browser on this computer:", out)
+}
+
+// openPage opens one of the bridge's local pages. The command line's token travels in the part of the
+// address after # — a browser never sends that to a server — so the page can use it and nothing else sees it.
+func openPage(c *Client, path, opened, notOpened string, out io.Writer) error {
 	// ask the bridge something first: a bridge that is not running should be said, not left to a blank browser tab
 	if _, err := fetch(c); err != nil {
 		return err
 	}
-	url := c.Base + "/pair#" + c.Token
+	url := c.Base + path + "#" + c.Token
 	if c.Open != nil {
 		if err := c.Open(url); err == nil {
-			fmt.Fprintln(out, "Opened the pairing page in your browser. Show the QR code on the device to the camera.")
+			fmt.Fprintln(out, opened)
 			return nil
 		}
 	}
-	fmt.Fprintln(out, "Open this address in a browser on this computer, then show the QR code on the device to the camera:")
+	fmt.Fprintln(out, notOpened)
 	fmt.Fprintln(out, "  "+url)
 	return nil
 }

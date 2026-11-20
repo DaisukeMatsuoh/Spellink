@@ -1,0 +1,45 @@
+# The words of the Spellink Bridge App page. One row per message, one column per language; \n is a newline.
+# {name}, {why} and the like mark values filled in at run time. An empty cell in a language other than English uses the English text.
+# A language is added by adding a column here (the rules are the same as plugin/locales/strings.tsv).
+key	en	ja
+title	Spellink Bridge App	Spellink Bridge App
+noToken	Open this page with: spellink-bridge open	このページは「spellink-bridge open」で開いてください。
+unauthorized	This page is not allowed to manage the bridge. Open it with: spellink-bridge open	このページにはブリッジを管理する権限がありません。「spellink-bridge open」で開いてください。
+unreachable	The bridge does not answer ({why}).	ブリッジが応答しません（{why}）。
+bridgeLine	Bridge "{name}" (version {version})	ブリッジ「{name}」（版 {version}）
+providerOk	{name} is ready: {path}	{name} を使えます: {path}
+providerMissing	{name} was not found on this computer. Install it and log in, then reload this page.	{name} がこのパソコンに見つかりません。インストールしてログインしてから、このページを開き直してください。
+relayOn	Devices can reach this bridge away from home (relay on).	外出先の端末からも、このブリッジに届きます（中継を使用中）。
+relayOff	Only devices on addresses listed in the settings can reach this bridge.	設定にある住所から届く端末だけが、このブリッジを使えます。
+noAddress	No wss:// address is set, so a new device cannot be told where to connect. Set extraUrls, lan or relayUrl in config.json.	wss:// の住所が設定されていないので、新しい端末に接続先を教えられません。config.json の extraUrls・lan・relayUrl を設定してください。
+devicesTitle	Devices	端末
+noDevices	No devices yet. Add one below.	端末はまだありません。下で追加してください。
+stateIssued	Setup file made. Install it on the device, then tap Pair there. (valid until {until})	セットアップファイルを作りました。端末に入れて、端末で「ペアリング」を押してください（{until} まで有効）。
+stateWaiting	The device is showing a code: scan its QR code.	端末がコードを表示しています。QRコードを読み取ってください。
+stateGranting	Finishing…	仕上げています…
+stateActive	Paired. Last used: {last}	ペアリング済み。最後に使った日時: {last}
+stateExpired	The setup file expired. Make a new one.	セットアップファイルの期限が切れました。作り直してください。
+stateRevoked	Removed. This device can no longer connect.	解除済み。この端末はもう接続できません。
+never	never	まだありません
+actionPair	Scan its QR code	QRコードを読み取る
+actionSave	Save setup file	セットアップファイルを保存
+actionRevoke	Remove	解除
+actionReissue	Make a new setup file	作り直す
+actionForget	Delete from the list	一覧から削除
+confirmRevoke	Remove "{name}"? It will no longer be able to connect.	「{name}」を解除しますか？ この端末は接続できなくなります。
+confirmReissue	Make a new setup file for "{name}"? The device must be paired again.	「{name}」のセットアップファイルを作り直しますか？ 端末は、ペアリングし直しになります。
+confirmForget	Delete "{name}" from the list?	「{name}」を一覧から削除しますか？
+addTitle	Add a device	端末を追加
+addPlaceholder	A name, e.g. Nomad	名前（例: Nomad）
+addButton	Add	追加
+nameEmpty	Give the device a name.	端末の名前を入れてください。
+added	Added "{name}". The setup file was saved to your Downloads.	「{name}」を追加しました。セットアップファイルをダウンロードに保存しました。
+step1	1. Copy the file to the device (the MyStyle folder) and install the plugin from it.	1. ファイルを端末の MyStyle フォルダにコピーし、そこからプラグインをインストールします。
+step2	2. On the device, open Spellink and tap Pair: a QR code appears.	2. 端末で Spellink を開き、「ペアリング」を押すと、QRコードが出ます。
+step3	3. Scan the QR code with this computer's camera:	3. このパソコンのカメラで、そのQRコードを読み取ります:
+stepLink	Open the pairing page	ペアリングのページを開く
+doneRevoke	Removed.	解除しました。
+doneReissue	A new setup file was made and saved to your Downloads. Install it on the device and pair again.	新しいセットアップファイルを作り、ダウンロードに保存しました。端末に入れて、ペアリングし直してください。
+doneForget	Deleted.	削除しました。
+doneSave	The setup file was saved to your Downloads.	セットアップファイルをダウンロードに保存しました。
+failed	Could not do that ({why}).	できませんでした（{why}）。

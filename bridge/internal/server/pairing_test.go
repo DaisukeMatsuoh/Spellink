@@ -848,3 +848,26 @@ func TestAdminStatusWithoutAStatusFunctionStillAnswers(t *testing.T) {
 		t.Errorf("%d %s", status, body)
 	}
 }
+
+func TestTheAppPageIsServedWithTheAdminDoorAndOnlyThen(t *testing.T) {
+	e := newPairEnv(t)
+	for _, path := range []string{"/app", "/app/app.js", "/app/strings.json", "/pair/pairlogic.js"} {
+		resp, err := http.Get(e.http + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("%s: %d", path, resp.StatusCode)
+		}
+	}
+	url := httptestURL(t, func(d *Deps) { d.Admin = nil })
+	resp, err := http.Get(url + "/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Errorf("without the admin door the app page must not exist: %d", resp.StatusCode)
+	}
+}

@@ -4,11 +4,13 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/coder/websocket"
 
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/securechan"
 )
@@ -129,6 +131,7 @@ func (s *session) runPairing(parent context.Context) {
 				s.deps.Log.Printf("pairRequest from %s refused: %v", s.peer, err)
 				return
 			}
+			s.sendBanner(ctx, m)
 		case "pairAck":
 			if m.ID != s.deviceID {
 				s.fail(ctx, "bad_request", "the ack is for another device")
@@ -165,4 +168,33 @@ func (s *session) Deny(reason string) {
 
 func (s *session) closeWith(reason string) {
 	_ = s.conn.Close(websocket.StatusPolicyViolation, reason)
+}
+
+const (
+	maxBannerRunes   = 120
+	maxBannerStrokes = 3000
+)
+
+// sendBanner writes the phrase the device asked for in the bridge's handwriting and sends the strokes.
+// It is decoration, so anything wrong with the request (no phrase, a layout that is not sane, no
+// font, a phrase that draws nothing) means no banner, never a failed pairing.
+func (s *session) sendBanner(ctx context.Context, m *protocol.ClientMessage) {
+	text := strings.TrimSpace(m.Banner)
+	if text == "" || len([]rune(text)) > maxBannerRunes || s.deps.Font == nil || !ValidLayout(m.Layout) {
+		return
+	}
+	layout := *m.Layout
+	layout.MaxPages = 1
+	composer := ink.NewComposer(s.deps.Font, layout, seedFrom(m.ID))
+	lines := append(composer.Push(text), composer.Finish()...)
+	var strokes []ink.Stroke
+	for _, l := range lines {
+		if l.Page == 0 {
+			strokes = append(strokes, l.Strokes...)
+		}
+	}
+	if len(strokes) == 0 || len(strokes) > maxBannerStrokes {
+		return
+	}
+	s.send(ctx, protocol.PairBanner{Type: "pairBanner", Strokes: strokes})
 }

@@ -29,7 +29,7 @@ const isStr = (v: unknown, max: number): v is string =>
   typeof v === 'string' && v.length <= max;
 
 /** Why a stroke cannot be written, or null when it can. */
-function strokeProblem(s: unknown): string | null {
+export function strokeProblem(s: unknown): string | null {
   if (!isObject(s) || !Array.isArray(s.p) || !Array.isArray(s.w)) {
     return 'stroke is not {p, w}';
   }

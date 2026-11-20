@@ -292,6 +292,11 @@ describe('the real parts of a pairing', () => {
       d.onView({state: 'U1', note: 'idle'});
       expect(views).toHaveLength(1);
       expect(typeof d.connect).toBe('function');
+      expect(d.banner()).toEqual({
+        text: expect.stringMatching(/QR/),
+        width: 1000,
+        charSize: 40,
+      });
       expect(
         await d.save({id: ID, gen: 1, key: 'x', name: 'n', urls: [URL]}),
       ).toBe(false); // the file module is absent here

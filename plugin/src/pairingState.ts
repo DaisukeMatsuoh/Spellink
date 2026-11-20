@@ -7,7 +7,12 @@ import {randomBytes} from './noise';
 import type {PairDeps} from './pairing';
 import {planBridges, type Plan} from './pairPlan';
 import {readStore, saveToStore} from './pairStore';
+import {t} from './i18n';
 import {trace} from './trace';
+
+/** The handwritten phrase beside the QR code: the width it may use and the size of its letters (pixels). */
+export const BANNER_WIDTH = 1000;
+export const BANNER_CHAR_SIZE = 40;
 
 export interface PairingState {
   plan: Plan;
@@ -57,6 +62,11 @@ export function realPairDeps(onView: PairDeps['onView']): PairDeps {
       return () => clearInterval(t);
     },
     now: () => Date.now(),
+    banner: () => ({
+      text: t('pairScanQr'),
+      width: BANNER_WIDTH,
+      charSize: BANNER_CHAR_SIZE,
+    }),
     onView,
     log: (k, d) => trace(k, {d}),
   };

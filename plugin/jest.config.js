@@ -21,6 +21,7 @@ module.exports = {
     'src/pairingMachine.ts',
     'src/pairConnect.ts',
     'src/pairText.ts',
+    'src/pairStroke.ts',
     'src/fileOps.ts',
     'src/pairingState.ts',
     'src/bridgeConfig.ts',

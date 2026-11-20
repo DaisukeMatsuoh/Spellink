@@ -697,3 +697,82 @@ func TestThePairingPageIsServedWithTheAdminDoorAndOnlyThen(t *testing.T) {
 		t.Errorf("without the admin door the page must not exist: %d", resp.StatusCode)
 	}
 }
+
+// ---- the handwritten banner ----
+
+var bannerLayout = ink.Layout{X: 0, Y: 0, Width: 600, PageHeight: 400, BottomMargin: 0, CharSize: 40}
+
+func TestARequestWithABannerGetsItWrittenInHandwritingBeforeAnyGrant(t *testing.T) {
+	e := newPairEnv(t)
+	id, b := e.addDevice("Nomad")
+	d := e.dial(id, b)
+	d.send(msg{"type": "pairRequest", "id": id, "gen": 1, "code": "12345678", "banner": "ああ あ", "layout": bannerLayout})
+	m := d.recv()
+	strokes, _ := m["strokes"].([]any)
+	if m["type"] != "pairBanner" || len(strokes) == 0 {
+		t.Fatalf("expected a banner with strokes, got %v", m)
+	}
+	first := strokes[0].(map[string]any)
+	p, w := first["p"].([]any), first["w"].([]any)
+	if len(p) < 2 || len(p)%2 != 0 || len(w) != len(p)/2 {
+		t.Errorf("a stroke must have matching points and pressures: %d coordinates, %d pressures", len(p), len(w))
+	}
+	for _, v := range p {
+		if x := v.(float64); x < -50 || x > 700 {
+			t.Errorf("a point outside the asked-for width: %v", x)
+		}
+	}
+	e.waitWaiting(id, 1)
+	e.admin("POST", "/admin/pair", msg{"code": "12345678"})
+	if g := d.recv(); g["type"] != "pairGrant" {
+		t.Errorf("after the banner the grant comes: %v", g)
+	}
+}
+
+func TestABannerIsOnlyDecorationSoBadRequestsGetNoneAndStillPair(t *testing.T) {
+	cases := map[string]msg{
+		"no banner":                 {},
+		"only spaces":               {"banner": "   ", "layout": bannerLayout},
+		"too long":                  {"banner": strings.Repeat("あ", maxBannerRunes+1), "layout": bannerLayout},
+		"no layout":                 {"banner": "ああ"},
+		"a layout that is not sane": {"banner": "ああ", "layout": ink.Layout{Width: -1, PageHeight: 400, CharSize: 40}},
+		"nothing it can draw":       {"banner": "xyz", "layout": bannerLayout}, // the test font has no such letters
+	}
+	for name, extra := range cases {
+		e := newPairEnv(t)
+		id, b := e.addDevice("Nomad")
+		d := e.dial(id, b)
+		req := msg{"type": "pairRequest", "id": id, "gen": 1, "code": "12345678"}
+		for k, v := range extra {
+			req[k] = v
+		}
+		d.send(req)
+		e.waitWaiting(id, 1)
+		e.admin("POST", "/admin/pair", msg{"code": "12345678"})
+		if g := d.recv(); g["type"] != "pairGrant" {
+			t.Errorf("%s: the first frame must be the grant (no banner), got %v", name, g)
+		}
+	}
+}
+
+func TestABridgeWithoutAFontStillPairs(t *testing.T) {
+	e := newPairEnv(t, func(d *Deps) { d.Font = nil })
+	id, b := e.addDevice("Nomad")
+	d := e.dial(id, b)
+	d.send(msg{"type": "pairRequest", "id": id, "gen": 1, "code": "12345678", "banner": "ああ", "layout": bannerLayout})
+	e.waitWaiting(id, 1)
+	e.admin("POST", "/admin/pair", msg{"code": "12345678"})
+	if g := d.recv(); g["type"] != "pairGrant" {
+		t.Errorf("got %v", g)
+	}
+}
+
+func TestADeniedRequestGetsNoBanner(t *testing.T) {
+	e := newPairEnv(t)
+	id, b := e.addDevice("Nomad")
+	d := e.dial(id, b)
+	d.send(msg{"type": "pairRequest", "id": id, "gen": 99, "code": "12345678", "banner": "ああ", "layout": bannerLayout})
+	if m := d.recv(); m["type"] != "pairDenied" {
+		t.Errorf("a refused request is answered with the refusal and nothing else: %v", m)
+	}
+}

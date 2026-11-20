@@ -5,6 +5,8 @@ import {isSecret} from './base64url';
 import type {PairSetup} from './pairConfig';
 import type {PairChannel} from './pairConnect';
 import type {PairFrame} from './pairFrames';
+import {strokeBounds} from './pairStroke';
+import type {InkStroke} from './protocol';
 import {PairMachine, type PairState} from './pairingMachine';
 import type {StoredBridge} from './pairStore';
 import type {Log} from './stm';
@@ -22,6 +24,8 @@ export interface PairDeps {
   after(ms: number, f: () => void): () => void;
   every(ms: number, f: () => void): () => void;
   now(): number;
+  /** The phrase to be shown in the bridge's handwriting next to the QR code, or null for none. */
+  banner(): {text: string; width: number; charSize: number} | null;
   onView(v: PairView): void;
   log: Log;
 }
@@ -35,6 +39,8 @@ export interface PairView {
   code?: string;
   qr?: string;
   remainingSec?: number;
+  /** The bridge's handwriting of the phrase, when it sent one. */
+  banner?: {strokes: InkStroke[]; width: number; height: number};
 }
 
 export type PairNote =
@@ -66,6 +72,7 @@ export class PairingController {
   private stops: Array<() => void> = [];
   private note: PairNote = 'idle';
   private detail: string | undefined;
+  private banner: InkStroke[] = [];
 
   constructor(
     readonly setup: PairSetup,
@@ -84,6 +91,7 @@ export class PairingController {
         S8: a => this.finish('denied', false, String(a)),
         S9: () => this.finish('cancelled'),
         S10: () => this.finish('refused'),
+        S11: a => this.showBanner(a as InkStroke[]),
       },
       deps.log,
       start,
@@ -107,6 +115,9 @@ export class PairingController {
         0,
         Math.ceil((this.deadline - this.deps.now()) / 1000),
       );
+      if (this.banner.length > 0) {
+        v.banner = {strokes: this.banner, ...strokeBounds(this.banner)};
+      }
     }
     return v;
   }
@@ -174,12 +185,7 @@ export class PairingController {
     const a = this.attempt;
     this.code = this.deps.digits(CODE_DIGITS);
     try {
-      ch.send({
-        type: 'pairRequest',
-        id: this.setup.id,
-        gen: this.setup.gen,
-        code: this.code,
-      });
+      ch.send(this.request());
     } catch (e) {
       this.m.dispatch('DISCONNECT', (e as Error).message);
       return;
@@ -194,6 +200,39 @@ export class PairingController {
       ),
       this.deps.every(1000, () => a === this.attempt && this.emit()),
     );
+    this.emit();
+  }
+
+  /** The first frame: who we are, the code, and — if there is a phrase — what to write in handwriting. */
+  private request(): Record<string, unknown> {
+    const frame: Record<string, unknown> = {
+      type: 'pairRequest',
+      id: this.setup.id,
+      gen: this.setup.gen,
+      code: this.code,
+    };
+    const b = this.deps.banner();
+    if (b) {
+      frame.banner = b.text;
+      frame.layout = {
+        x: 0,
+        y: 0,
+        width: b.width,
+        pageHeight: b.charSize * 8,
+        bottomMargin: 0,
+        charSize: b.charSize,
+      };
+    }
+    return frame;
+  }
+
+  // S11: the bridge's handwriting arrived (decoration; an empty one changes nothing).
+  private showBanner(strokes: InkStroke[]): void {
+    if (strokes.length === 0) {
+      this.deps.log('pair.banner.empty');
+      return;
+    }
+    this.banner = strokes;
     this.emit();
   }
 
@@ -218,6 +257,7 @@ export class PairingController {
 
   // S4–S10: the ends.
   private finish(note: PairNote, ack = false, detail?: string): void {
+    this.banner = [];
     this.attempt++; // whatever this attempt still has in flight (a connection, a frame) is now stale
     this.stopTimers();
     if (ack && this.ch) {
@@ -243,6 +283,8 @@ export class PairingController {
           return this.m.dispatch('DISCONNECT', 'bad key');
         }
         return this.m.dispatch('GRANT', {key: f.key, endpoints: f.endpoints});
+      case 'pairBanner':
+        return this.m.dispatch('BANNER', f.strokes);
       case 'pairDenied':
         return this.m.dispatch('DENIED', f.reason);
       default:

@@ -216,6 +216,57 @@ describe('the frames of the pairing channel', () => {
   });
 });
 
+describe('the handwritten banner frame', () => {
+  const stroke = {p: [0, 0, 5, 5], w: [10, 10]};
+
+  it('accepts strokes that check out', () => {
+    expect(parsePairFrame({type: 'pairBanner', strokes: [stroke]})).toEqual({
+      kind: 'frame',
+      frame: {type: 'pairBanner', strokes: [stroke]},
+    });
+  });
+
+  it.each([
+    ['no strokes at all', {type: 'pairBanner'}],
+    ['strokes that are not a list', {type: 'pairBanner', strokes: 'x'}],
+    [
+      'a stroke with an odd number of coordinates',
+      {type: 'pairBanner', strokes: [{p: [0, 0, 5], w: [1]}]},
+    ],
+    [
+      'a stroke with the wrong number of pressures',
+      {type: 'pairBanner', strokes: [{p: [0, 0, 5, 5], w: [1]}]},
+    ],
+    [
+      'a stroke with a coordinate that is not a number',
+      {type: 'pairBanner', strokes: [{p: [0, 'x', 5, 5], w: [1, 1]}]},
+    ],
+    [
+      'too many strokes',
+      {type: 'pairBanner', strokes: Array(3001).fill(stroke)},
+    ],
+  ])(
+    'turns %s into a banner with no strokes, never into a failure',
+    (_n, raw) => {
+      expect(parsePairFrame(raw)).toEqual({
+        kind: 'frame',
+        frame: {type: 'pairBanner', strokes: []},
+      });
+    },
+  );
+
+  it('drops the whole banner when one stroke is bad', () => {
+    const r = parsePairFrame({
+      type: 'pairBanner',
+      strokes: [stroke, {p: [], w: []}],
+    });
+    expect(r).toEqual({
+      kind: 'frame',
+      frame: {type: 'pairBanner', strokes: []},
+    });
+  });
+});
+
 describe('the store in directory names', () => {
   const key = secretOf(5);
   const b: StoredBridge = {id: ID, gen: 3, key, name: 'Nomad', urls: [URL]};

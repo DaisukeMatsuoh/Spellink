@@ -15,6 +15,7 @@ export const PAIR_EVENTS = [
   'DENIED',
   'CANCEL',
   'K_REFUSED',
+  'BANNER',
 ] as const;
 export type PairEvent = (typeof PAIR_EVENTS)[number];
 export const PAIR_ACTIONS = [
@@ -28,6 +29,7 @@ export const PAIR_ACTIONS = [
   'S8',
   'S9',
   'S10',
+  'S11',
 ] as const;
 export type PairAction = (typeof PAIR_ACTIONS)[number];
 
@@ -44,6 +46,7 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     DENIED: {k: 'never', note: 'g'},
     CANCEL: {k: 'ignore', note: 'h'},
     K_REFUSED: {k: 'never', note: 'i'},
+    BANNER: {k: 'never', note: 'b'},
   },
   U1: {
     TAP_PAIR: {k: 'do', action: 'S1', next: 'U2'},
@@ -56,6 +59,7 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     DENIED: {k: 'never', note: 'g'},
     CANCEL: {k: 'ignore', note: 'h'},
     K_REFUSED: {k: 'never', note: 'i'},
+    BANNER: {k: 'never', note: 'b'},
   },
   U2: {
     TAP_PAIR: {k: 'ignore', note: 'c'},
@@ -68,6 +72,7 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     DENIED: {k: 'do', action: 'S8', next: 'U1'},
     CANCEL: {k: 'do', action: 'S9', next: 'U1'},
     K_REFUSED: {k: 'never', note: 'i'},
+    BANNER: {k: 'never', note: 'b'},
   },
   U3: {
     TAP_PAIR: {k: 'ignore', note: 'c'},
@@ -80,6 +85,7 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     DENIED: {k: 'do', action: 'S8', next: 'U1'},
     CANCEL: {k: 'do', action: 'S9', next: 'U1'},
     K_REFUSED: {k: 'never', note: 'i'},
+    BANNER: {k: 'do', action: 'S11', next: 'U3'},
   },
   U4: {
     TAP_PAIR: {k: 'ignore', note: 'c'},
@@ -92,6 +98,7 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     DENIED: {k: 'ignore', note: 'j'},
     CANCEL: {k: 'ignore', note: 'k'},
     K_REFUSED: {k: 'never', note: 'i'},
+    BANNER: {k: 'ignore', note: 'o'},
   },
   U5: {
     TAP_PAIR: {k: 'do', action: 'S1', next: 'U2'},
@@ -104,5 +111,6 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     DENIED: {k: 'never', note: 'm'},
     CANCEL: {k: 'ignore', note: 'h'},
     K_REFUSED: {k: 'do', action: 'S10', next: 'U1'},
+    BANNER: {k: 'never', note: 'b'},
   },
 };

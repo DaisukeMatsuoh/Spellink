@@ -18,6 +18,7 @@ import (
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/devicecli"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/devices"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/provider"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/relay"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/server"
 )
@@ -132,7 +133,7 @@ func startDevices(ctx context.Context, cfg *config.Config, logger *log.Logger, d
 		logger.Printf("devices: %s: skipped %s", file, s)
 	}
 	deps.Devices, deps.Sessions = reg, sessions
-	deps.Admin = &server.AdminDeps{Devices: reg, Token: adminToken, Package: packageBuilder(cfg)}
+	deps.Admin = &server.AdminDeps{Devices: reg, Token: adminToken, Package: packageBuilder(cfg), Status: statusFunc(cfg, deps.Provider)}
 	syncRooms()
 	go func() {
 		t := time.NewTicker(time.Second)
@@ -165,6 +166,25 @@ func deviceCmd(args []string) error {
 	}
 	c := &devicecli.Client{Base: fmt.Sprintf("http://127.0.0.1:%d", cfg.Port), Token: tok, Open: openBrowser}
 	return devicecli.Run(c, args, os.Stdin, os.Stdout, cwd)
+}
+
+// statusFunc says what the app page shows about the bridge: its name, the AI program and where it is, and the
+// addresses a new device would be told. `ai` may be nil (a test).
+func statusFunc(cfg *config.Config, ai provider.Provider) func() server.StatusInfo {
+	return func() server.StatusInfo {
+		_, _, exe := cfg.ProviderSettings()
+		info := server.StatusInfo{
+			Version: version, Name: bridgeName(cfg), Relay: cfg.RelayURL != "",
+			Addresses: deviceURLs(cfg, "<id>", ""), Provider: server.ProviderInfo{Name: "Claude Code"},
+		}
+		if ai != nil {
+			info.Provider.Name = ai.Name()
+		}
+		if path, err := exec.LookPath(exe); err == nil {
+			info.Provider.Found, info.Provider.Path = true, path
+		}
+		return info
+	}
 }
 
 // openCommand is how this platform opens an address in the default browser.

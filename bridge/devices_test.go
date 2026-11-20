@@ -318,3 +318,20 @@ func TestOpenBrowserReportsACommandThatCannotStart(t *testing.T) {
 		t.Error("a missing command must be an error, not a silent success")
 	}
 }
+
+func TestStatusSaysWhetherTheAIProgramCanBeFound(t *testing.T) {
+	cfg := &config.Config{Name: "Rock", RelayURL: "wss://relay.example", ExtraURLs: []string{"wss://b.example/v1"}, ClaudeExecutable: "definitely-not-installed-anywhere"}
+	got := statusFunc(cfg, nil)()
+	if got.Provider.Found || got.Provider.Path != "" || got.Provider.Name != "Claude Code" || !got.Relay || got.Name != "Rock" || len(got.Addresses) == 0 {
+		t.Errorf("missing program: %+v", got)
+	}
+	cfg.ClaudeExecutable = "sh" // something that exists wherever the tests run
+	got = statusFunc(cfg, provider.Func("Test AI", nil))()
+	if !got.Provider.Found || got.Provider.Path == "" || got.Provider.Name != "Test AI" {
+		t.Errorf("present program: %+v", got)
+	}
+	cfg.Name = "" // an unusable bridge name is "bridge", as in the setup file
+	if statusFunc(cfg, nil)().Name != "bridge" {
+		t.Error("an empty bridge name")
+	}
+}

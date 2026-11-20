@@ -117,6 +117,7 @@ func serve(t *testing.T, path string, headers map[string]string) *httptest.Respo
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest("GET", path, nil)
+	req.Host = "127.0.0.1:8765"
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -151,6 +152,17 @@ func TestTheStringsAreServedAsJSONForEveryLanguage(t *testing.T) {
 	}
 	if got["en"]["title"] == "" || got["ja"]["title"] == "" || got["ja"]["title"] == got["en"]["title"] {
 		t.Errorf("titles: %q / %q", got["en"]["title"], got["ja"]["title"])
+	}
+}
+
+func TestThePageIsNotForAWebPageThatPointedItsOwnNameHere(t *testing.T) {
+	h, _ := Handler()
+	req := httptest.NewRequest("GET", "/pair", nil)
+	req.Host = "evil.example:8765" // DNS rebinding: the browser reaches 127.0.0.1 but the Host is the attacker's
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("%d", rec.Code)
 	}
 }
 

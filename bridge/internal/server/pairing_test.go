@@ -776,3 +776,75 @@ func TestADeniedRequestGetsNoBanner(t *testing.T) {
 		t.Errorf("a refused request is answered with the refusal and nothing else: %v", m)
 	}
 }
+
+func TestTheLocalDoorsRefuseAForeignHostEvenWithTheRightToken(t *testing.T) {
+	e := newPairEnv(t)
+	for _, path := range []string{"/admin/devices", "/pair", "/pair/strings.json"} {
+		req, _ := http.NewRequest("GET", e.http+path, nil)
+		req.Host = "evil.example:8765" // a page that re-pointed its own name at 127.0.0.1
+		req.Header.Set("Authorization", "Bearer "+adminToken)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s with a foreign Host: %d", path, resp.StatusCode)
+		}
+	}
+	// the same requests with a loopback name are served
+	for _, host := range []string{"localhost", "127.0.0.1"} {
+		req, _ := http.NewRequest("GET", e.http+"/admin/devices", nil)
+		req.Host = host
+		req.Header.Set("Authorization", "Bearer "+adminToken)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("Host %s: %d", host, resp.StatusCode)
+		}
+	}
+}
+
+func TestAdminStatusCountsDevicesAndPassesOnWhatTheBridgeSaysAboutItself(t *testing.T) {
+	e := newPairEnv(t, func(d *Deps) {
+		d.Admin.Status = func() StatusInfo {
+			return StatusInfo{Version: "1.2.3", Name: "Rock", Relay: true, Addresses: []string{"wss://x/v1"}, Provider: ProviderInfo{Name: "Claude Code", Found: true, Path: "/usr/bin/claude"}}
+		}
+	})
+	e.pairFully("active", "11111111")
+	id, b := e.addDevice("waiting")
+	d := e.dial(id, b)
+	d.send(msg{"type": "pairRequest", "id": id, "gen": 1, "code": "22222222"})
+	e.waitWaiting(id, 1)
+	e.addDevice("issued")
+
+	status, body := e.admin("GET", "/admin/status", nil)
+	var got struct {
+		Version   string
+		Name      string
+		Relay     bool
+		Provider  ProviderInfo
+		Devices   struct{ Total, Active, Waiting int }
+		Addresses []string
+	}
+	if err := json.Unmarshal(body, &got); err != nil || status != 200 {
+		t.Fatalf("%d %s %v", status, body, err)
+	}
+	if got.Version != "1.2.3" || got.Name != "Rock" || !got.Relay || !got.Provider.Found || got.Provider.Path != "/usr/bin/claude" || len(got.Addresses) != 1 {
+		t.Errorf("status = %+v", got)
+	}
+	if got.Devices.Total != 3 || got.Devices.Active != 1 || got.Devices.Waiting != 1 {
+		t.Errorf("devices = %+v", got.Devices)
+	}
+}
+
+func TestAdminStatusWithoutAStatusFunctionStillAnswers(t *testing.T) {
+	e := newPairEnv(t)
+	status, body := e.admin("GET", "/admin/status", nil)
+	if status != 200 || !strings.Contains(string(body), `"addresses":[]`) || !strings.Contains(string(body), `"total":0`) {
+		t.Errorf("%d %s", status, body)
+	}
+}

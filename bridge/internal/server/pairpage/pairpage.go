@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/localguard"
 )
 
 //go:embed index.html pair.js pairlogic.js jsQR.js strings.tsv
@@ -168,7 +170,7 @@ func Handler() (http.Handler, error) {
 		_, _ = w.Write(asJSON)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Cf-Connecting-Ip") != "" || r.Header.Get("X-Forwarded-For") != "" {
+		if !localguard.Local(r) {
 			http.Error(w, "not available here", http.StatusForbidden)
 			return
 		}

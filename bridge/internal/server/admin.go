@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/devices"
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/localguard"
 )
 
 // AdminDeps is what the bridge's own command line needs: the ledger, a way to build a device's
@@ -21,6 +22,36 @@ type AdminDeps struct {
 	Token string
 	// Package returns the .snplg for a device, built from the data the ledger gives (REPACK).
 	Package func(devices.PackageData) ([]byte, error)
+	// Status says what the app page shows about the bridge itself (nil: only the device counts).
+	Status func() StatusInfo
+}
+
+// StatusInfo is what the bridge knows about itself that the ledger does not.
+type StatusInfo struct {
+	Version string `json:"version"`
+	Name    string `json:"name"`
+	// Provider is the AI the bridge asks: its name, and whether its program can be found here.
+	Provider ProviderInfo `json:"provider"`
+	// Relay is true when the bridge registers with a relay (devices can reach it away from home).
+	Relay bool `json:"relay"`
+	// Addresses are the wss:// addresses a new device would be told.
+	Addresses []string `json:"addresses"`
+}
+
+// ProviderInfo describes the AI program.
+type ProviderInfo struct {
+	Name  string `json:"name"`
+	Found bool   `json:"found"`
+	Path  string `json:"path,omitempty"`
+}
+
+type statusJSON struct {
+	StatusInfo
+	Devices struct {
+		Total   int `json:"total"`
+		Active  int `json:"active"`
+		Waiting int `json:"waiting"`
+	} `json:"devices"`
 }
 
 const maxAdminBody = 4 << 10
@@ -39,6 +70,23 @@ type deviceJSON struct {
 // Handler returns the /admin/ routes.
 func (a *AdminDeps) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /admin/status", func(w http.ResponseWriter, r *http.Request) {
+		var out statusJSON
+		if a.Status != nil {
+			out.StatusInfo = a.Status()
+		}
+		if out.Addresses == nil {
+			out.Addresses = []string{}
+		}
+		for _, d := range a.Devices.List() {
+			out.Devices.Total++
+			if d.Status == "active" {
+				out.Devices.Active++
+			}
+			out.Devices.Waiting += d.Waiting
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	mux.HandleFunc("GET /admin/devices", func(w http.ResponseWriter, r *http.Request) {
 		list := a.Devices.List()
 		out := make([]deviceJSON, len(list))
@@ -116,8 +164,7 @@ func (a *AdminDeps) Handler() http.Handler {
 func (a *AdminDeps) guard(next http.Handler) http.Handler {
 	want := sha256.Sum256([]byte(a.Token))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Through a tunnel every request arrives from 127.0.0.1; these headers are how it shows.
-		if r.Header.Get("Cf-Connecting-Ip") != "" || r.Header.Get("X-Forwarded-For") != "" {
+		if !localguard.Local(r) {
 			http.Error(w, "not available here", http.StatusForbidden)
 			return
 		}

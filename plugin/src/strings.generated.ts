@@ -13,7 +13,7 @@ export const STRINGS = {
     noText: "This can't be read as text.",
     connecting: 'Connecting to the bridge…',
     noBridge:
-      'No bridge reachable. Is spellink-bridge running on a computer on this network?',
+      'The registered bridge was not found. Make sure the Spellink Bridge App is running on your computer. If it is, the pairing may have been removed: pair again.',
     thinking: 'The AI is thinking…',
     reconnecting: 'Reconnecting ({n}/{max})…',
     badFrame: 'The bridge sent data that could not be used.',
@@ -104,7 +104,7 @@ export const STRINGS = {
     noText: '文字として読み取れない内容です。',
     connecting: 'ブリッジに接続しています…',
     noBridge:
-      'ブリッジに接続できません。同じネットワークのPCで spellink-bridge が動いているか確認してください。',
+      '登録されたブリッジが見つかりません。パソコンで Spellink Bridge App が動いているか確かめてください。動いているのに見つからないときは、ペアリングが解除されたのかもしれません。ペアリングし直してください。',
     thinking: 'AI が考えています…',
     reconnecting: '再接続中 ({n}/{max})…',
     badFrame: 'ブリッジから、使えないデータが届きました。',

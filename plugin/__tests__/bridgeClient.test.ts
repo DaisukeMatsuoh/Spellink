@@ -131,10 +131,10 @@ describe('a bridge that turns this device away', () => {
       /Rock no longer accepts this device/,
     );
     expect(noBridgeMessage(new NoBridgeError('x', []))).toMatch(
-      /No bridge reachable/,
+      /registered bridge was not found/,
     );
-    expect(noBridgeMessage(new Error('boom'))).toMatch(/No bridge reachable/);
-    expect(noBridgeMessage('a string')).toMatch(/No bridge reachable/);
+    expect(noBridgeMessage(new Error('boom'))).toMatch(/registered bridge was not found/);
+    expect(noBridgeMessage('a string')).toMatch(/registered bridge was not found/);
   });
 
   it('refusedBridges works on the attempts alone', () => {

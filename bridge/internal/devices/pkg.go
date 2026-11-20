@@ -47,8 +47,10 @@ func BuildPackage(base []byte, d PackageData, urls []string) ([]byte, error) {
 		return nil, errors.New("package: bad device data")
 	case d.B != "" && !ValidSecret(d.B):
 		return nil, errors.New("package: bad B")
-	case len(urls) == 0 || len(urls) > maxURLs:
-		return nil, fmt.Errorf("package: %d URLs (need 1 to %d)", len(urls), maxURLs)
+	case len(urls) > maxURLs, len(urls) == 0 && d.B != "":
+		// a package that still pairs needs somewhere to connect; one for a paired device does not
+		// (it connects with what it stored when it was paired)
+		return nil, fmt.Errorf("package: %d URLs (a device that still has to pair needs 1 to %d)", len(urls), maxURLs)
 	case setup.WindowSec < minWindowSecs || setup.WindowSec > maxWindowSecs:
 		return nil, fmt.Errorf("package: window of %d s (need %d to %d)", setup.WindowSec, minWindowSecs, maxWindowSecs)
 	}
@@ -56,6 +58,9 @@ func BuildPackage(base []byte, d PackageData, urls []string) ([]byte, error) {
 		if !strings.HasPrefix(u, "wss://") || len(u) > maxURLChars || strings.ContainsAny(u, "\"\\\n\r") {
 			return nil, fmt.Errorf("package: URL %q is not usable (wss:// only, up to %d characters)", u, maxURLChars)
 		}
+	}
+	if urls == nil {
+		setup.URLs = []string{}
 	}
 	js, err := json.Marshal(setup) // escapes <, > and the line separators, so it is safe inside a script
 	if err != nil {

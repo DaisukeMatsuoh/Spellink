@@ -63,6 +63,50 @@ type Config struct {
 	// LAN enables direct wss:// at home with a Let's Encrypt certificate for a name that points
 	// at this machine's LAN address (internal/lantls). Empty disables it.
 	LAN *lantls.Config `json:"lan,omitempty"`
+	// Pairing tunes how devices are added (ADR 0016). Zero fields use the defaults.
+	Pairing *Pairing `json:"pairing,omitempty"`
+}
+
+// Pairing holds the limits of the pairing ceremony.
+type Pairing struct {
+	// WindowSec is how long the owner has to confirm a code once a device shows it (default 90).
+	WindowSec int `json:"windowSec,omitempty"`
+	// TTLHours is how long a device's first secret stays valid before it is paired (default 24).
+	TTLHours int `json:"ttlHours,omitempty"`
+	// PluginPackage is the public Spellink.snplg that `device package` adds a device's setup to.
+	PluginPackage string `json:"pluginPackage,omitempty"`
+}
+
+const (
+	defaultWindowSec = 90
+	defaultTTLHours  = 24
+	minWindowSec     = 10
+	maxWindowSec     = 600
+	maxTTLHours      = 24 * 30
+)
+
+// PairingWindow is how long the owner has to confirm a code.
+func (c *Config) PairingWindow() time.Duration {
+	if c.Pairing == nil || c.Pairing.WindowSec == 0 {
+		return defaultWindowSec * time.Second
+	}
+	return time.Duration(c.Pairing.WindowSec) * time.Second
+}
+
+// PairingTTL is how long a device's first secret stays valid.
+func (c *Config) PairingTTL() time.Duration {
+	if c.Pairing == nil || c.Pairing.TTLHours == 0 {
+		return defaultTTLHours * time.Hour
+	}
+	return time.Duration(c.Pairing.TTLHours) * time.Hour
+}
+
+// PluginPackage is the configured base package, or the empty string.
+func (c *Config) PluginPackage() string {
+	if c.Pairing == nil {
+		return ""
+	}
+	return c.Pairing.PluginPackage
 }
 
 // ProviderConfig names an AI and how to reach it. Authentication is the provider's own: a CLI
@@ -163,6 +207,14 @@ func (c *Config) validate(file string) error {
 			}
 		}
 	}
+	if p := c.Pairing; p != nil {
+		if p.WindowSec != 0 && (p.WindowSec < minWindowSec || p.WindowSec > maxWindowSec) {
+			return fmt.Errorf("%s: pairing.windowSec %d must be 0 (default) or between %d and %d seconds", file, p.WindowSec, minWindowSec, maxWindowSec)
+		}
+		if p.TTLHours < 0 || p.TTLHours > maxTTLHours {
+			return fmt.Errorf("%s: pairing.ttlHours %d must be between 0 (default) and %d", file, p.TTLHours, maxTTLHours)
+		}
+	}
 	if h := c.History; h != nil && h.Compaction != "" && h.Compaction != "none" {
 		return fmt.Errorf("%s: history.compaction %q is not supported yet (only \"none\")", file, h.Compaction)
 	}
@@ -243,6 +295,44 @@ func HistoryDir() (string, error) { return path("history") }
 func GlyphFile() (string, error)  { return path("glyphs.bin") }
 func ReportFile() (string, error) { return path("reports.jsonl") }
 func ConfigFile() (string, error) { return path("config.json") }
+
+// DevicesFile is the ledger of paired devices; AdminTokenFile holds the bearer token the
+// command line uses to talk to the running bridge.
+func DevicesFile() (string, error)    { return path("devices.json") }
+func AdminTokenFile() (string, error) { return path("admin.token") }
+
+// AdminToken returns the command line's token, creating it (mode 0600, 32 random bytes) the first time.
+func AdminToken() (string, error) {
+	file, err := AdminTokenFile()
+	if err != nil {
+		return "", err
+	}
+	if b, err := os.ReadFile(file); err == nil {
+		tok := strings.TrimSpace(string(b))
+		if len(tok) >= 32 {
+			return tok, nil
+		}
+		// a token that is too short was not written by us: replace it rather than trust it
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", err
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	tok := base64.RawURLEncoding.EncodeToString(raw)
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(file, []byte(tok+"\n"), 0o600); err != nil {
+		return "", err
+	}
+	// WriteFile keeps the mode of a file that already exists (the short token we replace).
+	if err := os.Chmod(file, 0o600); err != nil {
+		return "", err
+	}
+	return tok, nil
+}
 
 // Load reads the config, creating it with a fresh random token on first run.
 func Load() (*Config, error) {

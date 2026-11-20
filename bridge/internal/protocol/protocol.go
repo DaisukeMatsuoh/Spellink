@@ -20,6 +20,9 @@ const (
 //   - "setSettings": Settings — change user settings stored on the bridge
 //   - "clearHistory": forget the conversations of every note
 //   - "forgetNote": Note — forget the conversation of that note only
+//   - "pairRequest": ID (the device's id), Gen, Code (eight digits shown on the device) — only on
+//     the pairing channel (a session opened with B); the owner confirms the code at the bridge
+//   - "pairAck": ID, Gen — the device has stored K (pairing channel)
 type ClientMessage struct {
 	Type     string      `json:"type"`
 	Token    string      `json:"token,omitempty"`
@@ -32,6 +35,8 @@ type ClientMessage struct {
 	Layout   *ink.Layout `json:"layout,omitempty"`
 	Data     any         `json:"data,omitempty"`
 	Settings *Settings   `json:"settings,omitempty"`
+	Gen      int         `json:"gen,omitempty"`
+	Code     string      `json:"code,omitempty"`
 }
 
 // Settings are the user's plugin preferences. The plugin cannot persist data on the device,
@@ -126,4 +131,19 @@ type Error struct {
 	Seq     *int   `json:"seq,omitempty"` // set when the error ends an answer, like line and done
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// PairGrant gives a device its key K once the owner has confirmed the pairing (ADR 0016). It is
+// only ever sent inside the encrypted pairing channel.
+type PairGrant struct {
+	Type      string   `json:"type"` // "pairGrant"
+	Key       string   `json:"key"`
+	Endpoints []string `json:"endpoints"`
+}
+
+// PairDenied refuses a pairing request and ends the session. Reasons: code_in_use, pair_busy,
+// grant_pending, window_closed, expired, superseded, unknown_device.
+type PairDenied struct {
+	Type   string `json:"type"` // "pairDenied"
+	Reason string `json:"reason"`
 }

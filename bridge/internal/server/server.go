@@ -22,6 +22,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/devices"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/history"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/ink"
 	"github.com/DaisukeMatsuoh/Spellink/bridge/internal/protocol"
@@ -54,6 +55,15 @@ type Deps struct {
 	KeepaliveEvery time.Duration
 	// OrphanGrace is how long an answer is still produced with no plugin connected (0: default).
 	OrphanGrace time.Duration
+	// Devices is the ledger of paired devices (ADR 0016). Without it only the shared Token works.
+	Devices *devices.Registry
+	// Sessions tracks the live device sessions so a revoked device can be cut off; share one
+	// between the direct and the relay entrance. Nil gets a private table.
+	Sessions *Sessions
+	// PairRequestWait and PairingMax bound a pairing channel (0: defaults 10 s / 5 min).
+	PairRequestWait, PairingMax time.Duration
+	// Admin, when set, serves /admin/ for the bridge's own command line (never reachable through a proxy).
+	Admin *AdminDeps
 }
 
 const (
@@ -69,6 +79,9 @@ func Handler(d Deps) http.Handler {
 	if d.Runs == nil {
 		d.Runs = NewRuns()
 	}
+	if d.Sessions == nil {
+		d.Sessions = NewSessions()
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -83,8 +96,11 @@ func Handler(d Deps) http.Handler {
 		// Anything arriving through a proxy or tunnel (e.g. Cloudflare) has crossed the internet:
 		// only the end-to-end encrypted handshake is accepted there.
 		proxied := r.Header.Get("Cf-Connecting-Ip") != "" || r.Header.Get("X-Forwarded-For") != ""
-		ServeConn(r.Context(), d, c, r.RemoteAddr, proxied)
+		ServeDevice(r.Context(), d, c, r.RemoteAddr, proxied, r.URL.Query().Get("d"))
 	})
+	if d.Admin != nil {
+		mux.Handle("/admin/", d.Admin.Handler())
+	}
 	return mux
 }
 
@@ -92,13 +108,24 @@ func Handler(d Deps) http.Handler {
 // the LAN or through the relay. With requireEncryption (relay sessions) only the Noise
 // handshake is accepted; on the LAN the legacy plaintext hello still works for now.
 func ServeConn(ctx context.Context, d Deps, c *websocket.Conn, peer string, requireEncryption bool) {
+	ServeDevice(ctx, d, c, peer, requireEncryption, "")
+}
+
+// ServeDevice is ServeConn for a session that names the device it belongs to (the `d` of the
+// URL, or the device behind a relay room). With a device id only the Noise handshake is accepted,
+// with that device's K (a normal session) or B (the pairing channel). An empty id is the shared
+// Token of before.
+func ServeDevice(ctx context.Context, d Deps, c *websocket.Conn, peer string, requireEncryption bool, deviceID string) {
 	if d.Runs == nil {
 		d.Runs = NewRuns()
+	}
+	if d.Sessions == nil {
+		d.Sessions = NewSessions()
 	}
 	c.SetReadLimit(maxFrameBytes)
 	s := &session{
 		deps: d, conn: c, peer: peer, expected: sha256.Sum256([]byte(d.Token)),
-		requireEncryption: requireEncryption,
+		requireEncryption: requireEncryption, deviceID: deviceID,
 	}
 	s.run(ctx)
 }
@@ -111,6 +138,8 @@ type session struct {
 
 	requireEncryption bool
 	secure            *securechan.Channel // set once the Noise handshake succeeds
+	deviceID          string              // the device this session claims to be (empty: the shared token)
+	pairing           bool                // opened with B: it may only pair
 
 	writeMu  sync.Mutex
 	writeErr atomic.Bool // the first failed write has been logged
@@ -187,6 +216,9 @@ func (s *session) authenticate(ctx context.Context) (client string, ok bool) {
 	if err != nil {
 		return "", false
 	}
+	if s.deviceID != "" {
+		return s.authenticateDevice(ctx, typ, first)
+	}
 	if typ == websocket.MessageBinary {
 		ch, err := securechan.Accept(ctx, s.conn, securechan.PSK(s.deps.Token), first)
 		if err != nil {
@@ -221,6 +253,15 @@ func (s *session) run(parent context.Context) {
 	client, ok := s.authenticate(helloCtx)
 	helloCancel()
 	if !ok {
+		return
+	}
+	if s.deviceID != "" {
+		defer s.deps.Sessions.remove(s.deviceID, s)
+	}
+	if s.pairing {
+		s.deps.Log.Printf("pairing channel: %s device %s", s.peer, s.deviceID)
+		defer s.deps.Devices.Disconnect(s)
+		s.runPairing(ctx)
 		return
 	}
 	s.deps.Log.Printf("connected: %s (%.80s)", s.peer, client)

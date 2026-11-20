@@ -100,6 +100,19 @@ func TestBuildPackageForAPairedDeviceCarriesNoSecret(t *testing.T) {
 	}
 }
 
+func TestAPackageForAPairedDeviceNeedsNoUrl(t *testing.T) {
+	d := goodData()
+	d.B = ""
+	out, err := BuildPackage(baseZip(t), d, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, _, _ := strings.Cut(entries(t, out)[BundleName], "\n")
+	if !strings.Contains(line, `"urls":[]`) {
+		t.Errorf("urls must be an empty list, not null: %s", line)
+	}
+}
+
 func TestBuildPackageEscapesWhatItWrites(t *testing.T) {
 	d := goodData()
 	d.Name = "</script>  &"

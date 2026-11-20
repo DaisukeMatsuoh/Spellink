@@ -228,3 +228,77 @@ func TestAnUnknownProviderIsRefusedByNameAndWithTheChoices(t *testing.T) {
 		}
 	}
 }
+
+func TestPairingDefaultsAndOverrides(t *testing.T) {
+	c := &Config{}
+	if c.PairingWindow() != 90*time.Second || c.PairingTTL() != 24*time.Hour || c.PluginPackage() != "" {
+		t.Errorf("defaults: %v %v %q", c.PairingWindow(), c.PairingTTL(), c.PluginPackage())
+	}
+	c = &Config{Pairing: &Pairing{}}
+	if c.PairingWindow() != 90*time.Second || c.PairingTTL() != 24*time.Hour {
+		t.Error("zero fields mean the defaults")
+	}
+	c = &Config{Pairing: &Pairing{WindowSec: 30, TTLHours: 2, PluginPackage: "/x/Spellink.snplg"}}
+	if c.PairingWindow() != 30*time.Second || c.PairingTTL() != 2*time.Hour || c.PluginPackage() != "/x/Spellink.snplg" {
+		t.Errorf("overrides: %v %v %q", c.PairingWindow(), c.PairingTTL(), c.PluginPackage())
+	}
+}
+
+func TestOutOfRangePairingSettingsAreRejectedByName(t *testing.T) {
+	for name, p := range map[string]Pairing{
+		"pairing.windowSec": {WindowSec: 9}, "pairing.windowSec ": {WindowSec: 601}, "pairing.ttlHours": {TTLHours: -1}, "pairing.ttlHours ": {TTLHours: 24*30 + 1},
+	} {
+		c := &Config{Pairing: &p}
+		if err := c.validate("config.json"); err == nil || !strings.Contains(err.Error(), strings.TrimSpace(name)) {
+			t.Errorf("%s %+v: %v", name, p, err)
+		}
+	}
+	ok := &Config{Pairing: &Pairing{WindowSec: 10, TTLHours: 24 * 30}}
+	if err := ok.validate("config.json"); err != nil {
+		t.Errorf("the limits themselves are allowed: %v", err)
+	}
+}
+
+func TestAdminTokenIsCreatedOnceAndPrivate(t *testing.T) {
+	isolate(t)
+	a, err := AdminToken()
+	if err != nil || len(a) < 32 {
+		t.Fatalf("token %q err %v", a, err)
+	}
+	b, _ := AdminToken()
+	if a != b {
+		t.Error("the token must stay the same once created")
+	}
+	file, _ := AdminTokenFile()
+	if st, err := os.Stat(file); err != nil || st.Mode().Perm() != 0o600 {
+		t.Errorf("mode %v err %v", st.Mode(), err)
+	}
+}
+
+func TestAShortOrBrokenAdminTokenIsReplacedNotTrusted(t *testing.T) {
+	isolate(t)
+	file, _ := AdminTokenFile()
+	os.MkdirAll(filepath.Dir(file), 0o700)
+	os.WriteFile(file, []byte("short\n"), 0o644)
+	tok, err := AdminToken()
+	if err != nil || len(tok) < 32 || tok == "short" {
+		t.Fatalf("token %q err %v", tok, err)
+	}
+	if st, _ := os.Stat(file); st.Mode().Perm() != 0o600 {
+		t.Errorf("a replaced token file must become private, is %v", st.Mode())
+	}
+	// a file that cannot be read at all is an error, not a reason to create a new token
+	os.Remove(file)
+	os.MkdirAll(file, 0o700) // a directory where the file should be
+	if _, err := AdminToken(); err == nil {
+		t.Error("an unreadable token file must fail")
+	}
+}
+
+func TestDevicesFileLivesInTheConfigDirectory(t *testing.T) {
+	dir := isolate(t)
+	f, err := DevicesFile()
+	if err != nil || filepath.Dir(f) != filepath.Join(dir, "spellink-bridge") || filepath.Base(f) != "devices.json" {
+		t.Errorf("%q %v", f, err)
+	}
+}

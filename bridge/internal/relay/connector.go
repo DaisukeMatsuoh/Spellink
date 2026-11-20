@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -23,8 +24,12 @@ func ClientURL(relayBase, token string) string {
 // Connect keeps the bridge registered with the relay until ctx ends, reconnecting with backoff,
 // and serves every session the relay announces.
 func Connect(ctx context.Context, relayBase, token string, serve ServeFunc, logger *log.Logger) {
+	ConnectRoom(ctx, relayBase, RoomID(token), serve, logger)
+}
+
+// ConnectRoom is Connect for a room id that is already known (one device's secret gives one room).
+func ConnectRoom(ctx context.Context, relayBase, room string, serve ServeFunc, logger *log.Logger) {
 	base := strings.TrimRight(relayBase, "/")
-	room := RoomID(token)
 	backoff := time.Second
 	for ctx.Err() == nil {
 		started := time.Now()
@@ -94,4 +99,50 @@ func connectOnce(ctx context.Context, base, room string, serve ServeFunc, logger
 			serve(ctx, sc, "relay")
 		}(m.ID)
 	}
+}
+
+// RoomSet keeps the bridge registered in several rooms at once and follows a set that changes as
+// devices are added, paired and revoked (ADR 0016: a device's B and K each have a room).
+type RoomSet struct {
+	ctx    context.Context
+	base   string
+	logger *log.Logger
+	// run keeps one room registered until its context ends (ConnectRoom; a test replaces it).
+	run func(ctx context.Context, base, room string, serve ServeFunc, logger *log.Logger)
+
+	mu    sync.Mutex
+	rooms map[string]context.CancelFunc
+}
+
+// NewRoomSet returns a set that registers with relayBase until ctx ends.
+func NewRoomSet(ctx context.Context, relayBase string, logger *log.Logger) *RoomSet {
+	return &RoomSet{ctx: ctx, base: relayBase, logger: logger, run: ConnectRoom, rooms: map[string]context.CancelFunc{}}
+}
+
+// Sync makes the registered rooms exactly the keys of want: new rooms are registered, rooms that
+// are no longer wanted are left. The serve function of a room that stays is not replaced.
+func (r *RoomSet) Sync(want map[string]ServeFunc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for room, cancel := range r.rooms {
+		if _, ok := want[room]; !ok {
+			cancel()
+			delete(r.rooms, room)
+		}
+	}
+	for room, serve := range want {
+		if _, ok := r.rooms[room]; ok {
+			continue
+		}
+		ctx, cancel := context.WithCancel(r.ctx)
+		r.rooms[room] = cancel
+		go r.run(ctx, r.base, room, serve, r.logger)
+	}
+}
+
+// Len is how many rooms are registered.
+func (r *RoomSet) Len() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.rooms)
 }

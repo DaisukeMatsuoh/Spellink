@@ -7,13 +7,7 @@ import {flushTrace, setTraceSink, trace} from './trace';
 import {InkDrops, sweepLeftovers, waveNumsOn} from './inkDrops';
 import {loadBridges} from './bridgeConfig';
 import {t} from './i18n';
-import type {
-  BridgeMessage,
-  InkStroke,
-  Lang,
-  LayoutParams,
-  Settings,
-} from './protocol';
+import type {BridgeMessage, Lang, LayoutParams, Settings} from './protocol';
 import {
   call,
   currentPen,

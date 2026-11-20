@@ -10,7 +10,7 @@ export function pairMessage(v: PairView, name: string): string {
     case 'connecting':
       return t('pairConnecting');
     case 'showing':
-      return t('pairShowing');
+      return t('pairScanQr');
     case 'storing':
       return t('pairStoring');
     case 'paired':

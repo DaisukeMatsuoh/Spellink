@@ -1,0 +1,74 @@
+# Spellink messages. One row per message, one column per language (see scripts/gen-strings.js for the rules).
+# {name} marks a value filled in at run time. \n is a newline. An empty cell in a language other than English uses the English text.
+key	en	ja
+askButton	Ask AI	AIに聞く
+diagButton	Spellink diagnostics	Spellink 診断
+permissions	Checking permissions…	権限を確認しています…
+permissionDenied	Permission not granted: {list}	権限が許可されていません: {list}
+recognizing	Reading your handwriting…	手書きを読み取っています…
+noText	This can't be read as text.	文字として読み取れない内容です。
+connecting	Connecting to the bridge…	ブリッジに接続しています…
+noBridge	No bridge reachable. Is spellink-bridge running on a computer on this network?	ブリッジに接続できません。同じネットワークのPCで spellink-bridge が動いているか確認してください。
+thinking	The AI is thinking…	AI が考えています…
+reconnecting	Reconnecting ({n}/{max})…	再接続中 ({n}/{max})…
+badFrame	The bridge sent data that could not be used.	ブリッジから、使えないデータが届きました。
+busy	An answer is already being written.	回答を書いている最中です。
+avoidOverwritingLabel	Avoid existing writing	既存の字を避ける
+avoidOverwritingHelp	Reads the page before answering so the answer does not run over what is written below (and moves to a new page when there is no room). Slower: the note is saved and read each time.	回答の前にページを読み、下にある字に重ならないようにします（余白がなければ新しいページへ）。そのたびにノートを保存して読むので、少し遅くなります。
+busyNoticeLabel	Notice when busy	回答中の通知
+busyNoticeHelp	If you ask again while an answer is being written, show a short notice (it is otherwise ignored).	回答を書いている最中にもう一度質問を始めたとき、短い通知を出します（オフのときは何も表示せず無視します）。
+writing	Writing… ({lines} lines)	書いています…（{lines} 行）
+done	Done.	完了しました。
+truncated	The answer did not fit on this page and was cut short.	回答がこのページに収まらなかったため、途中までになっています。
+noRoom	There is no room below the selection on this page.	このページには選択範囲の下に書く余白がありません。
+hostBusy	Supernote did not respond ({api}), so the answer was stopped. Wait a moment and try again.	Supernote が応答しなかったため（{api}）、回答を中断しました。しばらくしてからもう一度お試しください。
+noteMoved	The note was switched or closed, so the answer was stopped. Nothing was written to the other document.	ノートが切り替わった（または閉じられた）ため、回答を中断しました。別のドキュメントには何も書き込んでいません。
+error	Error: {message}	エラー: {message}
+question	Question	質問
+answer	Answer	回答
+close	Close	閉じる
+cancel	Cancel	キャンセル
+settingsTitle	Spellink settings	Spellink の設定
+showProgress	Show progress panel (debug)	進捗パネルを表示（デバッグ）
+showProgressHelp	Off: the answer is simply written onto the page. The panel still opens when something goes wrong.	OFF のときは、回答をそのままページに書き込みます。エラーのときだけパネルが開きます。
+thinkingAnimation	Thinking animation	待機中のアニメーション
+thinkingAnimationHelp	Draws a wavy line on the page while the AI is thinking, and removes it before the answer.	AI が考えている間、ページに波線を描き、回答の直前に消します。
+fullWidthSpacing	Spacing: kanji / kana	字間: 漢字・かな
+halfWidthSpacing	Spacing: letters / digits	字間: 英字・数字
+spacingHelp	100% is the tightest. Widen it if characters touch; full-width and half-width are set separately.	100% が最も詰まった状態です。文字が重なるときは広げてください。全角と半角は別々に設定できます。
+forgetThisNote	Forget this note’s conversation	このノートの会話を忘れさせる
+forgetThisNoteHelp	Only for the note that is open now. Open the settings from inside a note to use it.	いま開いているノートの会話だけを消します。ノートの中から設定を開いたときに使えます。
+noNoteOpen	No note is open: open the settings from inside a note.	ノートが開かれていません。ノートの中から設定を開いてください。
+forgetHistory	Forget all conversations	すべての会話を忘れさせる
+forgetHistoryHelp	The AI is given earlier questions written in the same note. This makes it forget them in every note.	同じノートに続けて書いた質問は、前のやり取りを踏まえて答えます。これを押すと、すべてのノートの会話を忘れます。
+forgotten	Forgot the conversations of {n} note(s).	{n} 冊のノートの会話を忘れました。
+lineTilt	Writing slope	書き癖の傾き
+lineTiltHelp	Like a person's handwriting habit, the whole answer is written at this agent's own angle: {angle}.	人の書き癖のように、回答全体をこのエージェント固有の角度で書きます: {angle}
+risesRight	rises to the right {deg}°	右上がり {deg}°
+fallsRight	falls to the right {deg}°	右下がり {deg}°
+level	level	水平
+connectedTo	Connected to {name}	{name} に接続しました
+destination	Asking: {name}	接続先の AI: {name}
+saved	Saved.	保存しました。
+pairButton	Pair with a bridge	ブリッジとペアリング
+pairTitle	Pair with a bridge	ブリッジとペアリング
+pairStart	Pair	ペアリング
+pairCancel	Cancel	やめる
+pairNone	This plugin has no bridge yet. On the computer that runs spellink-bridge, run "spellink-bridge device add <name>", then install the file it writes on this device.	このプラグインには、まだブリッジがありません。spellink-bridge を動かしているパソコンで「spellink-bridge device add <名前>」を実行し、できたファイルをこの端末に入れてください。
+pairBridgePaired	{name}: paired	{name}: ペアリング済み
+pairBridgeReady	{name}: ready to pair	{name}: ペアリング待ち
+pairIdle	Press Pair. A QR code appears; scan it with the Spellink Bridge App on your computer.	「ペアリング」を押すとQRコードが出ます。パソコンのSpellink Bridge Appで読み取ってください。
+pairConnecting	Connecting to the bridge…	ブリッジに接続しています…
+pairSeconds	{n} seconds left	残り {n} 秒
+pairStoring	Saving the key…	鍵を保存しています…
+pairPaired	Paired with {name}.	{name} とペアリングしました。
+pairTimeout	The code was not entered in time. Press Pair to try again.	時間内にコードが入力されませんでした。もう一度「ペアリング」を押してください。
+pairCancelled	Cancelled.	やめました。
+pairStoreFailed	The key could not be saved on this device. Press Pair to try again.	鍵をこの端末に保存できませんでした。もう一度「ペアリング」を押してください。
+pairDisconnected	The connection ended: {detail}	接続が終わりました: {detail}
+pairNoSecret	This file has already been used to pair. On the computer, run "spellink-bridge device reissue <name>" and install the new file.	このファイルは、すでにペアリングに使われています。パソコンで「spellink-bridge device reissue <名前>」を実行し、新しいファイルを入れてください。
+pairDenied	The bridge refused: {detail}	ブリッジに拒否されました: {detail}
+pairRefused	The bridge no longer accepts this device. Ask for a new file with "spellink-bridge device reissue <name>".	ブリッジがこの端末を受け付けなくなりました。「spellink-bridge device reissue <名前>」で新しいファイルを作ってください。
+pairProblems	{n} saved pairing item(s) could not be used.	保存されたペアリングの情報のうち {n} 件は使えませんでした。
+pairScanQr	Scan this QR code with the Spellink Bridge App.	このQRコードをSpellink Bridge Appで読み取ってください。
+pairOrType	No camera? Type this code in the Bridge App instead.	カメラが使えないときは、このコードをSpellink Bridge Appに入力してください。

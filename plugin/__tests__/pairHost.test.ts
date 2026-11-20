@@ -24,7 +24,7 @@ describe('the words of the pairing screen', () => {
   it.each([
     ['idle', undefined, /Press Pair/],
     ['connecting', undefined, /Connecting/],
-    ['showing', undefined, /Type this code/],
+    ['showing', undefined, /Scan this QR code/],
     ['storing', undefined, /Saving/],
     ['paired', undefined, /Paired with Nomad/],
     ['timeout', undefined, /not entered in time/],

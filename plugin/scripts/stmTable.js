@@ -4,7 +4,7 @@
 'use strict';
 
 const ACTION = '[A-Z]\\d+b?';
-const NAME = '[A-Z][A-Z0-9_]*';
+const NAME = '[A-Z][A-Za-z0-9_]*';
 
 const rowsOf = lines =>
   lines
@@ -53,14 +53,14 @@ function parseCell(text, state, event, known) {
   if ((m = /^×([A-Z]\d+b?)$/.exec(text))) {
     return {k: 'ignore', action: action(m[1])};
   }
-  if ((m = /^([A-Z]\d+b?)→([A-Z][A-Z0-9_]*) \[more\] \/ ([A-Z]\d+b?)→([A-Z][A-Z0-9_]*) \[spent\]$/.exec(text))) {
+  if ((m = /^([A-Z]\d+b?)→([A-Z][A-Za-z0-9_]*) \[more\] \/ ([A-Z]\d+b?)→([A-Z][A-Za-z0-9_]*) \[spent\]$/.exec(text))) {
     return {
       k: 'guard',
       more: {action: action(m[1]), next: target(m[2])},
       spent: {action: action(m[3]), next: target(m[4])},
     };
   }
-  if ((m = /^([A-Z]\d+b?)(?:→([A-Z][A-Z0-9_]*))?$/.exec(text))) {
+  if ((m = /^([A-Z]\d+b?)(?:→([A-Z][A-Za-z0-9_]*))?$/.exec(text))) {
     return {k: 'do', action: action(m[1]), next: m[2] ? target(m[2]) : state};
   }
   return fail('not a cell in the documented notation');
@@ -95,7 +95,7 @@ function parse(md, sections = DEFAULT_SECTIONS) {
       }
       continue;
     }
-    const sm = /^\*\*([A-Z][A-Z0-9_]*)\*\*$/.exec(r[0]);
+    const sm = /^\*\*([A-Z][A-Za-z0-9_]*)\*\*$/.exec(r[0]);
     if (!sm || !header) throw new Error(`unexpected matrix row "${r[0]}"`);
     const state = sm[1];
     if (!states.includes(state)) throw new Error(`matrix row "${state}" is not a defined state`);

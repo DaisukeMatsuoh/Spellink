@@ -17,7 +17,7 @@ describe('the words of the pairing screen', () => {
     setFakeLanguage('en'); // the machine running the tests may be set to another language
   });
   const v = (note: PairView['note'], detail?: string): PairView => ({
-    state: 'U1',
+    state: 'Unpaired',
     note,
     detail,
   });
@@ -169,7 +169,9 @@ describe('loading what the device knows', () => {
     const {loadPairing} = require('../src/pairingState');
     const r = await loadPairing();
     expect(r.setupProblem).toBeUndefined();
-    expect(r.plan.bridges).toMatchObject([{id: ID, state: 'U5', name: 'Rock'}]);
+    expect(r.plan.bridges).toMatchObject([
+      {id: ID, state: 'Paired', name: 'Rock'},
+    ]);
   });
 
   it('knows a package that has to pair', async () => {
@@ -185,7 +187,7 @@ describe('loading what the device knows', () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const {loadPairing} = require('../src/pairingState');
     expect((await loadPairing()).plan.bridges).toMatchObject([
-      {id: ID, state: 'U1'},
+      {id: ID, state: 'Unpaired'},
     ]);
   });
 
@@ -290,7 +292,7 @@ describe('the real parts of a pairing', () => {
       expect(fired).toBe(3);
       expect(typeof d.now()).toBe('number');
       d.log('pair.test', {x: 1});
-      d.onView({state: 'U1', note: 'idle'});
+      d.onView({state: 'Unpaired', note: 'idle'});
       expect(views).toHaveLength(1);
       expect(typeof d.connect).toBe('function');
       expect(d.banner()).toEqual({

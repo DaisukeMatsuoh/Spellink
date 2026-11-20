@@ -23,11 +23,11 @@ func secret(n byte) string {
 func goodRecord(state string) Record {
 	r := Record{ID: "0123456789abcdef", Name: "Nomad", Gen: 1, State: state, IssuedAt: time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC)}
 	switch state {
-	case "I":
+	case stateIssued:
 		r.B = secret(1)
-	case "G":
+	case stateGranted:
 		r.B, r.K = secret(1), secret(2)
-	case "A":
+	case stateActive:
 		r.K = secret(2)
 	}
 	return r
@@ -71,17 +71,17 @@ func TestValidators(t *testing.T) {
 }
 
 func TestDecodeKeepsGoodRecordsOfEveryState(t *testing.T) {
-	recs, skipped, err := decode(ledgerOf(goodRecord("I"), func() Record { r := goodRecord("G"); r.ID, r.Name = "1123456789abcdef", "g"; return r }(),
-		func() Record { r := goodRecord("A"); r.ID, r.Name = "2123456789abcdef", "a"; return r }(),
-		func() Record { r := goodRecord("X"); r.ID, r.Name = "3123456789abcdef", "x"; return r }(),
-		func() Record { r := goodRecord("R"); r.ID, r.Name = "4123456789abcdef", "r"; return r }()))
+	recs, skipped, err := decode(ledgerOf(goodRecord(stateIssued), func() Record { r := goodRecord(stateGranted); r.ID, r.Name = "1123456789abcdef", "g"; return r }(),
+		func() Record { r := goodRecord(stateActive); r.ID, r.Name = "2123456789abcdef", "a"; return r }(),
+		func() Record { r := goodRecord(stateExpired); r.ID, r.Name = "3123456789abcdef", "x"; return r }(),
+		func() Record { r := goodRecord(stateRevoked); r.ID, r.Name = "4123456789abcdef", "r"; return r }()))
 	if err != nil || len(skipped) != 0 || len(recs) != 5 {
 		t.Fatalf("recs %d skipped %v err %v", len(recs), skipped, err)
 	}
 }
 
 func TestDecodeLeavesOutUnusableRecordsAndSaysWhy(t *testing.T) {
-	mut := func(f func(*Record)) Record { r := goodRecord("A"); f(&r); return r }
+	mut := func(f func(*Record)) Record { r := goodRecord(stateActive); f(&r); return r }
 	bad := map[string]Record{
 		"bad id":             mut(func(r *Record) { r.ID = "xyz" }),
 		"bad name":           mut(func(r *Record) { r.Name = "" }),
@@ -89,13 +89,13 @@ func TestDecodeLeavesOutUnusableRecordsAndSaysWhy(t *testing.T) {
 		"gen too large":      mut(func(r *Record) { r.Gen = maxGen + 1 }),
 		"bad B":              mut(func(r *Record) { r.B = "nope" }),
 		"bad K":              mut(func(r *Record) { r.K = "nope" }),
-		"bad state":          mut(func(r *Record) { r.State = "Q" }),
-		"issued without B":   mut(func(r *Record) { r.State, r.K = "I", "" }),
-		"issued with K":      mut(func(r *Record) { r.State, r.B = "I", secret(1) }),
-		"granting without K": mut(func(r *Record) { r.State, r.B, r.K = "G", secret(1), "" }),
+		"bad state":          mut(func(r *Record) { r.State = "requested" }),
+		"issued without B":   mut(func(r *Record) { r.State, r.K = stateIssued, "" }),
+		"issued with K":      mut(func(r *Record) { r.State, r.B = stateIssued, secret(1) }),
+		"granting without K": mut(func(r *Record) { r.State, r.B, r.K = stateGranted, secret(1), "" }),
 		"active without K":   mut(func(r *Record) { r.K = "" }),
-		"expired with a B":   mut(func(r *Record) { r.State, r.B, r.K = "X", secret(1), "" }),
-		"revoked with a K":   mut(func(r *Record) { r.State = "R" }),
+		"expired with a B":   mut(func(r *Record) { r.State, r.B, r.K = stateExpired, secret(1), "" }),
+		"revoked with a K":   mut(func(r *Record) { r.State = stateRevoked }),
 	}
 	for name, rec := range bad {
 		recs, skipped, err := decode(ledgerOf(rec))
@@ -106,7 +106,7 @@ func TestDecodeLeavesOutUnusableRecordsAndSaysWhy(t *testing.T) {
 }
 
 func TestDecodeDropsALeftoverBFromAnActiveRecord(t *testing.T) {
-	r := goodRecord("A")
+	r := goodRecord(stateActive)
 	r.B = secret(9)
 	recs, skipped, err := decode(ledgerOf(r))
 	if err != nil || len(skipped) != 0 || len(recs) != 1 || recs[0].B != "" || recs[0].K != secret(2) {
@@ -115,10 +115,10 @@ func TestDecodeDropsALeftoverBFromAnActiveRecord(t *testing.T) {
 }
 
 func TestDecodeRefusesDuplicatesAndTooMany(t *testing.T) {
-	a := goodRecord("I")
-	sameID := goodRecord("I")
+	a := goodRecord(stateIssued)
+	sameID := goodRecord(stateIssued)
 	sameID.Name = "other"
-	sameName := goodRecord("I")
+	sameName := goodRecord(stateIssued)
 	sameName.ID = "ffffffffffffffff"
 	recs, skipped, err := decode(ledgerOf(a, sameID, sameName))
 	if err != nil || len(recs) != 1 || len(skipped) != 2 {
@@ -126,7 +126,7 @@ func TestDecodeRefusesDuplicatesAndTooMany(t *testing.T) {
 	}
 	var many []Record
 	for i := 0; i < MaxDevices+2; i++ {
-		r := goodRecord("I")
+		r := goodRecord(stateIssued)
 		r.ID = fmt.Sprintf("%016x", i+1)
 		r.Name = fmt.Sprintf("d%d", i)
 		many = append(many, r)
@@ -194,9 +194,9 @@ func statusIn(r *Registry, id string) string {
 }
 
 func TestNewReportsRecordsItSkipsAndRefusesAnUnreadableLedger(t *testing.T) {
-	bad := goodRecord("A")
+	bad := goodRecord(stateActive)
 	bad.K = ""
-	store := &memStore{data: ledgerOf(goodRecord("I"), bad)}
+	store := &memStore{data: ledgerOf(goodRecord(stateIssued), bad)}
 	r, skipped, err := New(Config{}, store, Hooks{})
 	if err != nil || len(skipped) != 1 || len(r.List()) != 1 {
 		t.Fatalf("skipped %v err %v list %d", skipped, err, len(r.List()))
@@ -213,7 +213,7 @@ func TestNewReportsRecordsItSkipsAndRefusesAnUnreadableLedger(t *testing.T) {
 }
 
 func TestALeftoverBIsDroppedAndTheNextWriteSavesIt(t *testing.T) {
-	r := goodRecord("A")
+	r := goodRecord(stateActive)
 	r.B = secret(9)
 	store := &memStore{data: ledgerOf(r)}
 	reg, skipped, err := New(Config{}, store, Hooks{})
@@ -320,3 +320,48 @@ func TestSecretsAndIdsNeedWorkingRandomness(t *testing.T) {
 
 func (failRand) fill(b []byte) error       { _, err := failRand{}.Read(b); return err }
 func (r *counterRand) fill(b []byte) error { _, err := r.Read(b); return err }
+
+func TestTheLedgerFileUsesReadableStateNamesThatDoNotFollowTheNamesInTheCode(t *testing.T) {
+	h := newHarness(t)
+	// the file, as it is after each step: the state of the device named `name`
+	stateOf := func(name string) string {
+		for _, r := range h.ledger() {
+			if r.Name == name {
+				return r.State
+			}
+		}
+		return "not in the file"
+	}
+	issued := h.add("one")
+	if got := stateOf("one"); got != "issued" {
+		t.Errorf("issued is stored as %q", got)
+	}
+	h.request(issued, "11111111") // waiting for the owner: a waiting request is never stored, the record stays issued
+	if got := stateOf("one"); got != "issued" || strings.Contains(string(h.store.data), "requested") {
+		t.Errorf("a waiting record is stored as %q", got)
+	}
+	h.granted("two", "22222222")
+	if got := stateOf("two"); got != "granted" {
+		t.Errorf("granted is stored as %q", got)
+	}
+	three, _ := h.active("three", "33333333")
+	if got := stateOf("three"); got != "active" {
+		t.Errorf("active is stored as %q", got)
+	}
+	h.reg.Revoke(three)
+	if got := stateOf("three"); got != "revoked" {
+		t.Errorf("revoked is stored as %q", got)
+	}
+	h.add("four")
+	h.clock.Advance(h.reg.cfg.TTL)
+	h.reg.Tick()
+	if got := stateOf("four"); got != "expired" {
+		t.Errorf("expired is stored as %q", got)
+	}
+	// what is stored is what a later version must keep reading
+	for code, state := range codeStates {
+		if stateCodes[state] != code {
+			t.Errorf("%s ↔ %s is not a round trip", code, state)
+		}
+	}
+}

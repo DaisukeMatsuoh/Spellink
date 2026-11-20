@@ -479,33 +479,33 @@ describe('which bridges a device knows', () => {
 
   it('a package alone has to pair', () => {
     expect(planBridges(setup, none).bridges).toEqual([
-      {id: ID, name: 'Pkg', state: 'U1', setup},
+      {id: ID, name: 'Pkg', state: 'Unpaired', setup},
     ]);
   });
 
   it('a store alone is paired: an update with a plain package keeps working', () => {
     const p = planBridges(null, {bridges: [stored(3)], problems: []});
     expect(p.bridges).toEqual([
-      {id: ID, name: 'Stored', state: 'U5', stored: stored(3)},
+      {id: ID, name: 'Stored', state: 'Paired', stored: stored(3)},
     ]);
   });
 
   it('a package and a store of the same issue: paired, the package is not needed', () => {
     expect(
       planBridges(setup, {bridges: [stored(3)], problems: []}).bridges[0].state,
-    ).toBe('U5');
+    ).toBe('Paired');
   });
 
   it('a package of a newer issue (a reissue) makes the stored key useless', () => {
     const b = planBridges(setup, {bridges: [stored(2)], problems: []}).bridges;
     expect(b).toHaveLength(1);
-    expect(b[0]).toMatchObject({state: 'U1', name: 'Pkg'});
+    expect(b[0]).toMatchObject({state: 'Unpaired', name: 'Pkg'});
   });
 
   it('an older package does not undo a newer pairing', () => {
     expect(
       planBridges(setup, {bridges: [stored(5)], problems: []}).bridges[0].state,
-    ).toBe('U5');
+    ).toBe('Paired');
   });
 
   it('bridges are independent: several can be paired and one more can be waiting', () => {
@@ -518,8 +518,8 @@ describe('which bridges a device knows', () => {
     };
     const p = planBridges(setup, {bridges: [other], problems: ['x']});
     expect(p.bridges.map(b => [b.id, b.state])).toEqual([
-      [other.id, 'U5'],
-      [ID, 'U1'],
+      [other.id, 'Paired'],
+      [ID, 'Unpaired'],
     ]);
     expect(p.problems).toEqual(['x']);
   });

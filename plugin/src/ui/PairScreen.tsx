@@ -21,12 +21,12 @@ export function PairScreen() {
       return;
     }
     setState(s);
-    const ready = s.plan.bridges.find(b => b.state === 'U1' && b.setup);
+    const ready = s.plan.bridges.find(b => b.state === 'Unpaired' && b.setup);
     controller.current = ready?.setup
       ? new PairingController(
           ready.setup,
           realPairDeps(v => alive() && setView(v)),
-          'U1',
+          'Unpaired',
         )
       : null;
   }, []);
@@ -48,8 +48,10 @@ export function PairScreen() {
   }, [view?.note, load]);
 
   const bridges = state?.plan.bridges ?? [];
-  const target = bridges.find(b => b.state === 'U1' && b.setup);
-  const running = view !== null && ['U2', 'U3', 'U4'].includes(view.state);
+  const target = bridges.find(b => b.state === 'Unpaired' && b.setup);
+  const running =
+    view !== null &&
+    ['Connecting', 'ShowingCode', 'Storing'].includes(view.state);
 
   return (
     <View style={styles.screen}>
@@ -75,7 +77,7 @@ export function PairScreen() {
         ) : null}
         {bridges.map(b => (
           <Text key={b.id} style={styles.text}>
-            {t(b.state === 'U5' ? 'pairBridgePaired' : 'pairBridgeReady', {
+            {t(b.state === 'Paired' ? 'pairBridgePaired' : 'pairBridgeReady', {
               name: b.name,
             })}
           </Text>

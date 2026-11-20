@@ -60,7 +60,7 @@ func (m *runMachine) move(action runAction, next runState, arg any) {
 }
 
 // ruleN is the table's row for an ID with no run (state N). The registry applies it.
-func ruleN(ev runEvent) runCell { return runTable[rsN][ev] }
+func ruleN(ev runEvent) runCell { return runTable[rsNoRun][ev] }
 
 type run struct {
 	id     string
@@ -131,7 +131,7 @@ func (r *run) state() runState {
 
 func (r *run) isFinished() bool {
 	st := r.state()
-	return st == rsFa || st == rsFd
+	return st == rsDoneLive || st == rsDoneAway
 }
 
 // disconnect tells the run that session s's connection ended; only the session that is
@@ -140,7 +140,7 @@ func (r *run) disconnect(s *session) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.to == s {
-		r.m.dispatch(reDisconnect, s, false)
+		r.m.dispatch(reDeviceLeaves, s, false)
 	}
 }
 
@@ -154,7 +154,7 @@ func (r *run) handlers() map[runAction]func(any) {
 		raR3: func(any) { // DISCONNECT while the AI is working: wait a while for the plugin
 			r.to, r.toCtx = nil, nil
 			if r.orphan == nil {
-				r.orphan = time.AfterFunc(r.grace, func() { r.fire(reGrace, nil) })
+				r.orphan = time.AfterFunc(r.grace, func() { r.fire(reGraceEnds, nil) })
 			}
 		},
 		raR4: func(arg any) { // RESUME: replay from `next`, then the newest connection receives
@@ -266,7 +266,7 @@ func (r *run) publishLocked(frame func(seq int) any) {
 // sendLocked writes one frame; a failed write is the SEND_FAIL event (the frame stays kept).
 func (r *run) sendLocked(ctx context.Context, s *session, b []byte) {
 	if err := s.sendRaw(ctx, b); err != nil {
-		r.m.dispatch(reSendFail, err, false)
+		r.m.dispatch(reSendFails, err, false)
 	}
 }
 
@@ -287,7 +287,7 @@ func (r *run) notifyLocked(v any) {
 func (r *run) notify(v any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.m.state == rsRa {
+	if r.m.state == rsAskingLive {
 		r.notifyLocked(v)
 	}
 }
@@ -361,12 +361,12 @@ func (rs *Runs) start(id string, cancel context.CancelFunc, logger *log.Logger, 
 func (rs *Runs) sweepLocked() {
 	for id, r := range rs.m {
 		r.mu.Lock()
-		finished := r.m.state == rsFa || r.m.state == rsFd
+		finished := r.m.state == rsDoneLive || r.m.state == rsDoneAway
 		old := finished && time.Since(r.finishAt) > rs.Retention
 		if old || len(rs.m) >= rs.Max && finished {
-			r.m.dispatch(reSweep, nil, false)
+			r.m.dispatch(reSwept, nil, false)
 		}
-		forgotten := r.m.state == rsN
+		forgotten := r.m.state == rsNoRun
 		r.mu.Unlock()
 		if forgotten {
 			delete(rs.m, id)

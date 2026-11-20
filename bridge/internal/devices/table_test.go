@@ -32,26 +32,26 @@ func TestTableIsCompleteAndEveryActionHasAHandler(t *testing.T) {
 func (h *harness) recordIn(s devState) *rec {
 	h.t.Helper()
 	switch s {
-	case dsN:
-		return &rec{state: dsN}
-	case dsI:
+	case dsNoRecord:
+		return &rec{state: dsNoRecord}
+	case dsIssued:
 		return h.reg.recs[h.add("dev-I")]
-	case dsQ:
+	case dsRequested:
 		id := h.add("dev-Q")
 		h.request(id, "11111111")
 		return h.reg.recs[id]
-	case dsG:
+	case dsGranted:
 		id, _ := h.granted("dev-G", "11111111")
 		return h.reg.recs[id]
-	case dsA:
+	case dsActive:
 		id, _ := h.active("dev-A", "11111111")
 		return h.reg.recs[id]
-	case dsX:
+	case dsExpired:
 		id := h.add("dev-X")
 		h.clock.Advance(h.reg.cfg.TTL)
 		h.reg.Tick()
 		return h.reg.recs[id]
-	default: // dsR
+	default: // dsRevoked
 		id := h.add("dev-R")
 		if err := h.reg.Revoke(id); err != nil {
 			h.t.Fatal(err)
@@ -63,17 +63,17 @@ func (h *harness) recordIn(s devState) *rec {
 // argFor is what the caller of the event hands to the table.
 func argFor(rc *rec, e devEvent) any {
 	switch e {
-	case deIssue:
+	case deOwnerAdds:
 		return "another-name"
-	case deConnB, deDisconnect, deConfirmOk:
+	case deDeviceRequests, deRequestDrops, deOwnerConfirms:
 		var c Conn = &fakeConn{}
 		if len(rc.pending) > 0 {
 			c = rc.pending[0].conn
 		}
 		switch e {
-		case deConnB:
+		case deDeviceRequests:
 			return &request{code: "22222222", conn: &fakeConn{}}
-		case deDisconnect:
+		case deRequestDrops:
 			return c
 		default:
 			if len(rc.pending) > 0 {
@@ -81,7 +81,7 @@ func argFor(rc *rec, e devEvent) any {
 			}
 			return &pending{code: "99999999", conn: c}
 		}
-	case deRepack:
+	case deOwnerRepacks:
 		return &PackageData{}
 	}
 	return nil
@@ -151,7 +151,7 @@ func TestUnknownCellIsRecordedNotFatal(t *testing.T) {
 	h := newHarness(t)
 	rc := &rec{state: "?"}
 	_ = h.reg.locked(func() error {
-		if out, err := h.reg.fire(rc, deTtl, nil, false); out != never || err != nil {
+		if out, err := h.reg.fire(rc, deTtlEnds, nil, false); out != never || err != nil {
 			t.Errorf("fire on an unknown state = %v, %v", out, err)
 		}
 		return nil

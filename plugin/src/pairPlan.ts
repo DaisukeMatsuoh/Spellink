@@ -7,8 +7,8 @@ import type {Reading, StoredBridge} from './pairStore';
 export interface PlannedBridge {
   id: string;
   name: string;
-  /** U5: paired, use `stored`. U1: has to pair, use `setup`. */
-  state: 'U1' | 'U5';
+  /** Paired: paired, use `stored`. Unpaired: has to pair, use `setup`. */
+  state: 'Unpaired' | 'Paired';
   setup?: PairSetup;
   stored?: StoredBridge;
 }
@@ -26,13 +26,13 @@ export function planBridges(setup: PairSetup | null, reading: Reading): Plan {
     // The package of an older issue does not undo a newer pairing; a package of a newer issue
     // (a reissue) makes the stored key useless.
     if (setup && setup.id === stored.id && stored.gen < setup.gen) {
-      bridges.push({id: stored.id, name: setup.name, state: 'U1', setup});
+      bridges.push({id: stored.id, name: setup.name, state: 'Unpaired', setup});
     } else {
-      bridges.push({id: stored.id, name: stored.name, state: 'U5', stored});
+      bridges.push({id: stored.id, name: stored.name, state: 'Paired', stored});
     }
   }
   if (setup && !seen.has(setup.id)) {
-    bridges.push({id: setup.id, name: setup.name, state: 'U1', setup});
+    bridges.push({id: setup.id, name: setup.name, state: 'Unpaired', setup});
   }
   return {bridges, problems: reading.problems};
 }

@@ -56,7 +56,7 @@ export interface LoadedBridges {
 async function pairedEndpoints(): Promise<BridgeEndpoint[]> {
   try {
     return (await loadPairing()).plan.bridges.flatMap(b =>
-      b.state === 'U5' && b.stored
+      b.state === 'Paired' && b.stored
         ? [
             {
               id: b.id,

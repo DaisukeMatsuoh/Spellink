@@ -161,12 +161,12 @@ func New(cfg Config, store Store, hooks Hooks) (reg *Registry, skipped []string,
 	}
 	r.saved = data
 	for _, rd := range recs {
-		rc := &rec{Record: rd, state: devState(rd.State)}
+		rc := &rec{Record: rd, state: codeStates[rd.State]} // check() has made sure the state is one of them
 		r.recs[rd.ID] = rc
 		r.order = append(r.order, rd.ID)
 		// RESTART writes only when a record had to be normalised (a leftover B dropped). If that
 		// write fails the bridge still starts: memory is right, the file is fixed by the next write.
-		if _, err := r.fire(rc, deRestart, nil, false); err != nil {
+		if _, err := r.fire(rc, deBridgeRestarts, nil, false); err != nil {
 			r.cfg.Log.Printf("devices: could not rewrite the ledger at start: %v", err)
 		}
 	}
@@ -239,8 +239,8 @@ func (r *Registry) fire(rc *rec, ev devEvent, arg any, spent bool) (outcome, err
 		r.cfg.Log.Printf("devices.state: %s %s -[%s]-> %s (%s)", rc.ID, from, ev, mv.next, mv.action)
 	}
 	// An action that returns to I after B's time is up must not leave an expired B valid.
-	if (mv.action == daP8 || mv.action == daP11) && rc.state == dsI && !r.now().Before(r.deadline(rc)) {
-		return r.fire(rc, deTtl, nil, false)
+	if (mv.action == daP8 || mv.action == daP11) && rc.state == dsIssued && !r.now().Before(r.deadline(rc)) {
+		return r.fire(rc, deTtlEnds, nil, false)
 	}
 	return moved, nil
 }
@@ -282,10 +282,7 @@ func (r *Registry) save() error {
 	for _, id := range r.order {
 		rc := r.recs[id]
 		rd := rc.Record
-		rd.State = string(rc.state)
-		if rc.state == dsQ {
-			rd.State = string(dsI)
-		}
+		rd.State = stateCodes[rc.state]
 		recs = append(recs, rd)
 	}
 	data, err := encode(recs)
@@ -391,7 +388,7 @@ func init() {
 		daP2: func(r *Registry, rc *rec, arg any) ([]func(), error) {
 			req := arg.(*request)
 			var post []func()
-			if rc.prev == dsI {
+			if rc.prev == dsIssued {
 				rc.windowEnd = r.now().Add(r.cfg.Window)
 				rc.failures = 0
 			}
@@ -511,7 +508,7 @@ func init() {
 		daP15: func(r *Registry, rc *rec, arg any) ([]func(), error) {
 			rc.pending, rc.windowEnd, rc.failures = nil, time.Time{}, 0
 			rc.ackEnd = time.Time{}
-			if rc.state == dsG {
+			if rc.state == dsGranted {
 				rc.ackEnd = r.now().Add(r.cfg.AckTimeout)
 			}
 			return nil, nil
@@ -562,10 +559,10 @@ type PackageData struct {
 // confirmed in time). It does nothing if the device has moved on (an old timer).
 func (r *Registry) timeoutGrant(id string, gen int) error {
 	rc, ok := r.recs[id]
-	if !ok || rc.Gen != gen || rc.state != dsG {
+	if !ok || rc.Gen != gen || rc.state != dsGranted {
 		return nil
 	}
-	_, err := r.fire(rc, deAckTimeout, nil, false)
+	_, err := r.fire(rc, deAckTimesOut, nil, false)
 	return err
 }
 
@@ -575,11 +572,11 @@ func (r *Registry) timeoutGrant(id string, gen int) error {
 func (r *Registry) Add(name string) (id string, err error) {
 	err = r.locked(func() error {
 		if existing := r.byName(name); existing != nil {
-			_, _ = r.fire(existing, deIssue, name, false) // the table's ×d: nothing changes
+			_, _ = r.fire(existing, deOwnerAdds, name, false) // the table's ×d: nothing changes
 			return ErrNameTaken
 		}
-		rc := &rec{state: dsN}
-		if _, err := r.fire(rc, deIssue, name, false); err != nil {
+		rc := &rec{state: dsNoRecord}
+		if _, err := r.fire(rc, deOwnerAdds, name, false); err != nil {
 			return err
 		}
 		id = rc.ID
@@ -601,8 +598,8 @@ func (r *Registry) Request(id string, gen int, code string, c Conn) error {
 			return ErrUnknownDevice
 		}
 		req := &request{code: code, conn: c}
-		spent := (rc.state == dsI || rc.state == dsQ) && rc.indexOfCode(code) >= 0 && len(rc.pending) == 1
-		out, err := r.fire(rc, deConnB, req, spent)
+		spent := (rc.state == dsIssued || rc.state == dsRequested) && rc.indexOfCode(code) >= 0 && len(rc.pending) == 1
+		out, err := r.fire(rc, deDeviceRequests, req, spent)
 		if out != moved || err != nil {
 			r.posts = append(r.posts, func() { c.Deny(DenyUnknownDevice) })
 		}
@@ -618,7 +615,7 @@ func (r *Registry) Disconnect(c Conn) {
 			for _, p := range rc.pending {
 				if p.conn == c {
 					spent := len(rc.pending) == 1
-					_, err := r.fire(rc, deDisconnect, c, spent)
+					_, err := r.fire(rc, deRequestDrops, c, spent)
 					return err
 				}
 			}
@@ -660,7 +657,7 @@ func (r *Registry) confirm(onlyID, code string) (name string, err error) {
 		}
 		for _, id := range r.order {
 			rc := r.recs[id]
-			if rc.state != dsQ || (onlyID != "" && id != onlyID) {
+			if rc.state != dsRequested || (onlyID != "" && id != onlyID) {
 				continue
 			}
 			waiting = append(waiting, rc)
@@ -675,14 +672,14 @@ func (r *Registry) confirm(onlyID, code string) (name string, err error) {
 			return ErrNoPending
 		}
 		if hits == 1 {
-			if _, err := r.fire(hit, deConfirmOk, hitReq, false); err != nil {
+			if _, err := r.fire(hit, deOwnerConfirms, hitReq, false); err != nil {
 				return err
 			}
 			name = hit.Name
 			return nil
 		}
 		for _, rc := range waiting {
-			if _, err := r.fire(rc, deConfirmBad, nil, rc.failures+1 >= r.cfg.MaxAttempts); err != nil {
+			if _, err := r.fire(rc, deOwnerMistypes, nil, rc.failures+1 >= r.cfg.MaxAttempts); err != nil {
 				return err
 			}
 		}
@@ -698,7 +695,7 @@ func (r *Registry) Ack(id string, gen int) error {
 		if err != nil || rc.Gen != gen {
 			return ErrUnknownDevice
 		}
-		_, err = r.fire(rc, deAck, nil, false)
+		_, err = r.fire(rc, deDeviceAcks, nil, false)
 		return err
 	})
 }
@@ -711,7 +708,7 @@ func (r *Registry) ConnectK(id string) error {
 		if err != nil {
 			return err
 		}
-		out, err := r.fire(rc, deConnK, nil, false)
+		out, err := r.fire(rc, deKeyConnects, nil, false)
 		if out != moved && err == nil {
 			err = ErrNotEligible
 		}
@@ -727,11 +724,11 @@ func (r *Registry) Secrets(id string) (b, k string, ok bool) {
 			return nil
 		}
 		switch rc.state {
-		case dsI, dsQ:
+		case dsIssued, dsRequested:
 			b = rc.B
-		case dsG:
+		case dsGranted:
 			b, k = rc.B, rc.K
-		case dsA:
+		case dsActive:
 			k = rc.K
 		}
 		ok = b != "" || k != ""
@@ -775,7 +772,7 @@ func (r *Registry) Revoke(id string) error {
 		if err != nil {
 			return err
 		}
-		out, err := r.fire(rc, deRevoke, nil, false)
+		out, err := r.fire(rc, deOwnerRevokes, nil, false)
 		if out == ignored {
 			return ErrAlreadyRevoked
 		}
@@ -790,7 +787,7 @@ func (r *Registry) Reissue(id string) error {
 		if err != nil {
 			return err
 		}
-		out, err := r.fire(rc, deReissue, nil, false)
+		out, err := r.fire(rc, deOwnerReissues, nil, false)
 		if out == ignored {
 			return ErrRevoked
 		}
@@ -805,7 +802,7 @@ func (r *Registry) Forget(id string) error {
 		if err != nil {
 			return err
 		}
-		out, err := r.fire(rc, deForget, nil, false)
+		out, err := r.fire(rc, deOwnerForgets, nil, false)
 		if out == ignored {
 			return ErrStillValid
 		}
@@ -821,10 +818,10 @@ func (r *Registry) Repack(id string) (PackageData, error) {
 		if err != nil {
 			return err
 		}
-		switch o, err := r.fire(rc, deRepack, &out, false); {
+		switch o, err := r.fire(rc, deOwnerRepacks, &out, false); {
 		case err != nil:
 			return err
-		case o == ignored && rc.state == dsR:
+		case o == ignored && rc.state == dsRevoked:
 			return ErrRevoked
 		case o == ignored:
 			return ErrExpired
@@ -840,14 +837,14 @@ func (r *Registry) Tick() {
 		now := r.now()
 		for _, id := range r.order { // a timer never adds or removes a record
 			rc := r.recs[id]
-			if rc.state == dsQ && !rc.windowEnd.IsZero() && !now.Before(rc.windowEnd) {
-				_, _ = r.fire(rc, deWindow, nil, false)
+			if rc.state == dsRequested && !rc.windowEnd.IsZero() && !now.Before(rc.windowEnd) {
+				_, _ = r.fire(rc, deWindowEnds, nil, false)
 			}
-			if rc.state == dsG && !rc.ackEnd.IsZero() && !now.Before(rc.ackEnd) {
-				_, _ = r.fire(rc, deAckTimeout, nil, false)
+			if rc.state == dsGranted && !rc.ackEnd.IsZero() && !now.Before(rc.ackEnd) {
+				_, _ = r.fire(rc, deAckTimesOut, nil, false)
 			}
-			if (rc.state == dsI || rc.state == dsQ || rc.state == dsG) && !now.Before(r.deadline(rc)) {
-				_, _ = r.fire(rc, deTtl, nil, false)
+			if (rc.state == dsIssued || rc.state == dsRequested || rc.state == dsGranted) && !now.Before(r.deadline(rc)) {
+				_, _ = r.fire(rc, deTtlEnds, nil, false)
 			}
 		}
 		return nil
@@ -866,7 +863,7 @@ type Info struct {
 	LastSeen time.Time
 }
 
-var statusName = map[devState]string{dsI: "issued", dsQ: "waiting", dsG: "granting", dsA: "active", dsX: "expired", dsR: "revoked"}
+var statusName = map[devState]string{dsIssued: "issued", dsRequested: "waiting", dsGranted: "granting", dsActive: "active", dsExpired: "expired", dsRevoked: "revoked"}
 
 // List returns every record in the order they were added.
 func (r *Registry) List() []Info {

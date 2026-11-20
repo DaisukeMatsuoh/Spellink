@@ -4,7 +4,7 @@
 run は WebSocket より長く生きる。フレーム（`line` / `done` / 回答を終わらせる `error`）には 0 から始まる通し番号 `seq` が付き、run が保存する。
 対象は、特定の AI に依存しない部分（ADR 0015）。AI への問い合わせは「プロバイダ」が行い、run はその結果（文字・完了・失敗）だけを扱う。
 
-**この文書の表が、コードの表の元データ**（`npm run spec`。書式は ask-flow.md と同じ。生成物は `bridge/internal/server/runtable_gen.go`）。状態 N の行は、run がまだ存在しない場合の規則で、run の登録簿（`Runs`）が実行する。N 以外の行は、run の状態機械が実行する。
+**この文書の表が、コードの表の元データ**（`npm run spec`。書式は ask-flow.md と同じ。生成物は `bridge/internal/server/runtable_gen.go`）。状態 NoRun の行は、run がまだ存在しない場合の規則で、run の登録簿（`Runs`）が実行する。N 以外の行は、run の状態機械が実行する。
 
 ## 不変条件（どの状態でも成り立つこと）
 - I1: フレームの `seq` は 0 から連続している。欠けも重複もない。
@@ -16,58 +16,58 @@ run は WebSocket より長く生きる。フレーム（`line` / `done` / 回�
 ## 状態
 | 状態 | 意味 |
 |---|---|
-| N | その ID の run はない（まだ、または忘れた） |
-| RA | AI に聞いている最中。端末が接続している |
-| RD | AI に聞いている最中。端末は接続していない（猶予タイマー作動中） |
-| FA | 回答は完成済み。端末が接続している（保持中） |
-| FD | 回答は完成済み。端末は接続していない（保持中） |
+| NoRun | その ID の run はない（まだ、または忘れた） |
+| AskingLive | AI に聞いている最中。端末が接続している |
+| AskingAway | AI に聞いている最中。端末は接続していない（猶予タイマー作動中） |
+| DoneLive | 回答は完成済み。端末が接続している（保持中） |
+| DoneAway | 回答は完成済み。端末は接続していない（保持中） |
 
 ## イベント
 | イベント | 意味 |
 |---|---|
-| ASK | 新しい ID の質問（検証に通った） |
-| DUP | すでにある ID と同じ ID の質問 |
-| BUSY | この接続がすでに別の質問を待っているときの質問 |
-| CANCEL | 端末から取消 |
-| DISCONNECT | 端末の接続が終わった |
-| RESUME | 端末が `resume{id,next}` を送った |
-| GRACE | 猶予（既定 30 秒。端末の再接続は最大 3 回×5 秒）が切れた |
-| DELTA | AI（プロバイダ）から文字が届いた |
-| PROVIDER_DONE | AI が正常に終わった |
-| PROVIDER_FAIL | AI が失敗した（起動できない、未ログイン、異常終了、取消、時間切れを含む） |
-| FULL | 回答が、使えるページ数に収まらなくなった |
-| SWEEP | 保持期限（10 分）切れ、または件数上限（16）の掃除（次の質問の開始時に実行） |
-| SHUTDOWN | ブリッジの停止・再起動 |
-| SEND_FAIL | 端末への書き込みに失敗した |
-| CLEAR | 端末が会話の削除を頼んだ |
-| HANG | AI が、最初の出力まで 10 秒、または出力の間 10 秒（設定で変更可）、何も返さない。全体の上限は 30 秒 |
-| KEEPALIVE | 生存通知の周期（約 5 秒）。端末が、接続の死活を見分けるため |
+| Ask | 新しい ID の質問（検証に通った） |
+| AskRepeats | すでにある ID と同じ ID の質問 |
+| AskWhileBusy | この接続がすでに別の質問を待っているときの質問 |
+| Cancel | 端末から取消 |
+| DeviceLeaves | 端末の接続が終わった |
+| DeviceResumes | 端末が `resume{id,next}` を送った |
+| GraceEnds | 猶予（既定 30 秒。端末の再接続は最大 3 回×5 秒）が切れた |
+| TextArrives | AI（プロバイダ）から文字が届いた |
+| AiFinishes | AI が正常に終わった |
+| AiFails | AI が失敗した（起動できない、未ログイン、異常終了、取消、時間切れを含む） |
+| PagesRunOut | 回答が、使えるページ数に収まらなくなった |
+| Swept | 保持期限（10 分）切れ、または件数上限（16）の掃除（次の質問の開始時に実行） |
+| BridgeStops | ブリッジの停止・再起動 |
+| SendFails | 端末への書き込みに失敗した |
+| HistoryCleared | 端末が会話の削除を頼んだ |
+| AiGoesSilent | AI が、最初の出力まで 10 秒、または出力の間 10 秒（設定で変更可）、何も返さない。全体の上限は 30 秒 |
+| KeepaliveTick | 生存通知の周期（約 5 秒）。端末が、接続の死活を見分けるため |
 
 ## 状態遷移表
 
-| 状態＼イベント | ASK | DUP | BUSY | CANCEL | DISCONNECT | RESUME |
+| 状態＼イベント | Ask | AskRepeats | AskWhileBusy | Cancel | DeviceLeaves | DeviceResumes |
 |---|---|---|---|---|---|---|
-| **N** | R1→RA | —a | —a | ×b | —c | E1 |
-| **RA** | —a | E2 | E3 | R2→FA | R3→RD | R4 |
-| **RD** | —a | E2 | —f | R2→FD | —c | R4→RA |
-| **FA** | —a | E2 | —f | ×g | R7→FD | R4 |
-| **FD** | —a | E2 | —f | ×g | —c | R4→FA |
+| **NoRun** | R1→AskingLive | —a | —a | ×b | —c | E1 |
+| **AskingLive** | —a | E2 | E3 | R2→DoneLive | R3→AskingAway | R4 |
+| **AskingAway** | —a | E2 | —f | R2→DoneAway | —c | R4→AskingLive |
+| **DoneLive** | —a | E2 | —f | ×g | R7→DoneAway | R4 |
+| **DoneAway** | —a | E2 | —f | ×g | —c | R4→DoneLive |
 
-| 状態＼イベント | GRACE | DELTA | PROVIDER_DONE | PROVIDER_FAIL | FULL | SWEEP |
+| 状態＼イベント | GraceEnds | TextArrives | AiFinishes | AiFails | PagesRunOut | Swept |
 |---|---|---|---|---|---|---|
-| **N** | —d | —e | —e | —e | —e | —i |
-| **RA** | —d | R5 | R8→FA | R10→FA | R11→FA | ×k |
-| **RD** | R6→FD | R5 | R8→FD | R10→FD | R11→FD | ×k |
-| **FA** | —d | ×h | ×h | ×h | ×h | R14→N |
-| **FD** | —d | ×h | ×h | ×h | ×h | R14→N |
+| **NoRun** | —d | —e | —e | —e | —e | —i |
+| **AskingLive** | —d | R5 | R8→DoneLive | R10→DoneLive | R11→DoneLive | ×k |
+| **AskingAway** | R6→DoneAway | R5 | R8→DoneAway | R10→DoneAway | R11→DoneAway | ×k |
+| **DoneLive** | —d | ×h | ×h | ×h | ×h | R14→NoRun |
+| **DoneAway** | —d | ×h | ×h | ×h | ×h | R14→NoRun |
 
-| 状態＼イベント | SHUTDOWN | SEND_FAIL | CLEAR | HANG | KEEPALIVE |
+| 状態＼イベント | BridgeStops | SendFails | HistoryCleared | AiGoesSilent | KeepaliveTick |
 |---|---|---|---|---|---|
-| **N** | ×l | —j | R9 | —e | —e |
-| **RA** | ×l | R12 | R9 | R13→FA | R15 |
-| **RD** | ×l | —j | R9 | R13→FD | ×n |
-| **FA** | ×l | R12 | R9 | ×h | ×h |
-| **FD** | ×l | —j | R9 | ×h | ×h |
+| **NoRun** | ×l | —j | R9 | —e | —e |
+| **AskingLive** | ×l | R12 | R9 | R13→DoneLive | R15 |
+| **AskingAway** | ×l | —j | R9 | R13→DoneAway | ×n |
+| **DoneLive** | ×l | R12 | R9 | ×h | ×h |
+| **DoneAway** | ×l | —j | R9 | ×h | ×h |
 
 ## 処理（Action）
 | 処理 | 内容 | 現状 | テスト |
@@ -92,21 +92,21 @@ run は WebSocket より長く生きる。フレーム（`line` / `done` / 回�
 | E3 | `error` `busy` を返す | ✅ | `TestTheSameIdTwice…` |
 
 ## 注
-- a: 新しい ID でなければ ASK ではない（DUP になる）。この ID の run があるのに N ではない、という矛盾は起きない。
+- a: 新しい ID でなければ Ask ではない（AskRepeats になる）。この ID の run があるのに NoRun ではない、という矛盾は起きない。
 - b: 知らない ID の取消は無害なので無視する。
 - c: 接続していないのに切断は起きない。
-- d: 猶予タイマーは RD だけで動く。N・FA・FD には対象がない。
+- d: 猶予タイマーは AskingAway だけで動く。NoRun・DoneLive・DoneAway には対象がない。
 - e: run がないので AI も動いていない。
 - f: 別の接続の質問は新しい run になる。この run には関係しない。
 - g: すでに終わっているので何も止めるものがない。
 - h: 完了後にフレームは作らない（不変条件 I2）。完了のあとに届く、AI の遅れた結果・生存通知の最後の 1 回は、無視する（取消のあとにも、AI は結果を返す）。
-- i: 掃除は、完了した run だけが対象で、N には対象がない。
+- i: 掃除は、完了した run だけが対象で、NoRun には対象がない。
 - j: 接続先がないので書き込みは起きない。
 - k: 掃除は完了した run だけを忘れる（走っている run は忘れない）。
 - l: メモリ上のみ。ブリッジの停止で run は失われ、端末の `resume` は `unknown_ask` になる（ADR 0013 の限界）。
 - n: 端末が接続していないので、生存通知を送る相手がいない。
 - 実行中に履歴を消しても、その run の完了時に、その 1 往復が、消した後の履歴に入る。**保留**（ユーザー判断待ち、2026-11-07）。現状のまま。
-- 掃除（SWEEP）は次の質問の開始時にだけ走る。保持の上限（16 件）はメモリの上限でもある。
+- 掃除（Swept）は次の質問の開始時にだけ走る。保持の上限（16 件）はメモリの上限でもある。
 
 ## 履歴
 - 2026-11-07: 表を機械が読む書式にした（イベント名を B1〜B17 から名前に）。全体の時間切れを 30 秒、猶予を 30 秒に短縮した。

@@ -108,7 +108,7 @@ export class PairingController {
       note: this.note,
       detail: this.detail,
     };
-    if (this.m.state === 'U3') {
+    if (this.m.state === 'ShowingCode') {
       v.code = this.code;
       v.qr = `spellink://pair?v=1&i=${this.setup.id}&c=${this.code}`;
       v.remainingSec = Math.max(
@@ -124,17 +124,17 @@ export class PairingController {
 
   /** The user pressed "Pair". */
   tap(): void {
-    this.m.dispatch('TAP_PAIR');
+    this.m.dispatch('UserTapsPair');
   }
 
   /** The user pressed "Cancel" or left the screen. */
   cancel(): void {
-    this.m.dispatch('CANCEL');
+    this.m.dispatch('UserCancels');
   }
 
   /** The bridge refused this device's key. */
   keyRefused(): void {
-    this.m.dispatch('K_REFUSED');
+    this.m.dispatch('KeyRefused');
   }
 
   private emit(): void {
@@ -160,7 +160,7 @@ export class PairingController {
     this.emit();
     if (!this.setup.b) {
       // this package belongs to a device that has already paired: it has no first secret left
-      this.m.dispatch('DISCONNECT', 'noSecret');
+      this.m.dispatch('Disconnected', 'noSecret');
       return;
     }
     this.deps.connect(this.setup.urls, this.setup.b, CONNECT_TIMEOUT_MS).then(
@@ -172,11 +172,11 @@ export class PairingController {
         this.ch = ch;
         ch.onFrame = f => this.onFrame(a, f);
         ch.onClose = r =>
-          a === this.attempt && this.m.dispatch('DISCONNECT', r);
-        this.m.dispatch('CONNECTED', ch);
+          a === this.attempt && this.m.dispatch('Disconnected', r);
+        this.m.dispatch('Connected', ch);
       },
       (e: Error) =>
-        a === this.attempt && this.m.dispatch('DISCONNECT', e.message),
+        a === this.attempt && this.m.dispatch('Disconnected', e.message),
     );
   }
 
@@ -187,7 +187,7 @@ export class PairingController {
     try {
       ch.send(this.request());
     } catch (e) {
-      this.m.dispatch('DISCONNECT', (e as Error).message);
+      this.m.dispatch('Disconnected', (e as Error).message);
       return;
     }
     const ms = this.setup.windowSec * 1000;
@@ -196,7 +196,7 @@ export class PairingController {
     this.stops.push(
       this.deps.after(
         ms,
-        () => a === this.attempt && this.m.dispatch('WINDOW_END'),
+        () => a === this.attempt && this.m.dispatch('WindowEnds'),
       ),
       this.deps.every(1000, () => a === this.attempt && this.emit()),
     );
@@ -250,8 +250,8 @@ export class PairingController {
         urls: g.endpoints,
       })
       .then(
-        ok => this.m.dispatch(ok ? 'STORE_OK' : 'STORE_FAIL'),
-        () => this.m.dispatch('STORE_FAIL'),
+        ok => this.m.dispatch(ok ? 'StoreSucceeds' : 'StoreFails'),
+        () => this.m.dispatch('StoreFails'),
       );
   }
 
@@ -280,15 +280,18 @@ export class PairingController {
     switch (f.type) {
       case 'pairGrant':
         if (!isSecret(f.key)) {
-          return this.m.dispatch('DISCONNECT', 'bad key');
+          return this.m.dispatch('Disconnected', 'bad key');
         }
-        return this.m.dispatch('GRANT', {key: f.key, endpoints: f.endpoints});
+        return this.m.dispatch('KeyGranted', {
+          key: f.key,
+          endpoints: f.endpoints,
+        });
       case 'pairBanner':
-        return this.m.dispatch('BANNER', f.strokes);
+        return this.m.dispatch('BannerArrives', f.strokes);
       case 'pairDenied':
-        return this.m.dispatch('DENIED', f.reason);
+        return this.m.dispatch('Denied', f.reason);
       default:
-        return this.m.dispatch('DENIED', `error:${f.code}`);
+        return this.m.dispatch('Denied', `error:${f.code}`);
     }
   }
 }

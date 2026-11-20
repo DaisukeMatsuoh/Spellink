@@ -56,7 +56,8 @@ ${body}
 }
 
 function go({states, events, actions, table}, md, {pkg, t, p}) {
-  const id = (p, x) => p + x[0] + x.slice(1).toLowerCase().replace(/_(.)/g, (_, c) => c.toUpperCase());
+  // ALL_CAPS names are made CamelCase; a name that already has lower case (Issued, OwnerAdds) is kept as it is
+  const id = (p, x) => (/[a-z]/.test(x) ? p + x : p + x[0] + x.slice(1).toLowerCase().replace(/_(.)/g, (_, c) => c.toUpperCase()));
   const st = x => id(`${p}s`, x), ev = x => id(`${p}e`, x), ac = x => `${p}a${x}`;
   const consts = (typ, list, f) => list.map(x => `\t${f(x)} ${typ} = "${x}"`).join('\n');
   const mv = m => `${t}Move{${ac(m.action)}, ${st(m.next)}}`;

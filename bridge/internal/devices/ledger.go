@@ -43,7 +43,7 @@ type Record struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Gen       int       `json:"gen"`
-	State     string    `json:"state"` // I, G, A, X or R
+	State     string    `json:"state"` // issued, granted, active, expired or revoked (see stateCodes)
 	B         string    `json:"b,omitempty"`
 	K         string    `json:"k,omitempty"`
 	IssuedAt  time.Time `json:"issuedAt"`
@@ -55,6 +55,21 @@ type ledgerFile struct {
 	Version int      `json:"version"`
 	Devices []Record `json:"devices"`
 }
+
+// The names a record's state is stored under. They are the ledger's file format, so they do not
+// follow the names in the code (dsIssued, …): a rename in the code must not change the file.
+// A record that is waiting for the owner's code (Requested) is stored as issued.
+const (
+	stateIssued  = "issued"
+	stateGranted = "granted"
+	stateActive  = "active"
+	stateExpired = "expired"
+	stateRevoked = "revoked"
+)
+
+var stateCodes = map[devState]string{dsIssued: stateIssued, dsRequested: stateIssued, dsGranted: stateGranted, dsActive: stateActive, dsExpired: stateExpired, dsRevoked: stateRevoked}
+
+var codeStates = map[string]devState{stateIssued: dsIssued, stateGranted: dsGranted, stateActive: dsActive, stateExpired: dsExpired, stateRevoked: dsRevoked}
 
 // ValidName reports whether s is a usable device name: 1 to 64 characters, none of them control.
 func ValidName(s string) bool {
@@ -100,14 +115,14 @@ func check(r Record) (Record, error) {
 	hasB, hasK := r.B != "", r.K != ""
 	var ok bool
 	switch r.State {
-	case "I":
+	case stateIssued:
 		ok = hasB && !hasK
-	case "G":
+	case stateGranted:
 		ok = hasB && hasK
-	case "A":
+	case stateActive:
 		ok = hasK // B left over from an interrupted switch is dropped below
 		r.B = ""
-	case "X", "R":
+	case stateExpired, stateRevoked:
 		ok = !hasB && !hasK
 	default:
 		return r, fmt.Errorf("bad state %q", r.State)

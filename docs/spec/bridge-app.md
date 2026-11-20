@@ -14,53 +14,53 @@
 ## 状態
 | 状態 | 意味 |
 |---|---|
-| STARTING | 起動中。設定と台帳を読み、ポートを開けている |
-| RUNNING | 稼働中。Claude Code が使える |
-| NOAI | 稼働中。Claude Code が見つからない（端末のペアリングはできるが、質問には答えられない） |
-| FAILED | 起動できなかった、または途中で動かなくなった（ポートの競合、設定・台帳が読めない、待ち受けの失敗）。トレイだけが残り、原因を見せる |
-| STOPPING | 終了中。新しい質問を受けず、書いている回答の終わりを待つ |
-| STOPPED | 終了した（プロセスはもうない） |
+| Starting | 起動中。設定と台帳を読み、ポートを開けている |
+| Running | 稼働中。Claude Code が使える |
+| NoAi | 稼働中。Claude Code が見つからない（端末のペアリングはできるが、質問には答えられない） |
+| Failed | 起動できなかった、または途中で動かなくなった（ポートの競合、設定・台帳が読めない、待ち受けの失敗）。トレイだけが残り、原因を見せる |
+| Stopping | 終了中。新しい質問を受けず、書いている回答の終わりを待つ |
+| Stopped | 終了した（プロセスはもうない） |
 
 ## イベント
 | イベント | 意味 |
 |---|---|
-| STARTED | 待ち受けが始まり、Claude Code が見つかった |
-| STARTED_NOAI | 待ち受けが始まったが、Claude Code が見つからない |
-| START_FAIL | 起動に失敗した（理由つき） |
-| AI_FOUND | 定期の確認（30 秒ごと）で、Claude Code が見つかった |
-| AI_MISSING | 定期の確認で、Claude Code が見つからなくなった |
-| QUIT | 利用者が「終了」を選んだ、または OS が終了を求めた |
-| SECOND_LAUNCH | 2 つ目の起動が、「画面を開いて」と頼んできた |
-| DRAINED | 書いている回答が、すべて終わった |
-| DRAIN_TIMEOUT | 終了の待ちの上限が来た |
-| SERVE_ERROR | 稼働中に、待ち受けが失敗した |
-| SLEEP | OS がスリープに入る |
-| WAKE | OS がスリープから戻った |
+| Started | 待ち受けが始まり、Claude Code が見つかった |
+| StartedNoAi | 待ち受けが始まったが、Claude Code が見つからない |
+| StartFailed | 起動に失敗した（理由つき） |
+| AiFound | 定期の確認（30 秒ごと）で、Claude Code が見つかった |
+| AiMissing | 定期の確認で、Claude Code が見つからなくなった |
+| Quit | 利用者が「終了」を選んだ、または OS が終了を求めた |
+| SecondLaunch | 2 つ目の起動が、「画面を開いて」と頼んできた |
+| Drained | 書いている回答が、すべて終わった |
+| DrainTimeout | 終了の待ちの上限が来た |
+| ServeError | 稼働中に、待ち受けが失敗した |
+| Sleep | OS がスリープに入る |
+| Wake | OS がスリープから戻った |
 
 ## 状態遷移表
 
-| 状態＼イベント | STARTED | STARTED_NOAI | START_FAIL | AI_FOUND | AI_MISSING | QUIT |
+| 状態＼イベント | Started | StartedNoAi | StartFailed | AiFound | AiMissing | Quit |
 |---|---|---|---|---|---|---|
-| **STARTING** | A1→RUNNING | A2→NOAI | A3→FAILED | ×a | ×a | A8→STOPPED |
-| **RUNNING** | —b | —b | —b | ×c | A4→NOAI | A5→STOPPING |
-| **NOAI** | —b | —b | —b | A13→RUNNING | ×c | A5→STOPPING |
-| **FAILED** | —b | —b | —b | ×d | ×d | A8→STOPPED |
-| **STOPPING** | —b | —b | —b | ×d | ×d | A14→STOPPED |
-| **STOPPED** | —e | —e | —e | —e | —e | —e |
+| **Starting** | A1→Running | A2→NoAi | A3→Failed | ×a | ×a | A8→Stopped |
+| **Running** | —b | —b | —b | ×c | A4→NoAi | A5→Stopping |
+| **NoAi** | —b | —b | —b | A13→Running | ×c | A5→Stopping |
+| **Failed** | —b | —b | —b | ×d | ×d | A8→Stopped |
+| **Stopping** | —b | —b | —b | ×d | ×d | A14→Stopped |
+| **Stopped** | —e | —e | —e | —e | —e | —e |
 
-| 状態＼イベント | SECOND_LAUNCH | DRAINED | DRAIN_TIMEOUT | SERVE_ERROR | SLEEP | WAKE |
+| 状態＼イベント | SecondLaunch | Drained | DrainTimeout | ServeError | Sleep | Wake |
 |---|---|---|---|---|---|---|
-| **STARTING** | A10 | —f | —f | —g | ×h | ×h |
-| **RUNNING** | A6 | —f | —f | A7→FAILED | A11 | A12 |
-| **NOAI** | A6 | —f | —f | A7→FAILED | A11 | A12 |
-| **FAILED** | A6 | —f | —f | ×i | ×h | ×h |
-| **STOPPING** | ×j | A8→STOPPED | A14→STOPPED | ×i | ×h | ×h |
-| **STOPPED** | —e | —e | —e | —e | —e | —e |
+| **Starting** | A10 | —f | —f | —g | ×h | ×h |
+| **Running** | A6 | —f | —f | A7→Failed | A11 | A12 |
+| **NoAi** | A6 | —f | —f | A7→Failed | A11 | A12 |
+| **Failed** | A6 | —f | —f | ×i | ×h | ×h |
+| **Stopping** | ×j | A8→Stopped | A14→Stopped | ×i | ×h | ×h |
+| **Stopped** | —e | —e | —e | —e | —e | —e |
 
 ## 処理（Action）
 | 処理 | 内容 | テスト |
 |---|---|---|
-| A1 | 稼働中にする: 定期の確認（30 秒）を始め、トレイを「稼働中」にする。起動中に SECOND_LAUNCH があったら（A10）、ここで画面を開く | ⬜ |
+| A1 | 稼働中にする: 定期の確認（30 秒）を始め、トレイを「稼働中」にする。起動中に SecondLaunch があったら（A10）、ここで画面を開く | ⬜ |
 | A2 | A1 と同じだが、トレイは「要対応」。画面は、Claude Code の入れ方を案内する | ⬜ |
 | A3 | 原因（ポートが使用中、設定・台帳が読めない）を、トレイと画面で見せる。トレイは残す。ロックを手放さない（直すまでは、2 つ目も同じ原因で失敗するため） | ⬜ |
 | A4 | トレイを「要対応」にする。実行中の回答は、そのまま続ける | ⬜ |
@@ -70,24 +70,24 @@
 | A8 | 台帳を閉じ、ロックを手放し、トレイを消して、プロセスを終える | ⬜ |
 | A10 | 起動が終わったら画面を開く、と覚えておく（A1・A2 が開く） | ⬜ |
 | A11 | スリープに入る時刻を覚える（戻ったとき、長く眠っていたかを知るため） | ⬜ |
-| A12 | 中継の部屋を登録し直し、Claude Code の確認を、定期を待たずに今すぐ行う（結果は AI_FOUND / AI_MISSING として起きる） | ⬜ |
+| A12 | 中継の部屋を登録し直し、Claude Code の確認を、定期を待たずに今すぐ行う（結果は AiFound / AiMissing として起きる） | ⬜ |
 | A13 | トレイを「稼働中」に戻す | ⬜ |
 | A14 | 書いている回答を取り消して終わらせ（端末には「取り消し」が届く）、A8 と同じに終える | ⬜ |
 
 ## 注（`—` と `×` の理由）
-- a: 起動の途中では、Claude Code の確認はまだ始まっていない（結果は STARTED / STARTED_NOAI で決まる）。
+- a: 起動の途中では、Claude Code の確認はまだ始まっていない（結果は Started / StartedNoAi で決まる）。
 - b: その状態では、起こるはずのないイベント（すでに起動済み、または起動していない）。
 - c: すでにその状態。何も変えない。
 - d: 稼働していないので、確認の結果は意味がない。
 - e: プロセスがもうない。
-- f: 終了の待ちは、STOPPING の間だけ動く。
+- f: 終了の待ちは、Stopping の間だけ動く。
 - g: まだ待ち受けていない。
 - h: 稼働していないので、スリープの出入りで直すものがない。
 - i: すでに異常、または終了中。
 - j: 終了中に、2 つ目の起動が頼んでも、画面は開かない（終わった後に起動し直す）。2 つ目は、1 つ目が終わるのを待たず、自分で起動する（ロックは手放されている）。
-- QUIT を終了中にもう一度押すと、待たずに終わる（A14）。
+- Quit を終了中にもう一度押すと、待たずに終わる（A14）。
 
 ## 決めてほしいこと
 1. 終了の待ちの上限（既定 30 秒）と、待ちきれなかった回答を「取り消し」にすること。
 2. 定期の確認の間隔（既定 30 秒）。
-3. FAILED でも、トレイを残して原因を見せること（残さずに終わる案もある）。
+3. Failed でも、トレイを残して原因を見せること（残さずに終わる案もある）。

@@ -19,7 +19,7 @@ func TestAddIssuesARecordWithOnlyB(t *testing.T) {
 		t.Fatalf("Secrets = %q, %q, %v: want B only", b, k, ok)
 	}
 	recs := h.ledger()
-	if len(recs) != 1 || recs[0].ID != id || recs[0].State != "I" || recs[0].Gen != 1 || recs[0].B != b || recs[0].K != "" {
+	if len(recs) != 1 || recs[0].ID != id || recs[0].State != stateIssued || recs[0].Gen != 1 || recs[0].B != b || recs[0].K != "" {
 		t.Fatalf("stored record = %+v", recs)
 	}
 	if got := h.reg.List(); len(got) != 1 || got[0].Status != "issued" || !got[0].Expires.Equal(h.clock.Now().Add(h.reg.cfg.TTL)) {
@@ -131,7 +131,7 @@ func TestPairingFromRequestToActive(t *testing.T) {
 	}
 	// K must be in the ledger before the device is told (a crash in between must not lose it).
 	atGrant, _, err := decode(conn.atGrant)
-	if err != nil || len(atGrant) != 1 || atGrant[0].State != "G" || atGrant[0].K != k || atGrant[0].B == "" {
+	if err != nil || len(atGrant) != 1 || atGrant[0].State != stateGranted || atGrant[0].K != k || atGrant[0].B == "" {
 		t.Fatalf("ledger at the moment of the grant: %+v %v", atGrant, err)
 	}
 	b, k2, _ := h.reg.Secrets(id)
@@ -147,7 +147,7 @@ func TestPairingFromRequestToActive(t *testing.T) {
 	if b != "" || k2 != k {
 		t.Errorf("after the ack B is gone and K stays: B=%q K=%q", b, k2)
 	}
-	if recs := h.ledger(); recs[0].State != "A" || recs[0].B != "" || recs[0].K != k {
+	if recs := h.ledger(); recs[0].State != stateActive || recs[0].B != "" || recs[0].K != k {
 		t.Errorf("stored: %+v", recs[0])
 	}
 	if h.hooks.changed == 0 {
@@ -429,7 +429,7 @@ func TestAGrantThatCannotBeSentReturnsTheDeviceToIssued(t *testing.T) {
 	if _, k, _ := h.reg.Secrets(id); k != "" {
 		t.Error("K must be dropped when it could not be sent")
 	}
-	if recs := h.ledger(); recs[0].State != "I" || recs[0].K != "" {
+	if recs := h.ledger(); recs[0].State != stateIssued || recs[0].K != "" {
 		t.Errorf("stored: %+v", recs[0])
 	}
 }
@@ -495,7 +495,7 @@ func TestBExpiresAfterItsTimeToLive(t *testing.T) {
 	if _, _, ok := h.reg.Secrets(issued); ok {
 		t.Error("an expired device still has a valid secret")
 	}
-	if recs := h.ledger(); recs[0].State != "X" || recs[0].B != "" {
+	if recs := h.ledger(); recs[0].State != stateExpired || recs[0].B != "" {
 		t.Errorf("stored: %+v", recs[0])
 	}
 }
@@ -544,7 +544,7 @@ func TestRevokeRemovesBothSecretsAndEndsEverySession(t *testing.T) {
 	if len(h.hooks.closed) != 1 || h.hooks.closed[0] != id {
 		t.Errorf("sessions closed: %v", h.hooks.closed)
 	}
-	if recs := h.ledger(); recs[0].State != "R" || recs[0].K != "" || recs[0].RevokedAt.IsZero() {
+	if recs := h.ledger(); recs[0].State != stateRevoked || recs[0].K != "" || recs[0].RevokedAt.IsZero() {
 		t.Errorf("stored: %+v", recs[0])
 	}
 	if err := h.reg.Revoke(id); !errors.Is(err, ErrAlreadyRevoked) {
@@ -576,7 +576,7 @@ func TestRevokeHoldsEvenWhenTheLedgerCannotBeWritten(t *testing.T) {
 	if len(h.hooks.closed) != 1 {
 		t.Error("sessions must be closed even though the write failed")
 	}
-	if recs := h.ledger(); recs[0].State != "A" {
+	if recs := h.ledger(); recs[0].State != stateActive {
 		t.Errorf("the file still says %s: the owner has been told it was not saved", recs[0].State)
 	}
 }
@@ -906,7 +906,7 @@ func TestADateTheLedgerCannotWriteIsRefusedAndRolledBack(t *testing.T) {
 }
 
 func TestStartingWithALedgerThatNeedsRewritingAndCannotBeWrittenStillServes(t *testing.T) {
-	r := goodRecord("A")
+	r := goodRecord(stateActive)
 	r.B = secret(9)
 	store := &memStore{data: ledgerOf(r), saveErr: errors.New("read-only file system")}
 	var logs strings.Builder

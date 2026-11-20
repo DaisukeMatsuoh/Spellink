@@ -216,7 +216,7 @@ suite('pairing a device, for real', () => {
 
     // 2. what the device would do first: it has a package and an empty store
     const plan = planBridges(setup, await readStore(ops));
-    expect(plan.bridges).toMatchObject([{id: setup.id, state: 'U1'}]);
+    expect(plan.bridges).toMatchObject([{id: setup.id, state: 'Unpaired'}]);
 
     // 3. the device presses Pair (the test reaches the bridge over ws on localhost: the `wss`
     //    address in the package is not a real host)
@@ -225,9 +225,16 @@ suite('pairing a device, for real', () => {
       ...setup,
       urls: [`ws://127.0.0.1:${port}/v1?d=${setup.id}`],
     };
-    const controller = new PairingController(local, realDeps(views), 'U1');
+    const controller = new PairingController(
+      local,
+      realDeps(views),
+      'Unpaired',
+    );
     controller.tap();
-    await until('the code on the screen', () => controller.state === 'U3');
+    await until(
+      'the code on the screen',
+      () => controller.state === 'ShowingCode',
+    );
     const shown = views[views.length - 1];
     expect(shown).toMatchObject({code: '48151623', note: 'showing'});
     expect(shown.qr).toBe(`spellink://pair?v=1&i=${setup.id}&c=48151623`);
@@ -245,11 +252,11 @@ suite('pairing a device, for real', () => {
     const wrong = cli('pair', '00000000');
     expect(wrong).toMatch(/not accepted/);
     expect(wrong).not.toContain('Nomad');
-    expect(controller.state).toBe('U3');
+    expect(controller.state).toBe('ShowingCode');
 
     // 5. the right code
     expect(cli('pair', '48151623')).toContain('Code accepted');
-    await until('the pairing to finish', () => controller.state === 'U5');
+    await until('the pairing to finish', () => controller.state === 'Paired');
     expect(views[views.length - 1].note).toBe('paired');
 
     // 6. the device has stored the key and where the bridge is; nothing else was needed
@@ -268,7 +275,7 @@ suite('pairing a device, for real', () => {
 
     // 7. an update with a plain package (no setup at all) still knows the bridge
     expect(planBridges(null, await readStore(ops)).bridges).toMatchObject([
-      {id: setup.id, state: 'U5'},
+      {id: setup.id, state: 'Paired'},
     ]);
 
     // 8. the first secret no longer opens anything
@@ -324,13 +331,13 @@ suite('pairing a device, for real', () => {
         windowSec: 10,
       },
       {...realDeps(views), digits: () => '11112222'},
-      'U1',
+      'Unpaired',
     );
     controller.tap();
-    await until('the code', () => controller.state === 'U3');
+    await until('the code', () => controller.state === 'ShowingCode');
     expect(cli('list')).toMatch(/Manta.*waiting/);
     controller.cancel(); // the owner never typed it; the user gives up
-    expect(controller.state).toBe('U1');
+    expect(controller.state).toBe('Unpaired');
     await until('the bridge to drop the request', () =>
       /Manta\s+\S+\s+issued/.test(cli('list')),
     );
@@ -361,12 +368,12 @@ suite('pairing a device, for real', () => {
     const controller = new PairingController(
       {...fresh, urls: [`ws://127.0.0.1:${port}/v1?d=${fresh.id}`]},
       {...realDeps(views), digits: () => '33334444'},
-      'U1',
+      'Unpaired',
     );
     controller.tap();
-    await until('the code', () => controller.state === 'U3');
+    await until('the code', () => controller.state === 'ShowingCode');
     expect(cli('pair', '33334444')).toContain('Code accepted');
-    await until('the pairing', () => controller.state === 'U5');
+    await until('the pairing', () => controller.state === 'Paired');
     const mine = (await readStore(ops)).bridges.find(b => b.id === fresh.id);
     expect(mine).toMatchObject({gen: 2});
   }, 60000);

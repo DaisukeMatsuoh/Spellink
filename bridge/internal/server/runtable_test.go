@@ -127,13 +127,13 @@ func TestTheShapeOfTheTable(t *testing.T) {
 		return
 	}
 	// a run is created only from N, and begins working
-	if c := runTable[rsN][reAsk]; c.kind != cellDo || c.next != rsRa {
+	if c := runTable[rsNoRun][reAsk]; c.kind != cellDo || c.next != rsAskingLive {
 		t.Errorf("N × ASK must create a working run, got %+v", c)
 	}
 	// a finished run never goes back to work: its only ways on are to the other finished state or to N
-	for _, st := range []runState{rsFa, rsFd} {
+	for _, st := range []runState{rsDoneLive, rsDoneAway} {
 		for _, n := range next(st) {
-			if n == rsRa || n == rsRd {
+			if n == rsAskingLive || n == rsAskingAway {
 				t.Errorf("%s must not go back to work (%s)", st, n)
 			}
 		}
@@ -154,8 +154,8 @@ func TestTheShapeOfTheTable(t *testing.T) {
 		}
 		return seen
 	}
-	for _, st := range []runState{rsRa, rsRd} {
-		if r := reach(st); !r[rsFa] || !r[rsFd] {
+	for _, st := range []runState{rsAskingLive, rsAskingAway} {
+		if r := reach(st); !r[rsDoneLive] || !r[rsDoneAway] {
 			t.Errorf("%s must be able to finish: %v", st, r)
 		}
 	}
@@ -163,16 +163,16 @@ func TestTheShapeOfTheTable(t *testing.T) {
 		for _, ev := range runEvents {
 			c := runTable[st][ev]
 			for _, n := range []runState{c.next, c.more.next, c.spent.next} {
-				if n == rsN && st != rsN && ev != reSweep {
+				if n == rsNoRun && st != rsNoRun && ev != reSwept {
 					t.Errorf("%s × %s leads to N: only the sweep forgets a run", st, ev)
 				}
 			}
 		}
 	}
 	// both ways of ending an answer in the middle are covered in every working state
-	for _, st := range []runState{rsRa, rsRd} {
-		for _, ev := range []runEvent{reCancel, reProviderFail, reHang, reProviderDone, reFull} {
-			if c := runTable[st][ev]; c.kind != cellDo || (c.next != rsFa && c.next != rsFd) {
+	for _, st := range []runState{rsAskingLive, rsAskingAway} {
+		for _, ev := range []runEvent{reCancel, reAiFails, reAiGoesSilent, reAiFinishes, rePagesRunOut} {
+			if c := runTable[st][ev]; c.kind != cellDo || (c.next != rsDoneLive && c.next != rsDoneAway) {
 				t.Errorf("%s × %s must finish the run, got %+v", st, ev, c)
 			}
 		}

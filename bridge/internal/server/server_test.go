@@ -804,7 +804,7 @@ func TestFinishedAnswersAreForgottenAfterTheirRetention(t *testing.T) {
 	rs.Retention = 30 * time.Millisecond
 	quiet := log.New(io.Discard, "", 0)
 	first, _ := rs.start("old", func() {}, quiet, 0)
-	first.fire(reProviderFail, failInfo{"provider_failed", "x"}) // ends it: FA or FD
+	first.fire(reAiFails, failInfo{"provider_failed", "x"}) // ends it: FA or FD
 	if !first.isFinished() {
 		t.Fatal("a failure ends the run")
 	}
@@ -823,16 +823,16 @@ func TestFinishedAnswersAreForgottenAfterTheirRetention(t *testing.T) {
 func TestAKeepAliveIsNotSentToANobody(t *testing.T) {
 	// RD × KEEPALIVE is an ignore cell: a run with nobody attached sends nothing and stays RD.
 	quiet := log.New(io.Discard, "", 0)
-	r := newRun("k", func() {}, rsRa, quiet, time.Hour)
+	r := newRun("k", func() {}, rsAskingLive, quiet, time.Hour)
 	r.disconnect(&session{}) // a connection that is not the one receiving: not news
-	if r.state() != rsRa {
+	if r.state() != rsAskingLive {
 		t.Fatalf("a disconnect from nobody changes nothing, state %s", r.state())
 	}
 	r.mu.Lock()
-	r.m.state = rsRd
+	r.m.state = rsAskingAway
 	r.mu.Unlock()
-	r.fire(reKeepalive, nil)
-	if r.state() != rsRd {
+	r.fire(reKeepaliveTick, nil)
+	if r.state() != rsAskingAway {
 		t.Fatal("a keep-alive does not change the state")
 	}
 }

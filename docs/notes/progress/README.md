@@ -2,7 +2,7 @@
 
 新しいセッションのエージェントは、**まずこのファイル**を読む。次に `CLAUDE.md`（規約）。リリースまでの全体は `release-plan.md`。経緯が要るときだけ `history.md`。別のエージェントに作業を渡すときは `handoff.md`。
 
-最終更新: 2026-11-08
+最終更新: 2026-11-20（Remote Control のセッションを終えて、ローカルの IDE に移るときの区切り）
 
 ## このファイルの管理ルール
 - ここには「**いまの状態・次にやること・未決事項・手順**」だけを書く。経緯や実機での試行錯誤は `log/<年-月>.md` に**追記**する（追記専用。過去の記述は直さず、誤りは新しい項目で訂正）。`history.md` は、まとめ直した読み物。
@@ -19,17 +19,24 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 - **push はユーザーの指示があるまでしない**（コミットは可）。特許・知財の分析は `docs/notes/ip/private/`（git 管理外）にだけ書く。
 - **開発ポリシー（ADR 0014）**: 戻り値は必ず確認／全ケースを洗い出す／状態遷移表を先に書く（表がコードの元データ）／信頼境界の値は必ず検証／場当たり的な再試行をしない。
 
-## 現在の状態（2026-11-08）
-- **コード**: `stg` ブランチ、未 push。テスト: Go 10 パッケージ全緑（`-race`）、端末 18 スイート・約 466 件。**件数だけでなくスイート数を確認する**。CI（`.github/workflows/`）は一度も動かしていない。
-- **表がコード**（`docs/spec/README.md`）: 端末の質問の流れ（`ask-flow.md`）、波線（`wave.md`）、ページ追加と書き込み（`page-turn.md`）、ブリッジの run（`bridge-run.md`）。文書を直す → `cd plugin && npm run spec` → ハンドラ → テスト。
-- **実行中（開発機）**: ブリッジ `~/.local/bin/spellink-bridge serve`（ポート 8765、ログ `/tmp/spellink-bridge.log`。**nohup。再起動後は自動で起動しない**）。cloudflared はシステムのサービス（`/etc/cloudflared/token`、起動時に自動）。`https://bridge.spellink.uk/health` と、`spellink-bridge check`（実際の暗号化の握手まで）が通る。
-- **配布物**: `plugin/build/outputs/Spellink.snplg`（接続先 `wss://bridge.spellink.uk/v1` を埋め込み済み。`plugin/src/bridges.local.json`、git 管理外）。
-- **設定の既定**: 回答中の通知 on、既存の字を避ける（ページ全体の読み取り）off、待機中の波線 off。AI の無応答は 10 秒（始まらない・止まった）、全体 30 秒。
-- **実機で確認済み**（〜11-07）: ラッソ → 認識 → 回答、複数ページ、会話の記憶（ADR 0012）、wss＋Noise、設定画面、ネイティブのエラーダイアログ。
-- **実機で未確認**: 切断後の再開（ADR 0013）、再接続 3 回、フレームの検証、`busyNotice`、`avoidOverwriting`、表で動く新しい流れ全体、空き領域の確認の実測。
-- ADR の一覧と根拠: `docs/decisions/README.md`（Accepted: 0001〜0003・0005〜0008・0012・0014）。
+## 現在の状態（2026-11-20）
+- **コード**: `stg` ブランチ、**未 push**（この区切りでコミット済み。push はユーザーの指示まで）。テスト: Go 全パッケージ緑（`-race`）、端末 **30 スイート・855 件**緑。**件数だけでなくスイート数を確認する**。CI（`.github/workflows/`）は一度も動かしていない（本物のブリッジとの結合テストが `go`・`zip`・`unzip` を使うので、CI の端末のジョブにも要る）。
+- **表がコード**（`docs/spec/README.md`）: 6 つ（端末の質問の流れ・波線・ページ追加と書き込み・ブリッジの run・**ペアリングの記録・ペアリングの端末**）。文書を直す → `cd plugin && npm run spec` → ハンドラ → テスト。**ペアリング（記録・端末）とブリッジの run の状態名・イベント名は、読める名前（先頭だけ大文字: `Issued`、`OwnerAdds` など）に変えた**（2026-11-20）。**質問の流れ・波線・ページ追加は、まだ ALL_CAPS の名前**（同じ形にそろえるかはユーザーの判断。コードの変更が大きい）。台帳の保存形式の状態名は、コードの名前と切り離した `issued` / `granted` / `active` / `expired` / `revoked`。
+- **この期間に作ったもの**（詳細は `log/2026-11.md`）:
+  - **ペアリング（ADR 0016）**: ブリッジが端末ごとに B（`.snplg` に入る初期の秘密）と K（ペアリングで渡る鍵。端末はディレクトリ名に保存）を発行し、台帳で管理。`spellink-bridge device add|list|pair [--web]|package|revoke|reissue|forget`。端末の画面に QR・**ブリッジが自分の字で書く案内文**・8 桁。鍵の拒否の検出。複数のブリッジ。
+  - **QR を読むページ** `/pair`（ブラウザのカメラ。`jsQR` はバイナリに埋め込み）、**アプリ画面** `/app`（状態・端末の一覧・追加・解除・作り直し。`spellink-bridge open`）、`/admin/status`。ローカル専用の入口は **Host も検査**（DNS rebinding 対策）。
+  - **中継の強化**: 無通信 15 分で閉じる、部屋ごとの帯域、ログに IP を書かないことをテストで固定。運営手順書・systemd 単位。
+  - **文言は TSV**（`plugin/locales/strings.tsv`、ブリッジ側のページは各 `strings.tsv`。列を足せば言語が増える）。
+  - **文書**: プライバシーポリシーと**利用規約（免責を含む）の草案**（`docs/legal/`）、Bridge App の寿命の表の草案（`docs/spec/bridge-app.md`）と仕様の草案（`docs/notes/research/2026-11-20-bridge-app-draft.md`）、中継の運営の判断材料（`2026-11-20-relay-decisions.md`）、**直結の選択肢**（`2026-11-20-direct-connection-options.md`）。
+- **実行中（開発機）**: ブリッジは **古い版のまま**（`~/.local/bin/spellink-bridge`。systemd のユーザーサービスとして動いている）。**新しい機能（ペアリング・`/pair`・`/app`）を使うには、入れ替えと、`config.json` への `extraUrls`（例 `wss://bridge.spellink.uk/v1`）と `pairing.pluginPackage`（`plugin/build/outputs/Spellink.snplg` のパス）の追加が要る**（手順は `device-test-guide.md` の 6）。cloudflared は動いている。
+- **配布物**: `plugin/build/outputs/Spellink.snplg`（開発者のブリッジの接続先を埋め込んだ、**個人用**。配らない）。
+- **決めたこと（2026-11-20、ユーザー）**: ①**署名はしない**（macOS・Windows とも）。公式サイトに各配布物の SHA-256 を載せ、「公式」と示す。Windows は将来 SignPath Foundation の OSS 向け無料署名を検討。②**Anthropic の規約**: 「利用者自身のパソコンで、改変しない Claude Code を、自分のログインで、本人だけが使う」形で進める。初回の起動で、その同意を取る（`docs/legal/terms-of-service-draft.md`）。公式の記述を確認済み（`relay-decisions.md` の 1.5、ADR 0005 の追記）。③公式の中継は、運営する（Cloudflare。免責は全文を書く）。④端末の言語は、本体の 4 言語（en・ja・zh_CN・zh_TW。要・実機確認）から。
+- **実機で確認済み**（〜11-07）: ラッソ → 認識 → 回答、複数ページ、会話の記憶（ADR 0012）、wss＋Noise、設定画面、ネイティブのエラーダイアログ。**2026-11-19〜20 に確認**: 書き換えた `.snplg` が入る・上書きで置き換わる、ディレクトリ名の保存が再起動をまたいで残る（`deleteDir` は使うとハングした）、QR（640px）が PC のカメラで一瞬で読める。
+- **実機で未確認**: **ペアリングの全体**（`device-test-guide.md` の 6）、手書きの案内文の描画（短い線を並べる方式。e-ink での速さと見え方）、`/app`・`/pair` のブラウザでの操作、切断後の再開（ADR 0013）、再接続 3 回、`busyNotice`、`avoidOverwriting`、空き領域の確認の実測。
+- ADR の一覧と根拠: `docs/decisions/README.md`（Accepted: 0001〜0003・0005〜0008・0012・0014。Proposed: 0010・0011・0013・**0016**）。
 
 ## 実機で見てほしいこと（ユーザー）
+**まず、ペアリング**（`device-test-guide.md` の 6）。以下は、それ以前の確認項目。
 新しい `Spellink.snplg` を端末に入れ直し、**新しいノート**で。
 1. 普通の質問が、最後まで書かれるか。ページをまたぐ長い回答。
 2. トンネルを一時的に止める／ブリッジを止めて、「再接続中 (n/3)」が出て、戻れば続きが書かれるか。3 回で諦めたときのエラー。
@@ -40,25 +47,31 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 7. NOTE が固まる・ページが空に見える現象が、まだ起きるか。起きたら診断の「Send log to bridge」。
 
 ## 次にやること（優先順）
-担当の分け方と、遠隔でできる作業の一覧は `handoff.md`。
-1. **実機の結果を見て、表の気になったセルだけを直す**（ユーザー）。
-2. **ブリッジの自動起動**（ユーザー）: `~/.local/bin/spellink-bridge service install`（`--dry-run` で、先に何をするか見られる）。`sudo` は要らない。systemd のユーザーサービスを作り、`loginctl enable-linger` まで行う。エージェントは、権限判定で、常駐の登録を実行できない。
-3. **公開用の文書を読んで直す**（ユーザー）: `README.md`、`CONTRIBUTING.md`、`SECURITY.md`（非公開の報告の連絡手段）、`THIRD_PARTY_NOTICES.md`。`LICENSE` は Apache-2.0（初期コミットから。仮置き）で、著作権者の表示はユーザーが決める。
-4. **CI とリリースを動かす**（push の許可が要る）: `.github/workflows/`（`plugin.yml`、`bridge.yml`、`release.yml`）は、一度も動かしていない。
-5. 会話の圧縮、他社の AI の追加（規約の確認が先）、多言語（遠隔可）。
-6. **ペアリング**（公開版の最大のブロッカー）。**実装済み（2026-11-20）**: ADR 0016（Proposed）、表 `docs/spec/pairing.md`。ブリッジ: `internal/devices`（台帳・状態機械・`.snplg` の生成）、`devicecli`（`spellink-bridge device add|list|pair|package|revoke|reissue|forget`）、`server`（ペアリングの通信路・K の接続・管理 API）、`relay.RoomSet`。プラグイン: `pair*.ts`、`fileOps.ts`、`ui/PairScreen.tsx`（設定画面の「ブリッジとペアリング」）。テスト: Go 全パッケージ、端末 25 スイート・718 件（本物のブリッジとの結合テストを含む）。**追加（2026-11-20）**: 鍵を拒否されたときの検出（`connectFirst` が、ペアリング済みのブリッジのすべての住所で失敗し、その一つ以上が `unauthorized` / `device_removed` なら「ペアリングし直してください」。**中継だけの住所では、拒否と不在の区別がつかない**ので検出できない）、ブリッジの QR を読むページ（`/pair`、`spellink-bridge device pair --web`。カメラの JS と `jsQR` はバイナリに埋め込み済み。Node は実行に要らない）、端末の画面に QR・手書きの文言（ブリッジが自分の字で書く）・8 桁、文言は `plugin/locales/strings.tsv`（言語は列を足す）と `bridge/internal/server/pairpage/strings.tsv`。**追加（2026-11-20 夕）**: ローカル専用の入口（`/admin/`・`/pair`・`/app`）が Host を検査（DNS rebinding 対策。`internal/localguard`）、`/admin/status`、**アプリ画面 `/app`**（状態・端末の一覧・追加・解除・作り直し・セットアップファイルの保存。`spellink-bridge open` で開く）、中継の**無通信 15 分で閉じる・部屋ごとの帯域**、中継の運営手順書（`docs/guides/relay-operations.md`、`deploy/relay/spellink-relay.service`）、プライバシーポリシーの草案（`docs/legal/`）、**Bridge App の寿命の表（草案・確認待ち）`docs/spec/bridge-app.md`**。トレイと自動起動は、実機（Mac・Windows）で試す必要があり、未着手。**残り**: ①**実機で全体を確認**（`device-test-guide.md` の 6。開発機のブリッジは古い版のまま。入れ替えと、`config.json` の `extraUrls`・`pairing.pluginPackage` はユーザー）②ペアリング後に端末が自分用のインストーラを消す（`deleteFile` は未確認）③中継の運営の方針（ADR 0010。ユーザー）④メニューバーの常駐アプリ（任意。今は `device` コマンドと `/pair` ページ）。経緯と選択肢: `docs/notes/research/2026-11-08-pairing.md`。
-7. NOTE が回答中に固まる件の再検証（原因未特定。フライトレコーダーとブリッジのログで証拠を取る）。
-8. LAN 直結 wss（ADR 0011）の実証明書での確認（Cloudflare の API トークンが要る）。優先度は低い。
-9. 文字以外（楽譜など）の入力（方針: 画像を外部に送らず、ストロークから意味を取る）。
+担当の分け方と、遠隔でできる作業の一覧は `handoff.md`。**[U]** = ユーザー、**[A]** = エージェント。
+1. **[U] ブリッジを新しい版に入れ替え、`config.json` に `extraUrls` と `pairing.pluginPackage` を足し、実機でペアリングを試す**（`device-test-guide.md` の 6）。結果（特に、手書きの案内文の描画、QR とコード、`/pair`・`/app`）を見て、表の気になったセルを直す。
+2. **[U] `docs/spec/bridge-app.md`（Bridge App の寿命の表）を読んで確認** → **[A]** コードの表にして実装（`/app` を土台に、`spellink-bridge app`、トレイ、自動起動。トレイは Mac・Windows の実機で試す必要がある）。仕様の草案: `docs/notes/research/2026-11-20-bridge-app-draft.md`。初回の同意の画面を含む。
+3. **[U] 公開の前に埋める文書**: `docs/legal/privacy-policy-draft.md`・`terms-of-service-draft.md` の `[ ]`（前段のサービス名、保存期間、告知の場所、連絡先、準拠法・管轄）。専門家の確認を勧める。`README.md`・`CONTRIBUTING.md`・`SECURITY.md`・`THIRD_PARTY_NOTICES.md`（連絡手段、著作権者の表示）。
+4. **[U] Anthropic の規約を、公開の前と変更のたびに確認**（特に、`claude -p` の利用が、2026-06-15 から別枠の月ごとのクレジットから引かれる、という報道。公式の最新の扱いを `support.claude.com` で確認）。必要なら Anthropic に書面で問い合わせる。
+5. **[U] 中継の運営の判断**（`relay-decisions.md`）: 運営は決定。残りは、置き場所（公開前に VPS へ）、費用、可用性の約束、公開の時期。**[A]** 手順書・systemd 単位・帯域の上限・プライバシーポリシーの草案は済み。
+6. **[U→A] 家の中の直結（名前と証明書の配布サービス）を作るか**（`2026-11-20-direct-connection-options.md`）。作るなら、設計書とブリッジの登録クライアントは [A]。`lan.spellink.uk` の Public Suffix List への申請と Cloudflare の API トークンは [U]。
+7. **[U] 状態名・イベント名を、残りの表（質問の流れ・波線・ページ追加）も読める名前にそろえるか。** [A] は機械的にできる（生成器は対応済み）が、コードとテストの変更が大きい。
+8. **[A] 多言語**: TSV に `zh_CN`・`zh_TW` の列を足す（翻訳は [A]、母語の方の確認を勧める）。筆跡のグリフは文字体系ごとにデータが要る（ADR 0006 の追記の表。ハングル・キリル・ギリシャ・アクセント付きラテン・中国語の漢字は未着手）。本体の表示言語は、実機の設定で確認する。
+9. **[U] 配布**: 署名なし。公式サイトに SHA-256 を載せる（`release.yml` は、各配布物の `.sha256` を作る）。macOS・Windows の警告の回避の手順を、利用者向けの文書に書く。
+10. **[U]** ブリッジの自動起動（`service install`）、CI とリリースを動かす（push の許可が要る）、公開用の文書。
+11. 会話の圧縮、他社の AI の追加（規約の確認が先）。NOTE が回答中に固まる件の再検証（原因未特定）。文字以外の入力。
+12. 鍵の拒否を、中継でも見分ける実装（失効した端末の部屋を、「拒否」で返す。必要になったとき）。ペアリング後に、端末が自分用のインストーラを消す（`deleteFile` は未確認）。
 
 ## 未決（ユーザーの判断）
 - **名前**: 現行は Spellink。`spellink.com` は取得済みで買えず、`spellink.uk` を取得。dancink などの案は `docs/notes/research/2026-11-03-naming-round2.md`。決めるまで改名しない（`pluginID` は変更禁止）。
-- 公開の時期と形（OSS・寄付か有料か）、push の許可。
-- リレーを運営するか、どこで、費用はどうするか。ペアリング情報を端末に入れる方法。（`docs/guides/bridge-and-relay-for-users.md` に整理）
+- 公開の時期と形（OSS・寄付〔Buy Me a Coffee など〕）、**push の許可**。
+- 中継の置き場所・費用・可用性の約束（運営すること自体は決定）。名前・証明書サービスを作るか。
+- Bridge App の寿命の表の確認（`bridge-app.md` の末尾の 3 つ: 終了の待ちの上限、確認の間隔、失敗時もトレイを残すか）。
+- 残りの表の状態名・イベント名を読める名前にそろえるか。
 - 他社の AI（ChatGPT など）を足す順番と、各社の規約の確認（ADR 0015）。
 - 保留: 履歴の削除と実行中の回答の関係、ホストのライフサイクルの意味、ページ数の変化の扱い、波線の消し残しの通知。
 
 ## 手順（再開時）
+**ローカルの IDE で再開するとき**: リポジトリは `~/GitWorkspaces/Cloute`、ブランチは `stg`（`git log --oneline | head -30` で、この期間のコミットが見える）。まず、このファイルと `CLAUDE.md`、次に `log/2026-11.md` の末尾（11-19〜20 の項）。テストは下の手順で、Go（`~/.local/go/bin`）と Node が要る。結合テストは `zip`・`unzip` も使う。**開発機のブリッジは古い版**（上の「実行中」）。
 ```bash
 export PATH=$HOME/.local/go/bin:$PATH
 # ブリッジ: テスト → ビルド → 入れ替え → 再起動 → 疎通
@@ -89,7 +102,9 @@ tail -n 5 ~/.config/spellink-bridge/reports.jsonl
 | 仕様（状態遷移表・インターフェース台帳） | `docs/spec/README.md` |
 | 利用者が知ること・運営の作業 | `docs/guides/bridge-and-relay-for-users.md` |
 | Cloudflare トンネルの手順 | `docs/guides/cloudflare-tunnel-setup.md` |
-| 調査・比較 | `docs/notes/research/` |
+| 調査・比較 | `docs/notes/research/`（11-20: `relay-decisions`〔中継の運営と Anthropic の規約〕、`direct-connection-options`〔直結〕、`bridge-app-draft`〕 |
+| 公開する文書の草案（プライバシーポリシー・利用規約） | `docs/legal/` |
+| 中継の運営の手順・systemd 単位 | `docs/guides/relay-operations.md`、`deploy/relay/` |
 | 実機テストの手順 | `docs/notes/device-test-guide.md` |
 | 知財のルール | `docs/notes/ip/README.md`（分析本体は private/ で git 管理外） |
 | プロジェクトの規約 | `CLAUDE.md` |

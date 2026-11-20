@@ -6,33 +6,33 @@ package server
 type runState string
 
 const (
-	rsN  runState = "N"
-	rsRa runState = "RA"
-	rsRd runState = "RD"
-	rsFa runState = "FA"
-	rsFd runState = "FD"
+	rsNoRun      runState = "NoRun"
+	rsAskingLive runState = "AskingLive"
+	rsAskingAway runState = "AskingAway"
+	rsDoneLive   runState = "DoneLive"
+	rsDoneAway   runState = "DoneAway"
 )
 
 type runEvent string
 
 const (
-	reAsk          runEvent = "ASK"
-	reDup          runEvent = "DUP"
-	reBusy         runEvent = "BUSY"
-	reCancel       runEvent = "CANCEL"
-	reDisconnect   runEvent = "DISCONNECT"
-	reResume       runEvent = "RESUME"
-	reGrace        runEvent = "GRACE"
-	reDelta        runEvent = "DELTA"
-	reProviderDone runEvent = "PROVIDER_DONE"
-	reProviderFail runEvent = "PROVIDER_FAIL"
-	reFull         runEvent = "FULL"
-	reSweep        runEvent = "SWEEP"
-	reShutdown     runEvent = "SHUTDOWN"
-	reSendFail     runEvent = "SEND_FAIL"
-	reClear        runEvent = "CLEAR"
-	reHang         runEvent = "HANG"
-	reKeepalive    runEvent = "KEEPALIVE"
+	reAsk            runEvent = "Ask"
+	reAskRepeats     runEvent = "AskRepeats"
+	reAskWhileBusy   runEvent = "AskWhileBusy"
+	reCancel         runEvent = "Cancel"
+	reDeviceLeaves   runEvent = "DeviceLeaves"
+	reDeviceResumes  runEvent = "DeviceResumes"
+	reGraceEnds      runEvent = "GraceEnds"
+	reTextArrives    runEvent = "TextArrives"
+	reAiFinishes     runEvent = "AiFinishes"
+	reAiFails        runEvent = "AiFails"
+	rePagesRunOut    runEvent = "PagesRunOut"
+	reSwept          runEvent = "Swept"
+	reBridgeStops    runEvent = "BridgeStops"
+	reSendFails      runEvent = "SendFails"
+	reHistoryCleared runEvent = "HistoryCleared"
+	reAiGoesSilent   runEvent = "AiGoesSilent"
+	reKeepaliveTick  runEvent = "KeepaliveTick"
 )
 
 type runAction string
@@ -79,104 +79,104 @@ type runCell struct {
 	spent  runMove
 }
 
-var runStates = []runState{rsN, rsRa, rsRd, rsFa, rsFd}
-var runEvents = []runEvent{reAsk, reDup, reBusy, reCancel, reDisconnect, reResume, reGrace, reDelta, reProviderDone, reProviderFail, reFull, reSweep, reShutdown, reSendFail, reClear, reHang, reKeepalive}
+var runStates = []runState{rsNoRun, rsAskingLive, rsAskingAway, rsDoneLive, rsDoneAway}
+var runEvents = []runEvent{reAsk, reAskRepeats, reAskWhileBusy, reCancel, reDeviceLeaves, reDeviceResumes, reGraceEnds, reTextArrives, reAiFinishes, reAiFails, rePagesRunOut, reSwept, reBridgeStops, reSendFails, reHistoryCleared, reAiGoesSilent, reKeepaliveTick}
 var runActions = []runAction{raR1, raR2, raR3, raR4, raR5, raR6, raR7, raR8, raR9, raR10, raR11, raR12, raR13, raR14, raR15, raE1, raE2, raE3}
 
 var runTable = map[runState]map[runEvent]runCell{
-	rsN: {
-		reAsk:          {kind: cellDo, action: raR1, next: rsRa},
-		reDup:          {kind: cellNever, note: "a"},
-		reBusy:         {kind: cellNever, note: "a"},
-		reCancel:       {kind: cellIgnore, note: "b"},
-		reDisconnect:   {kind: cellNever, note: "c"},
-		reResume:       {kind: cellDo, action: raE1, next: rsN},
-		reGrace:        {kind: cellNever, note: "d"},
-		reDelta:        {kind: cellNever, note: "e"},
-		reProviderDone: {kind: cellNever, note: "e"},
-		reProviderFail: {kind: cellNever, note: "e"},
-		reFull:         {kind: cellNever, note: "e"},
-		reSweep:        {kind: cellNever, note: "i"},
-		reShutdown:     {kind: cellIgnore, note: "l"},
-		reSendFail:     {kind: cellNever, note: "j"},
-		reClear:        {kind: cellDo, action: raR9, next: rsN},
-		reHang:         {kind: cellNever, note: "e"},
-		reKeepalive:    {kind: cellNever, note: "e"},
+	rsNoRun: {
+		reAsk:            {kind: cellDo, action: raR1, next: rsAskingLive},
+		reAskRepeats:     {kind: cellNever, note: "a"},
+		reAskWhileBusy:   {kind: cellNever, note: "a"},
+		reCancel:         {kind: cellIgnore, note: "b"},
+		reDeviceLeaves:   {kind: cellNever, note: "c"},
+		reDeviceResumes:  {kind: cellDo, action: raE1, next: rsNoRun},
+		reGraceEnds:      {kind: cellNever, note: "d"},
+		reTextArrives:    {kind: cellNever, note: "e"},
+		reAiFinishes:     {kind: cellNever, note: "e"},
+		reAiFails:        {kind: cellNever, note: "e"},
+		rePagesRunOut:    {kind: cellNever, note: "e"},
+		reSwept:          {kind: cellNever, note: "i"},
+		reBridgeStops:    {kind: cellIgnore, note: "l"},
+		reSendFails:      {kind: cellNever, note: "j"},
+		reHistoryCleared: {kind: cellDo, action: raR9, next: rsNoRun},
+		reAiGoesSilent:   {kind: cellNever, note: "e"},
+		reKeepaliveTick:  {kind: cellNever, note: "e"},
 	},
-	rsRa: {
-		reAsk:          {kind: cellNever, note: "a"},
-		reDup:          {kind: cellDo, action: raE2, next: rsRa},
-		reBusy:         {kind: cellDo, action: raE3, next: rsRa},
-		reCancel:       {kind: cellDo, action: raR2, next: rsFa},
-		reDisconnect:   {kind: cellDo, action: raR3, next: rsRd},
-		reResume:       {kind: cellDo, action: raR4, next: rsRa},
-		reGrace:        {kind: cellNever, note: "d"},
-		reDelta:        {kind: cellDo, action: raR5, next: rsRa},
-		reProviderDone: {kind: cellDo, action: raR8, next: rsFa},
-		reProviderFail: {kind: cellDo, action: raR10, next: rsFa},
-		reFull:         {kind: cellDo, action: raR11, next: rsFa},
-		reSweep:        {kind: cellIgnore, note: "k"},
-		reShutdown:     {kind: cellIgnore, note: "l"},
-		reSendFail:     {kind: cellDo, action: raR12, next: rsRa},
-		reClear:        {kind: cellDo, action: raR9, next: rsRa},
-		reHang:         {kind: cellDo, action: raR13, next: rsFa},
-		reKeepalive:    {kind: cellDo, action: raR15, next: rsRa},
+	rsAskingLive: {
+		reAsk:            {kind: cellNever, note: "a"},
+		reAskRepeats:     {kind: cellDo, action: raE2, next: rsAskingLive},
+		reAskWhileBusy:   {kind: cellDo, action: raE3, next: rsAskingLive},
+		reCancel:         {kind: cellDo, action: raR2, next: rsDoneLive},
+		reDeviceLeaves:   {kind: cellDo, action: raR3, next: rsAskingAway},
+		reDeviceResumes:  {kind: cellDo, action: raR4, next: rsAskingLive},
+		reGraceEnds:      {kind: cellNever, note: "d"},
+		reTextArrives:    {kind: cellDo, action: raR5, next: rsAskingLive},
+		reAiFinishes:     {kind: cellDo, action: raR8, next: rsDoneLive},
+		reAiFails:        {kind: cellDo, action: raR10, next: rsDoneLive},
+		rePagesRunOut:    {kind: cellDo, action: raR11, next: rsDoneLive},
+		reSwept:          {kind: cellIgnore, note: "k"},
+		reBridgeStops:    {kind: cellIgnore, note: "l"},
+		reSendFails:      {kind: cellDo, action: raR12, next: rsAskingLive},
+		reHistoryCleared: {kind: cellDo, action: raR9, next: rsAskingLive},
+		reAiGoesSilent:   {kind: cellDo, action: raR13, next: rsDoneLive},
+		reKeepaliveTick:  {kind: cellDo, action: raR15, next: rsAskingLive},
 	},
-	rsRd: {
-		reAsk:          {kind: cellNever, note: "a"},
-		reDup:          {kind: cellDo, action: raE2, next: rsRd},
-		reBusy:         {kind: cellNever, note: "f"},
-		reCancel:       {kind: cellDo, action: raR2, next: rsFd},
-		reDisconnect:   {kind: cellNever, note: "c"},
-		reResume:       {kind: cellDo, action: raR4, next: rsRa},
-		reGrace:        {kind: cellDo, action: raR6, next: rsFd},
-		reDelta:        {kind: cellDo, action: raR5, next: rsRd},
-		reProviderDone: {kind: cellDo, action: raR8, next: rsFd},
-		reProviderFail: {kind: cellDo, action: raR10, next: rsFd},
-		reFull:         {kind: cellDo, action: raR11, next: rsFd},
-		reSweep:        {kind: cellIgnore, note: "k"},
-		reShutdown:     {kind: cellIgnore, note: "l"},
-		reSendFail:     {kind: cellNever, note: "j"},
-		reClear:        {kind: cellDo, action: raR9, next: rsRd},
-		reHang:         {kind: cellDo, action: raR13, next: rsFd},
-		reKeepalive:    {kind: cellIgnore, note: "n"},
+	rsAskingAway: {
+		reAsk:            {kind: cellNever, note: "a"},
+		reAskRepeats:     {kind: cellDo, action: raE2, next: rsAskingAway},
+		reAskWhileBusy:   {kind: cellNever, note: "f"},
+		reCancel:         {kind: cellDo, action: raR2, next: rsDoneAway},
+		reDeviceLeaves:   {kind: cellNever, note: "c"},
+		reDeviceResumes:  {kind: cellDo, action: raR4, next: rsAskingLive},
+		reGraceEnds:      {kind: cellDo, action: raR6, next: rsDoneAway},
+		reTextArrives:    {kind: cellDo, action: raR5, next: rsAskingAway},
+		reAiFinishes:     {kind: cellDo, action: raR8, next: rsDoneAway},
+		reAiFails:        {kind: cellDo, action: raR10, next: rsDoneAway},
+		rePagesRunOut:    {kind: cellDo, action: raR11, next: rsDoneAway},
+		reSwept:          {kind: cellIgnore, note: "k"},
+		reBridgeStops:    {kind: cellIgnore, note: "l"},
+		reSendFails:      {kind: cellNever, note: "j"},
+		reHistoryCleared: {kind: cellDo, action: raR9, next: rsAskingAway},
+		reAiGoesSilent:   {kind: cellDo, action: raR13, next: rsDoneAway},
+		reKeepaliveTick:  {kind: cellIgnore, note: "n"},
 	},
-	rsFa: {
-		reAsk:          {kind: cellNever, note: "a"},
-		reDup:          {kind: cellDo, action: raE2, next: rsFa},
-		reBusy:         {kind: cellNever, note: "f"},
-		reCancel:       {kind: cellIgnore, note: "g"},
-		reDisconnect:   {kind: cellDo, action: raR7, next: rsFd},
-		reResume:       {kind: cellDo, action: raR4, next: rsFa},
-		reGrace:        {kind: cellNever, note: "d"},
-		reDelta:        {kind: cellIgnore, note: "h"},
-		reProviderDone: {kind: cellIgnore, note: "h"},
-		reProviderFail: {kind: cellIgnore, note: "h"},
-		reFull:         {kind: cellIgnore, note: "h"},
-		reSweep:        {kind: cellDo, action: raR14, next: rsN},
-		reShutdown:     {kind: cellIgnore, note: "l"},
-		reSendFail:     {kind: cellDo, action: raR12, next: rsFa},
-		reClear:        {kind: cellDo, action: raR9, next: rsFa},
-		reHang:         {kind: cellIgnore, note: "h"},
-		reKeepalive:    {kind: cellIgnore, note: "h"},
+	rsDoneLive: {
+		reAsk:            {kind: cellNever, note: "a"},
+		reAskRepeats:     {kind: cellDo, action: raE2, next: rsDoneLive},
+		reAskWhileBusy:   {kind: cellNever, note: "f"},
+		reCancel:         {kind: cellIgnore, note: "g"},
+		reDeviceLeaves:   {kind: cellDo, action: raR7, next: rsDoneAway},
+		reDeviceResumes:  {kind: cellDo, action: raR4, next: rsDoneLive},
+		reGraceEnds:      {kind: cellNever, note: "d"},
+		reTextArrives:    {kind: cellIgnore, note: "h"},
+		reAiFinishes:     {kind: cellIgnore, note: "h"},
+		reAiFails:        {kind: cellIgnore, note: "h"},
+		rePagesRunOut:    {kind: cellIgnore, note: "h"},
+		reSwept:          {kind: cellDo, action: raR14, next: rsNoRun},
+		reBridgeStops:    {kind: cellIgnore, note: "l"},
+		reSendFails:      {kind: cellDo, action: raR12, next: rsDoneLive},
+		reHistoryCleared: {kind: cellDo, action: raR9, next: rsDoneLive},
+		reAiGoesSilent:   {kind: cellIgnore, note: "h"},
+		reKeepaliveTick:  {kind: cellIgnore, note: "h"},
 	},
-	rsFd: {
-		reAsk:          {kind: cellNever, note: "a"},
-		reDup:          {kind: cellDo, action: raE2, next: rsFd},
-		reBusy:         {kind: cellNever, note: "f"},
-		reCancel:       {kind: cellIgnore, note: "g"},
-		reDisconnect:   {kind: cellNever, note: "c"},
-		reResume:       {kind: cellDo, action: raR4, next: rsFa},
-		reGrace:        {kind: cellNever, note: "d"},
-		reDelta:        {kind: cellIgnore, note: "h"},
-		reProviderDone: {kind: cellIgnore, note: "h"},
-		reProviderFail: {kind: cellIgnore, note: "h"},
-		reFull:         {kind: cellIgnore, note: "h"},
-		reSweep:        {kind: cellDo, action: raR14, next: rsN},
-		reShutdown:     {kind: cellIgnore, note: "l"},
-		reSendFail:     {kind: cellNever, note: "j"},
-		reClear:        {kind: cellDo, action: raR9, next: rsFd},
-		reHang:         {kind: cellIgnore, note: "h"},
-		reKeepalive:    {kind: cellIgnore, note: "h"},
+	rsDoneAway: {
+		reAsk:            {kind: cellNever, note: "a"},
+		reAskRepeats:     {kind: cellDo, action: raE2, next: rsDoneAway},
+		reAskWhileBusy:   {kind: cellNever, note: "f"},
+		reCancel:         {kind: cellIgnore, note: "g"},
+		reDeviceLeaves:   {kind: cellNever, note: "c"},
+		reDeviceResumes:  {kind: cellDo, action: raR4, next: rsDoneLive},
+		reGraceEnds:      {kind: cellNever, note: "d"},
+		reTextArrives:    {kind: cellIgnore, note: "h"},
+		reAiFinishes:     {kind: cellIgnore, note: "h"},
+		reAiFails:        {kind: cellIgnore, note: "h"},
+		rePagesRunOut:    {kind: cellIgnore, note: "h"},
+		reSwept:          {kind: cellDo, action: raR14, next: rsNoRun},
+		reBridgeStops:    {kind: cellIgnore, note: "l"},
+		reSendFails:      {kind: cellNever, note: "j"},
+		reHistoryCleared: {kind: cellDo, action: raR9, next: rsDoneAway},
+		reAiGoesSilent:   {kind: cellIgnore, note: "h"},
+		reKeepaliveTick:  {kind: cellIgnore, note: "h"},
 	},
 }

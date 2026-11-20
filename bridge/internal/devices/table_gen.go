@@ -6,33 +6,33 @@ package devices
 type devState string
 
 const (
-	dsN devState = "N"
-	dsI devState = "I"
-	dsQ devState = "Q"
-	dsG devState = "G"
-	dsA devState = "A"
-	dsX devState = "X"
-	dsR devState = "R"
+	dsNoRecord  devState = "NoRecord"
+	dsIssued    devState = "Issued"
+	dsRequested devState = "Requested"
+	dsGranted   devState = "Granted"
+	dsActive    devState = "Active"
+	dsExpired   devState = "Expired"
+	dsRevoked   devState = "Revoked"
 )
 
 type devEvent string
 
 const (
-	deIssue      devEvent = "ISSUE"
-	deConnB      devEvent = "CONN_B"
-	deDisconnect devEvent = "DISCONNECT"
-	deConfirmOk  devEvent = "CONFIRM_OK"
-	deConfirmBad devEvent = "CONFIRM_BAD"
-	deAck        devEvent = "ACK"
-	deConnK      devEvent = "CONN_K"
-	deWindow     devEvent = "WINDOW"
-	deAckTimeout devEvent = "ACK_TIMEOUT"
-	deTtl        devEvent = "TTL"
-	deRevoke     devEvent = "REVOKE"
-	deReissue    devEvent = "REISSUE"
-	deRepack     devEvent = "REPACK"
-	deRestart    devEvent = "RESTART"
-	deForget     devEvent = "FORGET"
+	deOwnerAdds      devEvent = "OwnerAdds"
+	deDeviceRequests devEvent = "DeviceRequests"
+	deRequestDrops   devEvent = "RequestDrops"
+	deOwnerConfirms  devEvent = "OwnerConfirms"
+	deOwnerMistypes  devEvent = "OwnerMistypes"
+	deDeviceAcks     devEvent = "DeviceAcks"
+	deKeyConnects    devEvent = "KeyConnects"
+	deWindowEnds     devEvent = "WindowEnds"
+	deAckTimesOut    devEvent = "AckTimesOut"
+	deTtlEnds        devEvent = "TtlEnds"
+	deOwnerRevokes   devEvent = "OwnerRevokes"
+	deOwnerReissues  devEvent = "OwnerReissues"
+	deOwnerRepacks   devEvent = "OwnerRepacks"
+	deBridgeRestarts devEvent = "BridgeRestarts"
+	deOwnerForgets   devEvent = "OwnerForgets"
 )
 
 type devAction string
@@ -77,128 +77,128 @@ type devCell struct {
 	spent  devMove
 }
 
-var devStates = []devState{dsN, dsI, dsQ, dsG, dsA, dsX, dsR}
-var devEvents = []devEvent{deIssue, deConnB, deDisconnect, deConfirmOk, deConfirmBad, deAck, deConnK, deWindow, deAckTimeout, deTtl, deRevoke, deReissue, deRepack, deRestart, deForget}
+var devStates = []devState{dsNoRecord, dsIssued, dsRequested, dsGranted, dsActive, dsExpired, dsRevoked}
+var devEvents = []devEvent{deOwnerAdds, deDeviceRequests, deRequestDrops, deOwnerConfirms, deOwnerMistypes, deDeviceAcks, deKeyConnects, deWindowEnds, deAckTimesOut, deTtlEnds, deOwnerRevokes, deOwnerReissues, deOwnerRepacks, deBridgeRestarts, deOwnerForgets}
 var devActions = []devAction{daP1, daP2, daP3, daP5, daP6, daP7, daP8, daP9, daP10, daP11, daP12, daP13, daP14, daP15, daP17, daP18}
 
 var devTable = map[devState]map[devEvent]devCell{
-	dsN: {
-		deIssue:      {kind: cellDo, action: daP1, next: dsI},
-		deConnB:      {kind: cellNever, note: "a"},
-		deDisconnect: {kind: cellNever, note: "b"},
-		deConfirmOk:  {kind: cellNever, note: "c"},
-		deConfirmBad: {kind: cellNever, note: "c"},
-		deAck:        {kind: cellNever, note: "a"},
-		deConnK:      {kind: cellNever, note: "a"},
-		deWindow:     {kind: cellNever, note: "k"},
-		deAckTimeout: {kind: cellNever, note: "k"},
-		deTtl:        {kind: cellNever, note: "k"},
-		deRevoke:     {kind: cellNever, note: "c"},
-		deReissue:    {kind: cellNever, note: "c"},
-		deRepack:     {kind: cellNever, note: "c"},
-		deRestart:    {kind: cellNever, note: "l"},
-		deForget:     {kind: cellNever, note: "c"},
+	dsNoRecord: {
+		deOwnerAdds:      {kind: cellDo, action: daP1, next: dsIssued},
+		deDeviceRequests: {kind: cellNever, note: "a"},
+		deRequestDrops:   {kind: cellNever, note: "b"},
+		deOwnerConfirms:  {kind: cellNever, note: "c"},
+		deOwnerMistypes:  {kind: cellNever, note: "c"},
+		deDeviceAcks:     {kind: cellNever, note: "a"},
+		deKeyConnects:    {kind: cellNever, note: "a"},
+		deWindowEnds:     {kind: cellNever, note: "k"},
+		deAckTimesOut:    {kind: cellNever, note: "k"},
+		deTtlEnds:        {kind: cellNever, note: "k"},
+		deOwnerRevokes:   {kind: cellNever, note: "c"},
+		deOwnerReissues:  {kind: cellNever, note: "c"},
+		deOwnerRepacks:   {kind: cellNever, note: "c"},
+		deBridgeRestarts: {kind: cellNever, note: "l"},
+		deOwnerForgets:   {kind: cellNever, note: "c"},
 	},
-	dsI: {
-		deIssue:      {kind: cellIgnore, note: "d"},
-		deConnB:      {kind: cellGuard, more: devMove{daP2, dsQ}, spent: devMove{daP2, dsI}},
-		deDisconnect: {kind: cellNever, note: "b"},
-		deConfirmOk:  {kind: cellIgnore, note: "e"},
-		deConfirmBad: {kind: cellIgnore, note: "e"},
-		deAck:        {kind: cellIgnore, note: "f"},
-		deConnK:      {kind: cellNever, note: "g"},
-		deWindow:     {kind: cellIgnore, note: "m"},
-		deAckTimeout: {kind: cellIgnore, note: "m"},
-		deTtl:        {kind: cellDo, action: daP12, next: dsX},
-		deRevoke:     {kind: cellDo, action: daP13, next: dsR},
-		deReissue:    {kind: cellDo, action: daP14, next: dsI},
-		deRepack:     {kind: cellDo, action: daP18, next: dsI},
-		deRestart:    {kind: cellDo, action: daP15, next: dsI},
-		deForget:     {kind: cellIgnore, note: "n"},
+	dsIssued: {
+		deOwnerAdds:      {kind: cellIgnore, note: "d"},
+		deDeviceRequests: {kind: cellGuard, more: devMove{daP2, dsRequested}, spent: devMove{daP2, dsIssued}},
+		deRequestDrops:   {kind: cellNever, note: "b"},
+		deOwnerConfirms:  {kind: cellIgnore, note: "e"},
+		deOwnerMistypes:  {kind: cellIgnore, note: "e"},
+		deDeviceAcks:     {kind: cellIgnore, note: "f"},
+		deKeyConnects:    {kind: cellNever, note: "g"},
+		deWindowEnds:     {kind: cellIgnore, note: "m"},
+		deAckTimesOut:    {kind: cellIgnore, note: "m"},
+		deTtlEnds:        {kind: cellDo, action: daP12, next: dsExpired},
+		deOwnerRevokes:   {kind: cellDo, action: daP13, next: dsRevoked},
+		deOwnerReissues:  {kind: cellDo, action: daP14, next: dsIssued},
+		deOwnerRepacks:   {kind: cellDo, action: daP18, next: dsIssued},
+		deBridgeRestarts: {kind: cellDo, action: daP15, next: dsIssued},
+		deOwnerForgets:   {kind: cellIgnore, note: "n"},
 	},
-	dsQ: {
-		deIssue:      {kind: cellIgnore, note: "d"},
-		deConnB:      {kind: cellGuard, more: devMove{daP2, dsQ}, spent: devMove{daP2, dsI}},
-		deDisconnect: {kind: cellGuard, more: devMove{daP5, dsQ}, spent: devMove{daP5, dsI}},
-		deConfirmOk:  {kind: cellDo, action: daP6, next: dsG},
-		deConfirmBad: {kind: cellGuard, more: devMove{daP7, dsQ}, spent: devMove{daP7, dsI}},
-		deAck:        {kind: cellIgnore, note: "f"},
-		deConnK:      {kind: cellNever, note: "g"},
-		deWindow:     {kind: cellDo, action: daP8, next: dsI},
-		deAckTimeout: {kind: cellIgnore, note: "m"},
-		deTtl:        {kind: cellDo, action: daP12, next: dsX},
-		deRevoke:     {kind: cellDo, action: daP13, next: dsR},
-		deReissue:    {kind: cellDo, action: daP14, next: dsI},
-		deRepack:     {kind: cellDo, action: daP18, next: dsQ},
-		deRestart:    {kind: cellDo, action: daP15, next: dsI},
-		deForget:     {kind: cellIgnore, note: "n"},
+	dsRequested: {
+		deOwnerAdds:      {kind: cellIgnore, note: "d"},
+		deDeviceRequests: {kind: cellGuard, more: devMove{daP2, dsRequested}, spent: devMove{daP2, dsIssued}},
+		deRequestDrops:   {kind: cellGuard, more: devMove{daP5, dsRequested}, spent: devMove{daP5, dsIssued}},
+		deOwnerConfirms:  {kind: cellDo, action: daP6, next: dsGranted},
+		deOwnerMistypes:  {kind: cellGuard, more: devMove{daP7, dsRequested}, spent: devMove{daP7, dsIssued}},
+		deDeviceAcks:     {kind: cellIgnore, note: "f"},
+		deKeyConnects:    {kind: cellNever, note: "g"},
+		deWindowEnds:     {kind: cellDo, action: daP8, next: dsIssued},
+		deAckTimesOut:    {kind: cellIgnore, note: "m"},
+		deTtlEnds:        {kind: cellDo, action: daP12, next: dsExpired},
+		deOwnerRevokes:   {kind: cellDo, action: daP13, next: dsRevoked},
+		deOwnerReissues:  {kind: cellDo, action: daP14, next: dsIssued},
+		deOwnerRepacks:   {kind: cellDo, action: daP18, next: dsRequested},
+		deBridgeRestarts: {kind: cellDo, action: daP15, next: dsIssued},
+		deOwnerForgets:   {kind: cellIgnore, note: "n"},
 	},
-	dsG: {
-		deIssue:      {kind: cellIgnore, note: "d"},
-		deConnB:      {kind: cellDo, action: daP3, next: dsG},
-		deDisconnect: {kind: cellIgnore, note: "h"},
-		deConfirmOk:  {kind: cellIgnore, note: "e"},
-		deConfirmBad: {kind: cellIgnore, note: "e"},
-		deAck:        {kind: cellDo, action: daP9, next: dsA},
-		deConnK:      {kind: cellDo, action: daP9, next: dsA},
-		deWindow:     {kind: cellIgnore, note: "m"},
-		deAckTimeout: {kind: cellDo, action: daP11, next: dsI},
-		deTtl:        {kind: cellIgnore, note: "o"},
-		deRevoke:     {kind: cellDo, action: daP13, next: dsR},
-		deReissue:    {kind: cellDo, action: daP14, next: dsI},
-		deRepack:     {kind: cellDo, action: daP18, next: dsG},
-		deRestart:    {kind: cellDo, action: daP15, next: dsG},
-		deForget:     {kind: cellIgnore, note: "n"},
+	dsGranted: {
+		deOwnerAdds:      {kind: cellIgnore, note: "d"},
+		deDeviceRequests: {kind: cellDo, action: daP3, next: dsGranted},
+		deRequestDrops:   {kind: cellIgnore, note: "h"},
+		deOwnerConfirms:  {kind: cellIgnore, note: "e"},
+		deOwnerMistypes:  {kind: cellIgnore, note: "e"},
+		deDeviceAcks:     {kind: cellDo, action: daP9, next: dsActive},
+		deKeyConnects:    {kind: cellDo, action: daP9, next: dsActive},
+		deWindowEnds:     {kind: cellIgnore, note: "m"},
+		deAckTimesOut:    {kind: cellDo, action: daP11, next: dsIssued},
+		deTtlEnds:        {kind: cellIgnore, note: "o"},
+		deOwnerRevokes:   {kind: cellDo, action: daP13, next: dsRevoked},
+		deOwnerReissues:  {kind: cellDo, action: daP14, next: dsIssued},
+		deOwnerRepacks:   {kind: cellDo, action: daP18, next: dsGranted},
+		deBridgeRestarts: {kind: cellDo, action: daP15, next: dsGranted},
+		deOwnerForgets:   {kind: cellIgnore, note: "n"},
 	},
-	dsA: {
-		deIssue:      {kind: cellIgnore, note: "d"},
-		deConnB:      {kind: cellNever, note: "i"},
-		deDisconnect: {kind: cellIgnore, note: "j"},
-		deConfirmOk:  {kind: cellIgnore, note: "e"},
-		deConfirmBad: {kind: cellIgnore, note: "e"},
-		deAck:        {kind: cellIgnore, note: "f"},
-		deConnK:      {kind: cellDo, action: daP10, next: dsA},
-		deWindow:     {kind: cellIgnore, note: "m"},
-		deAckTimeout: {kind: cellIgnore, note: "m"},
-		deTtl:        {kind: cellIgnore, note: "m"},
-		deRevoke:     {kind: cellDo, action: daP13, next: dsR},
-		deReissue:    {kind: cellDo, action: daP14, next: dsI},
-		deRepack:     {kind: cellDo, action: daP18, next: dsA},
-		deRestart:    {kind: cellDo, action: daP15, next: dsA},
-		deForget:     {kind: cellIgnore, note: "n"},
+	dsActive: {
+		deOwnerAdds:      {kind: cellIgnore, note: "d"},
+		deDeviceRequests: {kind: cellNever, note: "i"},
+		deRequestDrops:   {kind: cellIgnore, note: "j"},
+		deOwnerConfirms:  {kind: cellIgnore, note: "e"},
+		deOwnerMistypes:  {kind: cellIgnore, note: "e"},
+		deDeviceAcks:     {kind: cellIgnore, note: "f"},
+		deKeyConnects:    {kind: cellDo, action: daP10, next: dsActive},
+		deWindowEnds:     {kind: cellIgnore, note: "m"},
+		deAckTimesOut:    {kind: cellIgnore, note: "m"},
+		deTtlEnds:        {kind: cellIgnore, note: "m"},
+		deOwnerRevokes:   {kind: cellDo, action: daP13, next: dsRevoked},
+		deOwnerReissues:  {kind: cellDo, action: daP14, next: dsIssued},
+		deOwnerRepacks:   {kind: cellDo, action: daP18, next: dsActive},
+		deBridgeRestarts: {kind: cellDo, action: daP15, next: dsActive},
+		deOwnerForgets:   {kind: cellIgnore, note: "n"},
 	},
-	dsX: {
-		deIssue:      {kind: cellIgnore, note: "d"},
-		deConnB:      {kind: cellNever, note: "i"},
-		deDisconnect: {kind: cellNever, note: "b"},
-		deConfirmOk:  {kind: cellIgnore, note: "e"},
-		deConfirmBad: {kind: cellIgnore, note: "e"},
-		deAck:        {kind: cellIgnore, note: "f"},
-		deConnK:      {kind: cellNever, note: "g"},
-		deWindow:     {kind: cellIgnore, note: "m"},
-		deAckTimeout: {kind: cellIgnore, note: "m"},
-		deTtl:        {kind: cellIgnore, note: "m"},
-		deRevoke:     {kind: cellDo, action: daP13, next: dsR},
-		deReissue:    {kind: cellDo, action: daP14, next: dsI},
-		deRepack:     {kind: cellIgnore, note: "r"},
-		deRestart:    {kind: cellDo, action: daP15, next: dsX},
-		deForget:     {kind: cellDo, action: daP17, next: dsN},
+	dsExpired: {
+		deOwnerAdds:      {kind: cellIgnore, note: "d"},
+		deDeviceRequests: {kind: cellNever, note: "i"},
+		deRequestDrops:   {kind: cellNever, note: "b"},
+		deOwnerConfirms:  {kind: cellIgnore, note: "e"},
+		deOwnerMistypes:  {kind: cellIgnore, note: "e"},
+		deDeviceAcks:     {kind: cellIgnore, note: "f"},
+		deKeyConnects:    {kind: cellNever, note: "g"},
+		deWindowEnds:     {kind: cellIgnore, note: "m"},
+		deAckTimesOut:    {kind: cellIgnore, note: "m"},
+		deTtlEnds:        {kind: cellIgnore, note: "m"},
+		deOwnerRevokes:   {kind: cellDo, action: daP13, next: dsRevoked},
+		deOwnerReissues:  {kind: cellDo, action: daP14, next: dsIssued},
+		deOwnerRepacks:   {kind: cellIgnore, note: "r"},
+		deBridgeRestarts: {kind: cellDo, action: daP15, next: dsExpired},
+		deOwnerForgets:   {kind: cellDo, action: daP17, next: dsNoRecord},
 	},
-	dsR: {
-		deIssue:      {kind: cellIgnore, note: "d"},
-		deConnB:      {kind: cellNever, note: "i"},
-		deDisconnect: {kind: cellNever, note: "b"},
-		deConfirmOk:  {kind: cellIgnore, note: "e"},
-		deConfirmBad: {kind: cellIgnore, note: "e"},
-		deAck:        {kind: cellIgnore, note: "f"},
-		deConnK:      {kind: cellNever, note: "g"},
-		deWindow:     {kind: cellIgnore, note: "m"},
-		deAckTimeout: {kind: cellIgnore, note: "m"},
-		deTtl:        {kind: cellIgnore, note: "m"},
-		deRevoke:     {kind: cellIgnore, note: "p"},
-		deReissue:    {kind: cellIgnore, note: "q"},
-		deRepack:     {kind: cellIgnore, note: "q"},
-		deRestart:    {kind: cellDo, action: daP15, next: dsR},
-		deForget:     {kind: cellDo, action: daP17, next: dsN},
+	dsRevoked: {
+		deOwnerAdds:      {kind: cellIgnore, note: "d"},
+		deDeviceRequests: {kind: cellNever, note: "i"},
+		deRequestDrops:   {kind: cellNever, note: "b"},
+		deOwnerConfirms:  {kind: cellIgnore, note: "e"},
+		deOwnerMistypes:  {kind: cellIgnore, note: "e"},
+		deDeviceAcks:     {kind: cellIgnore, note: "f"},
+		deKeyConnects:    {kind: cellNever, note: "g"},
+		deWindowEnds:     {kind: cellIgnore, note: "m"},
+		deAckTimesOut:    {kind: cellIgnore, note: "m"},
+		deTtlEnds:        {kind: cellIgnore, note: "m"},
+		deOwnerRevokes:   {kind: cellIgnore, note: "p"},
+		deOwnerReissues:  {kind: cellIgnore, note: "q"},
+		deOwnerRepacks:   {kind: cellIgnore, note: "q"},
+		deBridgeRestarts: {kind: cellDo, action: daP15, next: dsRevoked},
+		deOwnerForgets:   {kind: cellDo, action: daP17, next: dsNoRecord},
 	},
 }

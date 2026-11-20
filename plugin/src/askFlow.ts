@@ -1,5 +1,9 @@
 import {PluginCommAPI} from 'sn-plugin-lib';
-import {connectFirst, type BridgeConnection} from './bridgeClient';
+import {
+  connectFirst,
+  noBridgeMessage,
+  type BridgeConnection,
+} from './bridgeClient';
 import {AskMachine, type AskEvent, type Handlers} from './askMachine';
 import {freeLimit, type Box} from './freeSpace';
 import {MAX_EXTRA_PAGES} from './frames';
@@ -465,8 +469,8 @@ export class AskFlow {
       this.checkpoint();
       try {
         this.conn = await connectFirst(endpoints);
-      } catch {
-        this.machine.dispatch('NOBRIDGE', {message: t('noBridge')});
+      } catch (e) {
+        this.machine.dispatch('NOBRIDGE', {message: noBridgeMessage(e)});
         return;
       }
       if (this.terminal()) {

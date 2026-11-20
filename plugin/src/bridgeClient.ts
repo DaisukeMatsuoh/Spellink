@@ -1,5 +1,6 @@
 import type {BridgeEndpoint} from './bridgeConfig';
 import {MAX_EXTRA_PAGES, parseFrame, parseSettings} from './frames';
+import {t} from './i18n';
 import {NoiseInitiator, pskFromToken, type SecureChannel} from './noise';
 import type {BridgeMessage, ClientMessage, Settings} from './protocol';
 import {trace} from './trace';
@@ -90,6 +91,46 @@ export interface ConnectAttempt {
   error?: string;
 }
 
+/**
+ * No bridge could be reached. `refused` names the paired bridges that answered, on every address
+ * they have, by refusing this device's key (revoked, reissued, or removed on the bridge). Through
+ * the relay a refusal looks like an absent bridge, so only direct and tunnel addresses can tell.
+ */
+export class NoBridgeError extends Error {
+  constructor(message: string, readonly refused: string[]) {
+    super(message);
+  }
+}
+
+/** What the bridge says when it turns a device away (bridge/internal/server: "unauthorized", "device_removed"). */
+const REFUSAL = /unauthorized|device_removed/;
+
+/** The paired bridges every address of which failed, at least one of them with a refusal. */
+export function refusedBridges(
+  endpoints: BridgeEndpoint[],
+  attempts: ConnectAttempt[],
+): string[] {
+  return endpoints
+    .filter(ep => {
+      if (!ep.id) {
+        return false;
+      }
+      const mine = ep.urls.map(u => attempts.find(a => a.url === u));
+      return (
+        mine.every(a => a?.error !== undefined) &&
+        mine.some(a => REFUSAL.test(a?.error ?? ''))
+      );
+    })
+    .map(ep => ep.name);
+}
+
+/** What to tell the user when `connectFirst` failed. */
+export function noBridgeMessage(e: unknown): string {
+  return e instanceof NoBridgeError && e.refused.length > 0
+    ? t('keyRefused', {name: e.refused[0]})
+    : t('noBridge');
+}
+
 const isRelay = (url: string) => url.includes('/v1/relay/');
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -136,7 +177,12 @@ export function connectFirst(
         return;
       }
       finish(null);
-      reject(new Error('no bridge reachable'));
+      reject(
+        new NoBridgeError(
+          'no bridge reachable',
+          refusedBridges(endpoints, attempts),
+        ),
+      );
     }, timeoutMs);
     const failed = (url: string, error: string) => {
       attempts.push({
@@ -148,7 +194,12 @@ export function connectFirst(
       });
       if (--pending === 0 && !settled) {
         finish(null);
-        reject(new Error('no bridge reachable'));
+        reject(
+          new NoBridgeError(
+            'no bridge reachable',
+            refusedBridges(endpoints, attempts),
+          ),
+        );
       }
     };
 

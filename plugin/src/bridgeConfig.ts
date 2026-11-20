@@ -1,6 +1,8 @@
 import {loadPairing} from './pairingState';
 
 export interface BridgeEndpoint {
+  /** The device's id on a bridge it was paired with one by one (ADR 0016); older endpoints have none. */
+  id?: string;
   name: string;
   token: string;
   urls: string[];
@@ -55,7 +57,14 @@ async function pairedEndpoints(): Promise<BridgeEndpoint[]> {
   try {
     return (await loadPairing()).plan.bridges.flatMap(b =>
       b.state === 'U5' && b.stored
-        ? [{name: b.stored.name, token: b.stored.key, urls: b.stored.urls}]
+        ? [
+            {
+              id: b.id,
+              name: b.stored.name,
+              token: b.stored.key,
+              urls: b.stored.urls,
+            },
+          ]
         : [],
     );
   } catch {

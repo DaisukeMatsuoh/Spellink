@@ -92,6 +92,8 @@ export const STRINGS = {
     pairProblems: '{n} saved pairing item(s) could not be used.',
     pairScanQr: 'Scan this QR code with the Spellink Bridge App.',
     pairOrType: 'No camera? Type this code in the Bridge App instead.',
+    keyRefused:
+      '{name} no longer accepts this device. On the computer run "spellink-bridge device reissue <name>", then install the new file and pair again.',
   },
   ja: {
     askButton: 'AIに聞く',
@@ -184,5 +186,7 @@ export const STRINGS = {
     pairScanQr: 'このQRコードをSpellink Bridge Appで読み取ってください。',
     pairOrType:
       'カメラが使えないときは、このコードをSpellink Bridge Appに入力してください。',
+    keyRefused:
+      '{name} が、この端末を受け付けなくなりました。パソコンで「spellink-bridge device reissue <名前>」を実行し、新しいファイルを入れて、ペアリングし直してください。',
   },
 } as const;

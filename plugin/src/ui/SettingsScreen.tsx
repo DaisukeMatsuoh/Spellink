@@ -1,6 +1,10 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {ScrollView, Text, View} from 'react-native';
-import {connectFirst, type BridgeConnection} from '../bridgeClient';
+import {
+  connectFirst,
+  noBridgeMessage,
+  type BridgeConnection,
+} from '../bridgeClient';
 import {loadBridges} from '../bridgeConfig';
 import {t} from '../i18n';
 import type {Settings} from '../protocol';
@@ -30,8 +34,8 @@ export function SettingsScreen() {
       await ensurePermissions();
       try {
         c = await connectFirst((await loadBridges()).endpoints);
-      } catch {
-        setStatus(t('noBridge'));
+      } catch (e) {
+        setStatus(noBridgeMessage(e));
         return;
       }
       c.onMessage = m => {

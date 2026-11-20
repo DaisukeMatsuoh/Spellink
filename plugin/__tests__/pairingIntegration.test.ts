@@ -9,7 +9,7 @@ import fs from 'fs';
 import net from 'net';
 import os from 'os';
 import path from 'path';
-import {connectFirst} from '../src/bridgeClient';
+import {connectFirst, NoBridgeError} from '../src/bridgeClient';
 import {parsePairSetup, type PairSetup} from '../src/pairConfig';
 import {connectPairing} from '../src/pairConnect';
 import {PairingController, type PairDeps, type PairView} from '../src/pairing';
@@ -281,6 +281,7 @@ suite('pairing a device, for real', () => {
     const conn = await connectFirst(
       [
         {
+          id: setup.id,
           name: 'Rock',
           token: k,
           urls: [`ws://127.0.0.1:${port}/v1?d=${setup.id}`],
@@ -295,18 +296,20 @@ suite('pairing a device, for real', () => {
     const closed = new Promise<string>(resolve => (conn.onClose = resolve));
     expect(cli('revoke', 'Nomad')).toContain('Revoked');
     await closed;
-    await expect(
-      connectFirst(
-        [
-          {
-            name: 'Rock',
-            token: k,
-            urls: [`ws://127.0.0.1:${port}/v1?d=${setup.id}`],
-          },
-        ],
-        3000,
-      ),
-    ).rejects.toThrow();
+    // ...and the plugin can tell that it was turned away (not that the bridge is gone)
+    const refused = await connectFirst(
+      [
+        {
+          id: setup.id,
+          name: 'Rock',
+          token: k,
+          urls: [`ws://127.0.0.1:${port}/v1?d=${setup.id}`],
+        },
+      ],
+      3000,
+    ).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(NoBridgeError);
+    expect((refused as NoBridgeError).refused).toEqual(['Rock']);
     expect(cli('list')).toMatch(/Nomad.*revoked/);
   }, 60000);
 

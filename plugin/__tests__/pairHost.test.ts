@@ -206,6 +206,7 @@ describe('loading what the device knows', () => {
     const r = await loadBridges();
     expect(r.source).toBe('paired');
     expect(r.endpoints[0]).toEqual({
+      id: ID,
       name: 'Rock',
       token: secretOf(5),
       urls: [URL],

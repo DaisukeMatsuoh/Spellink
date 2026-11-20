@@ -72,3 +72,4 @@ pairRefused	The bridge no longer accepts this device. Ask for a new file with "s
 pairProblems	{n} saved pairing item(s) could not be used.	保存されたペアリングの情報のうち {n} 件は使えませんでした。
 pairScanQr	Scan this QR code with the Spellink Bridge App.	このQRコードをSpellink Bridge Appで読み取ってください。
 pairOrType	No camera? Type this code in the Bridge App instead.	カメラが使えないときは、このコードをSpellink Bridge Appに入力してください。
+keyRefused	{name} no longer accepts this device. On the computer run "spellink-bridge device reissue <name>", then install the new file and pair again.	{name} が、この端末を受け付けなくなりました。パソコンで「spellink-bridge device reissue <名前>」を実行し、新しいファイルを入れて、ペアリングし直してください。

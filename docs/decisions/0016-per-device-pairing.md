@@ -1,6 +1,6 @@
 # 0016. ペアリング: ブリッジが端末ごとの秘密を発行し、台帳で管理する
 
-- 状態: Proposed（状態遷移表 `docs/spec/pairing.md` の確認待ち）
+- 状態: Proposed（実装済み 2026-11-20。表 `docs/spec/pairing.md` は確認済み。実機でのペアリング全体の確認待ち）
 - 日付: 2026-11-20
 - 経緯: `docs/notes/research/2026-11-08-pairing.md`、実機の結果は `docs/notes/progress/log/2026-11.md`（2026-11-19/20）
 

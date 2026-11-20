@@ -63,6 +63,14 @@ func roomsFor(secrets []devices.Secret, serve func(id string) relay.ServeFunc) m
 	return want
 }
 
+// bridgeName is the name a device shows for this bridge; one that is not usable (empty, too long) is "bridge".
+func bridgeName(cfg *config.Config) string {
+	if devices.ValidName(cfg.Name) {
+		return cfg.Name
+	}
+	return "bridge"
+}
+
 var errNoBasePackage = errors.New("set pairing.pluginPackage in config.json to the path of the plugin package (Spellink.snplg) to build setup files from")
 
 // packageBuilder returns the function that builds a device's setup file from the plugin package.
@@ -76,6 +84,8 @@ func packageBuilder(cfg *config.Config) func(devices.PackageData) ([]byte, error
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", path, err)
 		}
+		// the setup names the BRIDGE (what the device shows); the device's own name stays in the ledger
+		d.Name = bridgeName(cfg)
 		return devices.BuildPackage(base, d, deviceURLs(cfg, d.ID, d.B))
 	}
 }

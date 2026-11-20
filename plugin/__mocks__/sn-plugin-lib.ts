@@ -310,5 +310,12 @@ export const PluginManager = {
   async requestPermission() {
     return 1;
   },
-  registerLangListener() {},
+  registerLangListener(l: {onMsg(code: string): void}) {
+    langListener = l;
+    return {remove() {}};
+  },
 };
+
+let langListener: {onMsg(code: string): void} | null = null;
+/** A test switches the plugin's language the way the firmware does. */
+export const setFakeLanguage = (code: string) => langListener?.onMsg(code);

@@ -62,6 +62,32 @@ const STRINGS = {
     connectedTo: 'Connected to {name}',
     destination: 'Asking: {name}',
     saved: 'Saved.',
+    pairButton: 'Pair with a bridge',
+    pairTitle: 'Pair with a bridge',
+    pairStart: 'Pair',
+    pairCancel: 'Cancel',
+    pairNone:
+      'This plugin has no bridge yet. On the computer that runs spellink-bridge, run "spellink-bridge device add <name>", then install the file it writes on this device.',
+    pairBridgePaired: '{name}: paired',
+    pairBridgeReady: '{name}: ready to pair',
+    pairIdle:
+      'Press Pair, then type the code that appears into spellink-bridge on your computer.',
+    pairConnecting: 'Connecting to the bridge…',
+    pairShowing: 'Type this code on your computer: spellink-bridge device pair',
+    pairSeconds: '{n} seconds left',
+    pairStoring: 'Saving the key…',
+    pairPaired: 'Paired with {name}.',
+    pairTimeout: 'The code was not entered in time. Press Pair to try again.',
+    pairCancelled: 'Cancelled.',
+    pairStoreFailed:
+      'The key could not be saved on this device. Press Pair to try again.',
+    pairDisconnected: 'The connection ended: {detail}',
+    pairNoSecret:
+      'This file has already been used to pair. On the computer, run "spellink-bridge device reissue <name>" and install the new file.',
+    pairDenied: 'The bridge refused: {detail}',
+    pairRefused:
+      'The bridge no longer accepts this device. Ask for a new file with "spellink-bridge device reissue <name>".',
+    pairProblems: '{n} saved pairing item(s) could not be used.',
   },
   ja: {
     askButton: 'AIに聞く',
@@ -125,6 +151,34 @@ const STRINGS = {
     connectedTo: '{name} に接続しました',
     destination: '接続先の AI: {name}',
     saved: '保存しました。',
+    pairButton: 'ブリッジとペアリング',
+    pairTitle: 'ブリッジとペアリング',
+    pairStart: 'ペアリング',
+    pairCancel: 'やめる',
+    pairNone:
+      'このプラグインには、まだブリッジがありません。spellink-bridge を動かしているパソコンで「spellink-bridge device add <名前>」を実行し、できたファイルをこの端末に入れてください。',
+    pairBridgePaired: '{name}: ペアリング済み',
+    pairBridgeReady: '{name}: ペアリング待ち',
+    pairIdle:
+      '「ペアリング」を押し、表示されるコードを、パソコンの spellink-bridge に入力してください。',
+    pairConnecting: 'ブリッジに接続しています…',
+    pairShowing:
+      'パソコンでこのコードを入力してください: spellink-bridge device pair',
+    pairSeconds: '残り {n} 秒',
+    pairStoring: '鍵を保存しています…',
+    pairPaired: '{name} とペアリングしました。',
+    pairTimeout:
+      '時間内にコードが入力されませんでした。もう一度「ペアリング」を押してください。',
+    pairCancelled: 'やめました。',
+    pairStoreFailed:
+      '鍵をこの端末に保存できませんでした。もう一度「ペアリング」を押してください。',
+    pairDisconnected: '接続が終わりました: {detail}',
+    pairNoSecret:
+      'このファイルは、すでにペアリングに使われています。パソコンで「spellink-bridge device reissue <名前>」を実行し、新しいファイルを入れてください。',
+    pairDenied: 'ブリッジに拒否されました: {detail}',
+    pairRefused:
+      'ブリッジがこの端末を受け付けなくなりました。「spellink-bridge device reissue <名前>」で新しいファイルを作ってください。',
+    pairProblems: '保存されたペアリングの情報のうち {n} 件は使えませんでした。',
   },
 } as const;
 

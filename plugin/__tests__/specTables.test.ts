@@ -7,6 +7,12 @@ import {
   INSERT_TABLE,
 } from '../src/insertTable.generated';
 import {
+  PAIR_STATES,
+  PAIR_EVENTS,
+  PAIR_ACTIONS,
+  PAIR_TABLE,
+} from '../src/pairTable.generated';
+import {
   WAVE_STATES,
   WAVE_EVENTS,
   WAVE_ACTIONS,
@@ -30,9 +36,24 @@ const pageSections = (t: string) => ({
   matrix: `手順表（${t}）`,
 });
 
+const pairSections = (side: string) => ({
+  states: `${side}: 状態`,
+  events: `${side}: イベント`,
+  actions: `${side}: 処理（Action）`,
+  matrix: `${side}: 状態遷移表`,
+});
+
 // The documents are the source of the tables; the generated code must say the same. If this
 // fails: change the document, then run `npm run spec`.
 const cases = [
+  [
+    'pairing.md (device)',
+    pairSections('端末'),
+    PAIR_STATES,
+    PAIR_EVENTS,
+    PAIR_ACTIONS,
+    PAIR_TABLE,
+  ],
   [
     'wave.md',
     DEFAULT_SECTIONS,

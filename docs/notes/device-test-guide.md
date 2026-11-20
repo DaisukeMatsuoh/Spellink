@@ -60,6 +60,19 @@ spellink-bridge serve    # ポート 8765。初回だけ KanjiVG / Hershey を�
 
 **実験 5・3c（診断 15・16）**: 「15. Name store」= ディレクトリ名に秘密を保存できるか。**何も削除しない**（以前の削除の手順で、プラグインがハングした）。1 回目は `created`（作って読み戻す）、**端末を再起動**してもう一度押すと `survived` と出れば、再起動をまたいで残る。画面に 1 行ずつ「何をしているか」が出るので、**ハングしたら、画面の最後の行を教えてください**。「16. Read existing」= `MyStyle` に実在するファイルを `file://` で読めるか（確認済み）。
 
+## 6. ペアリング（端末ごとの鍵。ADR 0016、`docs/spec/pairing.md`）
+**ブリッジを新しい版に入れ替えてから**行う（`device` コマンドと管理 API は新しい版にだけある）。
+1. `config.json` に、端末から届く `wss://` の住所と、基になるプラグインのパッケージを書く:
+   `"extraUrls": ["wss://bridge.spellink.uk/v1"]`、`"pairing": {"pluginPackage": "/…/plugin/build/outputs/Spellink.snplg", "windowSec": 90}`（`windowSec` は 10〜600。省略で 90）。ブリッジを再起動。
+2. `spellink-bridge device add Nomad` → `Spellink-Nomad.snplg` ができる（**この端末だけが使う、期限つきのファイル**。人に渡さない）。
+3. その `.snplg` を端末の `MyStyle/` に入れ、プラグインとしてインストール。
+4. 端末で、設定（プラグインの設定ボタン）→「ブリッジとペアリング」→「ペアリング」。8 桁のコードと QR が出る。
+5. パソコンで `spellink-bridge device pair` を実行し、コードを入力（または `spellink-bridge device pair 48151623`）。
+6. 端末が「ペアリングしました」と出し、パソコンの `spellink-bridge device list` が `active` になる。
+7. 普通に質問して、回答が書かれる（以後は、端末に保存された鍵で接続する。`MyStyle/Spellink-pairing/` に `k-…`・`e-…` という名前のフォルダが 2 つできる）。
+**確認すること**: ①コードを入力しないまま窓（既定 90 秒）が過ぎると「時間内に入力されませんでした」になるか ②間違ったコードを入れると端末に影響がないか（5 回で窓が閉じる）③ペアリングの後に、新しい版の公開用パッケージ（接続設定なし）を入れても、そのまま使えるか ④`spellink-bridge device revoke Nomad` で、端末が使えなくなるか ⑤`reissue` した後に、古いファイルが使えず、`device package Nomad` の新しいファイルでペアリングし直せるか。
+**この版でできないこと**: 鍵を拒否されたときに、端末が「ペアリングし直してください」と出すこと（`keyRefused` を呼ぶ処理が未接続）。
+
 ## 端末に行く前の確認（開発機で）
 `spellink-bridge check` が、端末と同じ道（LAN とトンネル）で、暗号化の握手まで確かめる。`OK` なら道は通っている。`.local` の行は、端末からは引けないので、`NG` でも気にしない。
 

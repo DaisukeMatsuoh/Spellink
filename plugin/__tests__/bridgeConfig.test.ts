@@ -29,3 +29,47 @@ describe('a pairing file is checked entry by entry', () => {
     expect(parse({bridges: Array(20).fill(ok)})).toHaveLength(8);
   });
 });
+
+describe('the older ways of finding a bridge', () => {
+  const g = globalThis as {fetch?: unknown};
+  const realFetch = g.fetch;
+  afterEach(() => {
+    g.fetch = realFetch;
+    jest.resetModules();
+    jest.dontMock('../src/pairingState');
+  });
+  const load = () => {
+    jest.doMock('../src/pairingState', () => ({
+      loadPairing: async () => ({plan: {bridges: [], problems: []}}),
+    }));
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('../src/bridgeConfig').loadBridges as () => Promise<{
+      endpoints: unknown[];
+      source: string;
+      fileError?: string;
+    }>;
+  };
+
+  it('reads the pairing file from MyStyle when it is there', async () => {
+    g.fetch = async () => ({json: async () => ({bridges: [ok]})});
+    const r = await load()();
+    expect(r).toMatchObject({source: 'file', endpoints: [ok]});
+  });
+
+  it('falls back to the baked list when the file has no usable bridge', async () => {
+    g.fetch = async () => ({json: async () => ({bridges: []})});
+    expect(await load()()).toMatchObject({
+      source: 'baked',
+      fileError: 'no bridges in file',
+    });
+  });
+
+  it('falls back to the baked list, saying why, when the file cannot be read', async () => {
+    g.fetch = async () => {
+      throw new Error('Network request failed');
+    };
+    const r = await load()();
+    expect(r.source).toBe('baked');
+    expect(r.fileError).toMatch(/Network request failed/);
+  });
+});

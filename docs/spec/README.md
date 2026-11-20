@@ -9,7 +9,7 @@
 | [bridge-run.md](bridge-run.md) | ブリッジの回答 1 件（run）の状態遷移表 |
 | [page-turn.md](page-turn.md) | ページ追加・書き込みの手順表（手順 × 結果） |
 | [wave.md](wave.md) | 待機中の波線アニメーションの状態遷移表 |
-| [pairing.md](pairing.md) | ペアリング（ADR 0016）: ブリッジの端末の記録、プラグインのペアリングの流れ。**提案・確認待ち**（コードの表にはまだしない） |
+| [pairing.md](pairing.md) | ペアリング（ADR 0016）: ブリッジの端末の記録、プラグインのペアリングの流れ |
 | [interfaces.md](interfaces.md) | モジュール間・関数間・プロセス間の受け渡し（インターフェース）台帳 |
 
 ## 状態遷移表の書き方
@@ -34,13 +34,15 @@
 - 表が「起こりえない」としたことが起きたら、記録（`ask.never`）して何も変えない。テストは、この記録が 1 件でもあれば失敗する（どのシナリオでも）。
 - テスト（`askMachine.test`）が、文書とコードの表の一致、250 マスすべての動作、遷移の形（終了状態から出ない、全状態に到達できる、全状態から終了できる）を確かめる。
 - 手順: ①文書の表（状態・イベント・マス・処理）を直す → ②`npm run spec` → ③足りないハンドラを書く → ④テスト。
-- **4 つの表が、コードの表になっている**（2026-11-07）:
+- **6 つの表が、コードの表になっている**（2026-11-20 に、ペアリングの 2 つを追加）:
   | 文書 | 生成されるコード | 実行 | テスト |
   |---|---|---|---|
   | `ask-flow.md` | `plugin/src/askTable.generated.ts` | `askMachine.ts`（`stm.ts`）、`AskFlow` | `askMachine.test`、`askFlow.test` |
   | `wave.md` | `plugin/src/waveTable.generated.ts` | `inkDrops.ts`（`stm.ts`） | `specTables.test`、`inkDrops.test`、`waveLeftovers.test` |
   | `page-turn.md`（挿入・書き込み） | `plugin/src/insertTable.generated.ts`、`writeTable.generated.ts` | `procedure.ts`、`sdk.ts` | `specTables.test`、`sdkSafety.test` |
   | `bridge-run.md` | `bridge/internal/server/runtable_gen.go` | `runs.go`（`runMachine`）、`server.go` | `runtable_test.go`、`server_test.go` |
+  | `pairing.md`（記録） | `bridge/internal/devices/table_gen.go` | `devices/registry.go`（`fire`。状態を変えるのはここだけ。処理が失敗したら巻き戻す） | `devices/doc_test.go`、`table_test.go`（全 105 マス）、`registry_test.go` |
+  | `pairing.md`（端末） | `plugin/src/pairTable.generated.ts` | `pairingMachine.ts`（`stm.ts`）、`pairing.ts` | `specTables.test`、`pairing.test`（全 60 マス） |
   - 生成は `npm run spec`（`plugin/` で。Go のファイルも作る）。文書とコードの一致は、各言語のテストが、全マスで確かめる。
   - 「起こりえない」マスに当たると、記録（`*.never`）して何も変えない。端末側のテストは、この記録が 1 件でもあれば失敗する。
 

@@ -1,3 +1,5 @@
+import {loadPairing} from './pairingState';
+
 export interface BridgeEndpoint {
   name: string;
   token: string;
@@ -44,12 +46,41 @@ export function parse(json: unknown): BridgeEndpoint[] {
 
 export interface LoadedBridges {
   endpoints: BridgeEndpoint[];
-  source: 'file' | 'baked';
+  source: 'paired' | 'file' | 'baked';
   fileError?: string;
 }
 
-/** Reads the paired bridges from MyStyle (needs FILE:READ), falling back to the baked-in list. */
+/** The bridges this device has paired with (ADR 0016): the key it stored, and where to reach each. */
+async function pairedEndpoints(): Promise<BridgeEndpoint[]> {
+  try {
+    return (await loadPairing()).plan.bridges.flatMap(b =>
+      b.state === 'U5' && b.stored
+        ? [{name: b.stored.name, token: b.stored.key, urls: b.stored.urls}]
+        : [],
+    );
+  } catch {
+    return []; // a store that cannot be read must not stop the older ways of finding a bridge
+  }
+}
+
+/**
+ * The bridges to connect to: first those paired one by one (ADR 0016), then the older ways — the
+ * pairing file in MyStyle (needs FILE:READ), falling back to the list baked into the build.
+ */
 export async function loadBridges(): Promise<LoadedBridges> {
+  const paired = await pairedEndpoints();
+  const older = await loadOlderBridges();
+  if (paired.length === 0) {
+    return older;
+  }
+  return {
+    ...older,
+    endpoints: [...paired, ...older.endpoints].slice(0, MAX_BRIDGES),
+    source: 'paired',
+  };
+}
+
+async function loadOlderBridges(): Promise<LoadedBridges> {
   try {
     const res = await fetch(`file://${CONFIG_PATH}`);
     const endpoints = parse(await res.json());

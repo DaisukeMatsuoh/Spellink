@@ -79,6 +79,7 @@ export function SettingsScreen() {
       <Text style={styles.title}>{t('settingsTitle')}</Text>
       {/* Close and diagnostics sit at the top: the page is longer than the screen. */}
       <View style={styles.row}>
+        <Button label={t('pairButton')} onPress={() => show('pair')} />
         <Button label={t('diagButton')} onPress={() => show('diagnostics')} />
         <Button label={t('close')} onPress={() => void closeView()} />
       </View>

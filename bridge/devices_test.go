@@ -101,16 +101,45 @@ func TestPackageBuilder(t *testing.T) {
 	if _, err := packageBuilder(cfg)(d); err == nil || !strings.Contains(err.Error(), "missing.snplg") {
 		t.Errorf("missing file: %v", err)
 	}
-	cfg = &config.Config{Pairing: &config.Pairing{PluginPackage: snplg(t)}, ExtraURLs: []string{"wss://bridge.example.com/v1"}}
+	cfg = &config.Config{Name: "Rock 5B", Pairing: &config.Pairing{PluginPackage: snplg(t)}, ExtraURLs: []string{"wss://bridge.example.com/v1"}}
 	out, err := packageBuilder(cfg)(d)
 	if err != nil || !bytes.Contains(out, []byte("PK")) {
 		t.Fatalf("package: %v", err)
+	}
+	if got := bundleLine(t, out); !strings.Contains(got, `"name":"Rock 5B"`) || strings.Contains(got, "Nomad") {
+		t.Errorf("the setup must name the bridge, not the device: %s", got)
+	}
+	// a bridge name that cannot be shown is replaced, not passed on
+	cfg.Name = strings.Repeat("x", 65)
+	out, err = packageBuilder(cfg)(d)
+	if err != nil || !strings.Contains(bundleLine(t, out), `"name":"bridge"`) {
+		t.Errorf("unusable bridge name: %v", err)
 	}
 	// a device that still has to pair needs an address to connect to
 	d.B = strings.Repeat("A", 43)
 	if _, err := packageBuilder(&config.Config{Pairing: cfg.Pairing})(d); err == nil {
 		t.Error("no address configured")
 	}
+}
+
+// bundleLine is the first line of the bundle inside a package.
+func bundleLine(t *testing.T, pkg []byte) string {
+	t.Helper()
+	zr, err := zip.NewReader(bytes.NewReader(pkg), int64(len(pkg)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range zr.File {
+		if f.Name == devices.BundleName {
+			rc, _ := f.Open()
+			defer rc.Close()
+			b, _ := io.ReadAll(rc)
+			line, _, _ := strings.Cut(string(b), "\n")
+			return line
+		}
+	}
+	t.Fatal("no bundle")
+	return ""
 }
 
 func testDeps() server.Deps {

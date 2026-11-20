@@ -11,7 +11,7 @@
     "build": "node scripts/prepare-local-config.js && bash buildPlugin.sh",
     "typecheck": "node scripts/prepare-local-config.js && tsc --noEmit",
     "test:coverage": "jest --coverage",
-    "spec": "node scripts/gen-tables.js && prettier --write src/*.generated.ts && (cd ../bridge && $HOME/.local/go/bin/gofmt -w internal/server/runtable_gen.go)"
+    "spec": "node scripts/gen-tables.js && prettier --write src/*.generated.ts && (cd ../bridge && $HOME/.local/go/bin/gofmt -w internal/server/runtable_gen.go internal/devices/table_gen.go)"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

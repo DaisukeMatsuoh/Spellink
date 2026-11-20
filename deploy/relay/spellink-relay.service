@@ -1,0 +1,38 @@
+# systemd unit for the Spellink relay (docs/guides/relay-operations.md).
+# Install: sudo cp spellink-relay.service /etc/systemd/system/ && sudo systemctl enable --now spellink-relay
+[Unit]
+Description=Spellink relay (passes encrypted frames between a Supernote plugin and a bridge)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Run it as its own user, with nothing it does not need.
+User=spellink-relay
+Group=spellink-relay
+# Listen on the loopback only: the tunnel (cloudflared) or a reverse proxy is the one door.
+# -trust-proxy: take the client's address from the proxy's header, which is right ONLY behind that door.
+ExecStart=/usr/local/bin/spellink-bridge relay -listen 127.0.0.1:8780 -trust-proxy
+Restart=always
+RestartSec=2
+# The relay keeps nothing on disk and needs no privileges.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+# One connection is one file descriptor, two per session.
+LimitNOFILE=65536
+# Its log goes to the journal; the relay itself writes no address of a client (see the privacy policy).
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

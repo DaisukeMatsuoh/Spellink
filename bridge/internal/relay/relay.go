@@ -58,6 +58,7 @@ type pending struct {
 }
 
 type room struct {
+	bucket   *shareBucket // the room's share of bandwidth
 	ctrl     *websocket.Conn
 	ctrlMu   sync.Mutex // serialises control writes
 	pending  map[string]*pending
@@ -72,6 +73,12 @@ type Server struct {
 	// TrustProxy: take the client's address from Cf-Connecting-Ip / X-Forwarded-For. Set it only
 	// when the relay is reachable solely through such a proxy or tunnel.
 	TrustProxy bool
+	// IdleTimeout ends a session in which no frame has passed for this long (default 15 minutes; an
+	// answer being written sends a frame every few seconds, so a live session is never idle).
+	IdleTimeout time.Duration
+	// RoomBytesPerSec and RoomBurst are one room's share of bandwidth, counting both directions
+	// (defaults 4 MiB/s and 16 MiB: an answer is hundreds of KB). Beyond it the room is slowed, not cut.
+	RoomBytesPerSec, RoomBurst int64
 	// Attempts per address per minute, per kind of connection.
 	clients, bridges, accepts *limiter
 	mu                        sync.Mutex
@@ -81,6 +88,7 @@ type Server struct {
 func NewServer(logger *log.Logger) *Server {
 	return &Server{
 		Log: logger, MaxRooms: maxRooms, rooms: map[string]*room{},
+		IdleTimeout: defaultIdleTimeout, RoomBytesPerSec: defaultRoomBytesPerSec, RoomBurst: defaultRoomBurst,
 		// a plugin connects once per question (and when reconnecting); a bridge keeps one control
 		// connection and opens one more per plugin session
 		clients: newLimiter(60, time.Minute), bridges: newLimiter(12, time.Minute), accepts: newLimiter(120, time.Minute),
@@ -142,7 +150,7 @@ func (s *Server) handleBridge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rm == nil {
-		rm = &room{pending: map[string]*pending{}}
+		rm = &room{pending: map[string]*pending{}, bucket: newShareBucket(s.RoomBytesPerSec, s.RoomBurst, time.Now)}
 		s.rooms[id] = rm
 	} else if rm.ctrl != nil {
 		_ = rm.ctrl.Close(websocket.StatusGoingAway, "replaced")
@@ -240,9 +248,11 @@ func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request) {
 	defer c.CloseNow()
 	s.mu.Lock()
 	var p *pending
+	var bk *shareBucket
 	if rm := s.rooms[id]; rm != nil {
 		p = rm.pending[sid]
 		delete(rm.pending, sid)
+		bk = rm.bucket
 	}
 	s.mu.Unlock()
 	if p == nil {
@@ -250,13 +260,16 @@ func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer close(p.done)
-	pipe(r.Context(), p.client, c)
+	pipe(r.Context(), p.client, c, s.IdleTimeout, bk)
 }
 
-// pipe copies frames both ways until either side closes.
-func pipe(ctx context.Context, a, b *websocket.Conn) {
+// pipe copies frames both ways until either side closes, the session has been silent for `idle`, or
+// the context ends. The room's bucket slows a room that moves more than its share.
+func pipe(ctx context.Context, a, b *websocket.Conn, idle time.Duration, bk *shareBucket) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	activity := time.AfterFunc(idle, cancel)
+	defer activity.Stop()
 	var wg sync.WaitGroup
 	copyOne := func(dst, src *websocket.Conn) {
 		defer wg.Done()
@@ -270,11 +283,20 @@ func pipe(ctx context.Context, a, b *websocket.Conn) {
 			if err != nil {
 				return
 			}
-			if _, err := io.Copy(wr, rd); err != nil {
+			n, err := io.Copy(wr, rd)
+			if err != nil {
 				return
 			}
 			if err := wr.Close(); err != nil {
 				return
+			}
+			activity.Reset(idle)
+			if wait := bk.take(n); wait > 0 {
+				select {
+				case <-time.After(wait):
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}
@@ -284,4 +306,47 @@ func pipe(ctx context.Context, a, b *websocket.Conn) {
 	wg.Wait()
 	_ = a.Close(websocket.StatusNormalClosure, "")
 	_ = b.Close(websocket.StatusNormalClosure, "")
+}
+
+const (
+	defaultIdleTimeout     = 15 * time.Minute
+	defaultRoomBytesPerSec = 4 << 20
+	defaultRoomBurst       = 16 << 20
+)
+
+// shareBucket is a token bucket: `rate` bytes per second refill it up to `burst`.
+type shareBucket struct {
+	mu     sync.Mutex
+	rate   float64
+	burst  float64
+	tokens float64
+	last   time.Time
+	now    func() time.Time
+}
+
+func newShareBucket(rate, burst int64, now func() time.Time) *shareBucket {
+	if rate <= 0 {
+		rate = defaultRoomBytesPerSec
+	}
+	if burst <= 0 {
+		burst = defaultRoomBurst
+	}
+	return &shareBucket{rate: float64(rate), burst: float64(burst), tokens: float64(burst), last: now(), now: now}
+}
+
+// take spends n bytes and says how long to wait before sending more (0: no need). A nil bucket never makes anyone wait.
+func (b *shareBucket) take(n int64) time.Duration {
+	if b == nil {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := b.now()
+	b.tokens = min(b.burst, b.tokens+now.Sub(b.last).Seconds()*b.rate)
+	b.last = now
+	b.tokens -= float64(n)
+	if b.tokens >= 0 {
+		return 0
+	}
+	return time.Duration(-b.tokens / b.rate * float64(time.Second))
 }

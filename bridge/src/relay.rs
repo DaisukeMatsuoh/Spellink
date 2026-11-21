@@ -501,18 +501,23 @@ async fn pipe(a: WebSocket, b: WebSocket, idle: Duration, bucket: Option<Arc<Sha
 // ---- the command ----
 
 pub async fn run_cli(flags: &HashMap<String, String>) -> Result<(), String> {
-    let listen = flags.get("listen").map(String::as_str).unwrap_or(":8780");
+    let tls_domain = flags.get("tls-domain").cloned().filter(|d| !d.is_empty());
+    let default_listen = if tls_domain.is_some() { ":8443" } else { ":8780" };
+    let listen = flags.get("listen").filter(|l| !l.is_empty()).map(String::as_str).unwrap_or(default_listen);
     let listen = if let Some(port) = listen.strip_prefix(':') { format!("0.0.0.0:{port}") } else { listen.to_string() };
     let cfg = Config { trust_proxy: flags.contains_key("trust-proxy"), ..Config::default() };
-    let relay = Relay::new(cfg, Arc::new(|s| println!("{s}")));
+    if tls_domain.is_some() && cfg.trust_proxy {
+        return Err("--tls-domain and --trust-proxy do not go together: with its own TLS the relay sees the real address".into());
+    }
+    let log: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|s| println!("{s}"));
+    let relay = Relay::new(cfg, log.clone());
     let listener = tokio::net::TcpListener::bind(&listen).await.map_err(|e| format!("{listen}: {e}"))?;
-    println!("spellink relay {} listening on {listen}", env!("CARGO_PKG_VERSION"));
-    let app = relay.router().into_make_service_with_connect_info::<SocketAddr>();
-    axum::serve(crate::util::low_latency(listener), app)
-        .with_graceful_shutdown(async {
-            let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("SIGTERM handler");
-            tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = term.recv() => {} }
-        })
-        .await
-        .map_err(|e| e.to_string())
+    let cancel = tokio_util::sync::CancellationToken::new();
+    crate::edge::cancel_on_signal(cancel.clone());
+    let tls = match tls_domain {
+        None => None,
+        Some(domain) => Some(crate::names::service_tls(flags, &domain, "relay")?),
+    };
+    println!("spellink relay {} listening on {listen}{}", env!("CARGO_PKG_VERSION"), if tls.is_some() { " (TLS)" } else { "" });
+    crate::edge::serve(listener, relay.router(), tls, cancel, log).await
 }

@@ -136,11 +136,7 @@ impl Names {
     fn save(&self, inner: &Inner) -> Result<(), String> {
         let Some(path) = &self.path else { return Ok(()) };
         let saved = Saved {
-            records: inner
-                .records
-                .iter()
-                .map(|(id, r)| (id.clone(), SavedRecord { public_key: namesproto::b64(&r.public_key), ip: r.ip.map(|i| i.to_string()).unwrap_or_default(), updated: r.updated }))
-                .collect(),
+            records: inner.records.iter().map(|(id, r)| (id.clone(), SavedRecord { public_key: namesproto::b64(&r.public_key), ip: r.ip.map(|i| i.to_string()).unwrap_or_default(), updated: r.updated })).collect(),
         };
         let bytes = serde_json::to_vec(&saved).map_err(|e| e.to_string())?;
         if let Some(dir) = path.parent() {
@@ -156,6 +152,10 @@ impl Names {
 
     pub fn len(&self) -> usize {
         self.inner.lock().unwrap().records.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Adds a record without a signature, for this process's own identity (it needs only the TXT

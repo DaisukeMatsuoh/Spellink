@@ -86,9 +86,15 @@ pub enum Cell {
     Ignore(&'static str),
     /// It happens; run the action but stay in the state.
     IgnoreDo(RegAction),
-    Do { action: RegAction, next: RegState },
+    Do {
+        action: RegAction,
+        next: RegState,
+    },
     /// Which move depends on a condition the caller decides (`spent`).
-    Guard { more: RegMove, spent: RegMove },
+    Guard {
+        more: RegMove,
+        spent: RegMove,
+    },
 }
 
 pub fn cell(state: RegState, event: RegEvent) -> Cell {

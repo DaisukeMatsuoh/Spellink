@@ -4,6 +4,17 @@ use std::io::Write;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Makes aws-lc-rs the TLS crypto of this process. ureq (the HTTPS client for downloads and for
+/// the name service) is built without a provider of its own and uses the process default, so
+/// without this every HTTPS request fails with "No CryptoProvider". Safe to call again.
+pub fn install_crypto() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        // an Err means a default was already installed by someone else: that one is used
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    });
+}
+
 /// Writes `bytes` to `path` so that only its owner can read it (mode 0600 where the platform has
 /// modes). An existing file keeps its old mode with a plain write, so the mode is set explicitly.
 pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -105,5 +116,20 @@ mod tests {
         assert_eq!(rfc3339_utc(951_782_400), "2000-02-29T00:00:00Z", "a leap day");
         assert_eq!(rfc3339_utc(1_795_264_496), "2026-11-21T12:34:56Z");
         assert_eq!(rfc3339_utc(-1), "1969-12-31T23:59:59Z");
+    }
+}
+
+#[cfg(test)]
+mod crypto_tests {
+    /// ureq has no crypto of its own: once `install_crypto` ran, an HTTPS request is built and
+    /// fails only for a real reason (here: nothing listens), instead of panicking with "No
+    /// CryptoProvider". The target is a closed local port, so the test needs no network.
+    #[test]
+    fn an_https_request_is_set_up_with_the_process_crypto() {
+        super::install_crypto();
+        super::install_crypto(); // twice is fine
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+        let err = ureq::get("https://127.0.0.1:9/").call().unwrap_err().to_string();
+        assert!(!err.to_lowercase().contains("cryptoprovider"), "{err}");
     }
 }

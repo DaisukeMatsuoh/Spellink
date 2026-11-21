@@ -2,7 +2,7 @@
 //! (~/.config/spellink-bridge on Linux, ~/Library/Application Support/spellink-bridge on macOS;
 //! Go: internal/config). The directory is a parameter (`Store`), so each test has its own.
 
-use crate::lantls;
+use crate::lan;
 use crate::util;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -81,9 +81,9 @@ pub struct Config {
     /// What the bridge remembers of each note's conversation (ADR 0012).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub history: Option<History>,
-    /// Direct wss:// at home with a Let's Encrypt certificate (lantls). Empty disables it.
+    /// Direct wss:// at home with the bridge's own Let's Encrypt certificate (ADR 0017). Off unless `enabled`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub lan: Option<lantls::Config>,
+    pub lan: Option<lan::Config>,
     /// Tunes how devices are added (ADR 0016). Zero fields use the defaults.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pairing: Option<Pairing>,

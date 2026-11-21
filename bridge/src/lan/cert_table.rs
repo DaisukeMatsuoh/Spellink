@@ -43,7 +43,18 @@ pub enum CertEvent {
 }
 
 impl CertEvent {
-    pub const ALL: &'static [CertEvent] = &[CertEvent::Enable, CertEvent::EnableWithCert, CertEvent::Disable, CertEvent::RegistrationReady, CertEvent::Issued, CertEvent::RateLimited, CertEvent::OrderFails, CertEvent::RetryDue, CertEvent::RenewDue, CertEvent::CertExpires];
+    pub const ALL: &'static [CertEvent] = &[
+        CertEvent::Enable,
+        CertEvent::EnableWithCert,
+        CertEvent::Disable,
+        CertEvent::RegistrationReady,
+        CertEvent::Issued,
+        CertEvent::RateLimited,
+        CertEvent::OrderFails,
+        CertEvent::RetryDue,
+        CertEvent::RenewDue,
+        CertEvent::CertExpires,
+    ];
     pub fn name(self) -> &'static str {
         match self {
             CertEvent::Enable => "Enable",
@@ -69,11 +80,10 @@ pub enum CertAction {
     C4,
     C5,
     C6,
-    C7,
 }
 
 impl CertAction {
-    pub const ALL: &'static [CertAction] = &[CertAction::C0, CertAction::C1, CertAction::C2, CertAction::C3, CertAction::C4, CertAction::C5, CertAction::C6, CertAction::C7];
+    pub const ALL: &'static [CertAction] = &[CertAction::C0, CertAction::C1, CertAction::C2, CertAction::C3, CertAction::C4, CertAction::C5, CertAction::C6];
     pub fn name(self) -> &'static str {
         match self {
             CertAction::C0 => "C0",
@@ -83,7 +93,6 @@ impl CertAction {
             CertAction::C4 => "C4",
             CertAction::C5 => "C5",
             CertAction::C6 => "C6",
-            CertAction::C7 => "C7",
         }
     }
 }
@@ -104,9 +113,15 @@ pub enum Cell {
     Ignore(&'static str),
     /// It happens; run the action but stay in the state.
     IgnoreDo(CertAction),
-    Do { action: CertAction, next: CertState },
+    Do {
+        action: CertAction,
+        next: CertState,
+    },
     /// Which move depends on a condition the caller decides (`spent`).
-    Guard { more: CertMove, spent: CertMove },
+    Guard {
+        more: CertMove,
+        spent: CertMove,
+    },
 }
 
 pub fn cell(state: CertState, event: CertEvent) -> Cell {
@@ -160,7 +175,7 @@ pub fn cell(state: CertState, event: CertEvent) -> Cell {
         (CertState::Valid, CertEvent::OrderFails) => Cell::Never("c"),
         (CertState::Valid, CertEvent::RetryDue) => Cell::Never("d"),
         (CertState::Valid, CertEvent::RenewDue) => Cell::Do { action: CertAction::C1, next: CertState::Renewing },
-        (CertState::Valid, CertEvent::CertExpires) => Cell::Do { action: CertAction::C7, next: CertState::Ordering },
+        (CertState::Valid, CertEvent::CertExpires) => Cell::Never("f"),
         (CertState::Renewing, CertEvent::Enable) => Cell::Ignore("a"),
         (CertState::Renewing, CertEvent::EnableWithCert) => Cell::Ignore("a"),
         (CertState::Renewing, CertEvent::Disable) => Cell::Do { action: CertAction::C2, next: CertState::Off },

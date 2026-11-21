@@ -41,7 +41,7 @@ pub fn device_urls(cfg: &Config, id: &str, secret: &str) -> Vec<String> {
         Some(u.to_string())
     };
     let mut urls = vec![];
-    if let Some(lan) = cfg.lan.as_ref().filter(|l| !l.host.is_empty()) {
+    if let Some(lan) = cfg.lan.as_ref().filter(|l| l.enabled && !l.host.is_empty()) {
         urls.extend(named(&format!("wss://{}:8766{}", lan.host, protocol::WS_PATH)));
     }
     urls.extend(cfg.extra_urls.iter().filter_map(|u| named(u)));
@@ -135,7 +135,7 @@ pub fn status_func(cfg: Arc<Config>, ai_name: String) -> Arc<dyn Fn() -> StatusI
 /// For the log: the addresses a new device would be told.
 pub fn describe_urls(cfg: &Config) -> String {
     let u = device_urls(cfg, "<id>", "");
-    if u.is_empty() { "none (add a wss:// address: extraUrls, lan or relayUrl)".into() } else { u.join(", ") }
+    if u.is_empty() { "none (add a wss:// address: extraUrls, lan.enabled or relayUrl)".into() } else { u.join(", ") }
 }
 
 /// Every LAN IPv4 address plus the mDNS host name; the plugin tries them all.
@@ -163,7 +163,7 @@ pub fn pair_urls(cfg: &Config) -> Vec<String> {
     if !cfg.relay_url.is_empty() {
         urls.push(crate::connector::client_url(&cfg.relay_url, &cfg.token));
     }
-    if let Some(lan) = cfg.lan.as_ref().filter(|l| !l.host.is_empty()) {
+    if let Some(lan) = cfg.lan.as_ref().filter(|l| l.enabled && !l.host.is_empty()) {
         urls.insert(0, format!("wss://{}:8766{}", lan.host, protocol::WS_PATH));
     }
     urls
@@ -203,13 +203,14 @@ pub fn new_provider(cfg: &Config) -> Result<Arc<dyn Provider>, String> {
 /// Runs the bridge until SIGINT/SIGTERM.
 pub async fn serve() -> Result<(), String> {
     let store = ConfigStore::user()?;
-    let cfg = store.load()?;
+    let mut cfg = store.load()?;
+    let log = stdout_log();
+    let lan_identity = prepare_lan(&mut cfg, store.dir(), &log)?;
     let font = {
         let store = store.clone();
         tokio::task::spawn_blocking(move || load_font(&store)).await.map_err(|e| e.to_string())??
     };
     let ai = new_provider(&cfg)?;
-    let log = stdout_log();
     let (first, gap, total) = cfg.provider_timeouts();
     let notes = if cfg.history_chars() > 0 { Arc::new(history::Store::new(store.history_dir())) } else { Arc::new(history::Store::none()) };
     let shared = Arc::new(Mutex::new(cfg.clone()));
@@ -303,8 +304,8 @@ pub async fn serve() -> Result<(), String> {
         };
         tokio::spawn(connector::connect(cancel.clone(), cfg.relay_url.clone(), cfg.token.clone(), serve_fn, log.clone()));
     }
-    if cfg.lan.is_some() {
-        log("lan wss is not available in this build yet (the name service of ADR 0017 replaces it); use a tunnel (extraUrls) or the relay");
+    if let (Some(identity), Some(l)) = (lan_identity, cfg.lan.clone()) {
+        start_lan(&l, identity, store.dir(), &log, router.clone(), &cancel).await;
     }
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", cfg.port as u16)).await.map_err(|e| format!("port {}: {e}", cfg.port))?;
@@ -323,6 +324,81 @@ pub async fn serve() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())
 }
+
+/// Reads the `lan` setting. When it is on and usable, makes (or reads) this bridge's identity and
+/// puts its name in the setting, so that devices are told it. A setting that is not usable is
+/// reported and turned off for this run; it is not a reason to stop the bridge (the relay and
+/// the tunnel still work).
+fn prepare_lan(cfg: &mut Config, dir: &std::path::Path, log: &LogFn) -> Result<Option<Arc<crate::namesproto::Identity>>, String> {
+    let Some(l) = cfg.lan.as_mut().filter(|l| l.enabled) else { return Ok(None) };
+    if let Some(why) = l.valid() {
+        log(&format!("lan: not used: {why}"));
+        l.enabled = false;
+        return Ok(None);
+    }
+    let unused = l.unused_keys().join(", ");
+    if !unused.is_empty() {
+        log(&format!("lan: the settings {unused} are not used any more (the name service replaces them); they can be removed"));
+    }
+    let identity = Arc::new(crate::namesproto::Identity::load_or_create(dir)?);
+    l.host = format!("{}.{}", identity.id(), l.zone.trim_end_matches('.').to_ascii_lowercase());
+    Ok(Some(identity))
+}
+
+/// Registers with the name service, gets the certificate, and serves the same pages on the LAN
+/// port with it (8766). Nothing here stops the bridge: if it cannot start, the log says why.
+async fn start_lan(l: &crate::lan::Config, identity: Arc<crate::namesproto::Identity>, dir: &std::path::Path, log: &LogFn, router: axum::Router, cancel: &CancellationToken) {
+    use crate::lan::{Lan, LanAddress, Parts, Timing, client::NamesClient, system_clock};
+    let clock = system_clock();
+    let client = match NamesClient::new(&l.names, identity, clock.clone()) {
+        Ok(c) => Arc::new(c),
+        Err(e) => return log(&format!("lan: not started: {e}")),
+    };
+    let listener = match tokio::net::TcpListener::bind(("0.0.0.0", LAN_PORT)).await {
+        Ok(l) => l,
+        Err(e) => return log(&format!("lan: not started: port {LAN_PORT}: {e}")),
+    };
+    let resolver = crate::tlsserve::CertResolver::new();
+    let log_for_lan = log.clone();
+    let parts = Parts {
+        domain: l.host.clone(),
+        registrar: client.clone(),
+        addresses: Arc::new(LanAddress),
+        publisher: client,
+        orderer: Arc::new(crate::acme::Acme::new(dir, l.directory(), &l.email)),
+        files: crate::acme::CertFiles::new(dir, "lan"),
+        resolver: resolver.clone(),
+        clock,
+        log: Arc::new(move |s| log_for_lan(s)),
+        timing: Timing::default(),
+    };
+    let lan = Lan::start(parts, cancel.clone());
+    log(&format!("lan: {} on port {LAN_PORT}", l.host));
+    let (tls_cancel, tls_log) = (cancel.clone(), log.clone());
+    tokio::spawn(async move {
+        if let Err(e) = crate::tlsserve::serve(listener, router, resolver, tls_cancel).await {
+            tls_log(&format!("lan: stopped: {e}"));
+        }
+    });
+    let (mut watch, status_log, stop) = (lan.watch(), log.clone(), cancel.clone());
+    tokio::spawn(async move {
+        let _keep = &lan; // the machines run while the bridge does
+        let mut last = String::new();
+        loop {
+            let now = watch.borrow_and_update().describe();
+            if now != last {
+                status_log(&format!("lan: {now}"));
+                last = now;
+            }
+            tokio::select! {
+                _ = stop.cancelled() => return,
+                r = watch.changed() => if r.is_err() { return },
+            }
+        }
+    });
+}
+
+pub const LAN_PORT: u16 = 8766;
 
 pub async fn wait_for_signal() {
     #[cfg(unix)]
@@ -390,7 +466,7 @@ fn start_devices(cancel: &CancellationToken, store: &ConfigStore, cfg: &Config, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lantls;
+    use crate::lan;
 
     fn cfg() -> Config {
         Config { name: "Rock".into(), port: 8765, token: "tok".into(), ..Config::default() }
@@ -401,7 +477,7 @@ mod tests {
         let mut c = cfg();
         c.extra_urls = vec!["wss://bridge.example.com/v1".into(), "ws://plain.example/v1".into(), "https://nope/v1".into(), "wss://other.example/v1?x=1&d=old".into()];
         c.relay_url = "wss://relay.example.com".into();
-        c.lan = Some(lantls::Config { host: "rock.lan.example.com".into(), cloudflare_token: "t".into(), ..Default::default() });
+        c.lan = Some(lan::Config { enabled: true, host: "rock.lan.example.com".into(), ..Default::default() });
         let urls = device_urls(&c, "0123456789abcdef", "SECRET");
         assert_eq!(
             urls,
@@ -463,12 +539,7 @@ mod tests {
 
     #[test]
     fn the_pair_urls_put_the_wss_lan_name_first() {
-        let c = Config {
-            relay_url: "wss://r.example".into(),
-            extra_urls: vec!["wss://t.example/v1".into()],
-            lan: Some(lantls::Config { host: "h.example.com".into(), cloudflare_token: "t".into(), ..Default::default() }),
-            ..cfg()
-        };
+        let c = Config { relay_url: "wss://r.example".into(), extra_urls: vec!["wss://t.example/v1".into()], lan: Some(lan::Config { enabled: true, host: "h.example.com".into(), ..Default::default() }), ..cfg() };
         let urls = pair_urls(&c);
         assert_eq!(urls[0], "wss://h.example.com:8766/v1");
         assert!(urls.iter().any(|u| u == "wss://t.example/v1") && urls.last().unwrap().contains("/v1/relay/client?room="));

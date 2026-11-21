@@ -392,6 +392,7 @@ pub fn add_hershey(font: &mut Font, js: &str) -> Result<(), String> {
 }
 
 fn download(url: &str) -> Result<Vec<u8>, String> {
+    crate::util::install_crypto();
     let mut resp = ureq::get(url).call().map_err(|e| format!("GET {url}: {e}"))?;
     let mut out = Vec::new();
     resp.body_mut().as_reader().take(512 << 20).read_to_end(&mut out).map_err(|e| format!("GET {url}: {e}"))?;

@@ -886,5 +886,7 @@ async fn small_frames_are_not_held_back_by_nagle() {
         times.push(t.elapsed());
     }
     times.sort();
-    assert!(times[3] < Duration::from_millis(25), "a session opened in {:?} (median): small frames are being held back", times[3]);
+    // the fastest of 7: a busy machine can slow some openings, but with Nagle's algorithm every
+    // opening waits 40 ms or more, so none would be quick
+    assert!(times[0] < Duration::from_millis(25), "the fastest of 7 sessions opened in {:?}: small frames are being held back", times[0]);
 }

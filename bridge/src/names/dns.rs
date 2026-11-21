@@ -529,7 +529,12 @@ mod tests {
         let mut x = 0x1234_5678u32;
         for _ in 0..2000 {
             let len = (x % 80) as usize;
-            let junk: Vec<u8> = (0..len).map(|_| { x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223); (x >> 24) as u8 }).collect();
+            let junk: Vec<u8> = (0..len)
+                .map(|_| {
+                    x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                    (x >> 24) as u8
+                })
+                .collect();
             let _ = respond(&z, &n, &junk, false, T);
         }
     }

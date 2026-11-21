@@ -21,16 +21,28 @@ use std::time::Instant;
 pub fn parse_args() -> (String, HashMap<String, String>, Vec<String>) {
     let mut it = std::env::args().skip(1);
     let cmd = it.next().unwrap_or_default();
+    let (flags, rest) = parse_flags(it);
+    (cmd, flags, rest)
+}
+
+/// `--name value` pairs and the rest. A flag followed by another flag (or by nothing) has an empty
+/// value, so `--trust-proxy --listen :80` does not swallow `--listen`.
+pub fn parse_flags(args: impl Iterator<Item = String>) -> (HashMap<String, String>, Vec<String>) {
+    let mut it = args.peekable();
     let mut flags = HashMap::new();
     let mut rest = Vec::new();
     while let Some(a) = it.next() {
         if let Some(name) = a.strip_prefix("--") {
-            flags.insert(name.to_string(), it.next().unwrap_or_default());
+            let value = match it.peek() {
+                Some(next) if !next.starts_with("--") => it.next().unwrap_or_default(),
+                _ => String::new(),
+            };
+            flags.insert(name.to_string(), value);
         } else {
             rest.push(a);
         }
     }
-    (cmd, flags, rest)
+    (flags, rest)
 }
 
 fn flag_f64(flags: &HashMap<String, String>, name: &str) -> Result<f64, String> {
@@ -243,5 +255,24 @@ mod tests {
     #[test]
     fn a_file_that_is_not_a_glyph_file_is_refused() {
         assert!(matches!(glyphs::read_font(&b"not gzip"[..]), Err(glyphs::FontError::Format)));
+    }
+}
+
+#[cfg(test)]
+mod flag_tests {
+    use super::parse_flags;
+
+    fn args(v: &[&str]) -> impl Iterator<Item = String> {
+        v.iter().map(|s| s.to_string()).collect::<Vec<_>>().into_iter()
+    }
+
+    #[test]
+    fn a_flag_without_a_value_does_not_swallow_the_next_flag() {
+        let (f, rest) = parse_flags(args(&["--trust-proxy", "--listen", ":80", "file"]));
+        assert_eq!(f.get("trust-proxy").map(String::as_str), Some(""));
+        assert_eq!(f.get("listen").map(String::as_str), Some(":80"));
+        assert_eq!(rest, vec!["file"]);
+        let (f, _) = parse_flags(args(&["--last"]));
+        assert_eq!(f.get("last").map(String::as_str), Some(""));
     }
 }

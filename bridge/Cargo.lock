@@ -1629,12 +1629,14 @@ dependencies = [
  "instant-acme",
  "png",
  "rand",
+ "rcgen",
  "rustls",
  "serde",
  "serde_json",
  "sha2",
  "snow",
  "tempfile",
+ "time",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
@@ -1971,6 +1973,7 @@ dependencies = [
  "rustls-pki-types",
  "ureq-proto",
  "utf8-zero",
+ "webpki-roots 1.0.12",
 ]
 
 [[package]]

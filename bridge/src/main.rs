@@ -8,12 +8,16 @@ const USAGE: &str = "usage:
   spellink-bridge open                  open the Spellink Bridge App (status and devices) in your browser
   spellink-bridge device <command>      add, pair, list and revoke devices one by one (run with no command for help)
   spellink-bridge service install|uninstall|status [--dry-run]   start the bridge by itself with the computer
-  spellink-bridge relay [--listen ADDR] [--trust-proxy]   run a relay that lets plugins reach bridges behind NAT
+  spellink-bridge relay [--listen ADDR] [--trust-proxy | --tls-domain NAME --data DIR [--names URL --zone ZONE --ca staging --email ADDR]]
+                                        run a relay that lets plugins reach bridges behind NAT
+  spellink-bridge names --ns NAME --data DIR [--zone Z --dns ADDR --listen ADDR --tls-domain NAME --ca staging]
+                                        run the name service (DNS for the LAN zone and its API)
   spellink-bridge version
   (more commands are being ported from the Go bridge: docs/notes/progress/rust-port.md)";
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    spellink_bridge::util::install_crypto();
     let (cmd, flags, rest) = spellink_bridge::measure::parse_args();
     let result = match cmd.as_str() {
         "serve" => spellink_bridge::app::serve().await,
@@ -32,6 +36,7 @@ async fn main() -> ExitCode {
         "open" => spellink_bridge::cli::open_app().await,
         "device" => spellink_bridge::cli::device(&std::env::args().skip(2).collect::<Vec<_>>()).await,
         "relay" => spellink_bridge::relay::run_cli(&flags).await,
+        "names" => spellink_bridge::names::run_cli(&flags).await,
         "version" => {
             println!("{}", spellink_bridge::app::VERSION);
             Ok(())

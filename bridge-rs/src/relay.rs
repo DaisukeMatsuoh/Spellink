@@ -528,7 +528,7 @@ pub async fn run_cli(flags: &HashMap<String, String>) -> Result<(), String> {
     let listener = tokio::net::TcpListener::bind(&listen).await.map_err(|e| format!("{listen}: {e}"))?;
     println!("spellink relay {} listening on {listen}", env!("CARGO_PKG_VERSION"));
     let app = relay.router().into_make_service_with_connect_info::<SocketAddr>();
-    axum::serve(listener, app)
+    axum::serve(crate::util::low_latency(listener), app)
         .with_graceful_shutdown(async {
             let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("SIGTERM handler");
             tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = term.recv() => {} }

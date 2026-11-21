@@ -447,7 +447,7 @@ impl Store {
     }
 }
 
-fn hostname() -> String {
+pub fn hostname() -> String {
     std::fs::read_to_string("/proc/sys/kernel/hostname")
         .ok()
         .map(|s| s.trim().to_string())

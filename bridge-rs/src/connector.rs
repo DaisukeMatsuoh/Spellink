@@ -58,7 +58,7 @@ pub async fn connect_room(cancel: CancellationToken, relay_base: String, room: S
 async fn connect_once(cancel: &CancellationToken, base: &str, room: &str, serve: &ServeFn, log: &LogFn) -> String {
     let url = format!("{base}{BRIDGE_PATH}?room={room}");
     let mut ws = tokio::select! {
-        r = tokio_tungstenite::connect_async(url) => match r {
+        r = tokio_tungstenite::connect_async_with_config(url, None, true) => match r {
             Ok((ws, _)) => ws,
             Err(e) => return e.to_string(),
         },
@@ -93,7 +93,7 @@ async fn connect_once(cancel: &CancellationToken, base: &str, room: &str, serve:
                         let sid = sid.to_string();
                         tokio::spawn(async move {
                             let sc = tokio::select! {
-                                r = tokio_tungstenite::connect_async(u) => match r {
+                                r = tokio_tungstenite::connect_async_with_config(u, None, true) => match r {
                                     Ok((sc, _)) => sc,
                                     Err(e) => return log(&format!("relay: accept {sid}: {e}")),
                                 },

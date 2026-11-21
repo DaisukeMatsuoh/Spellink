@@ -830,3 +830,34 @@ async fn an_answer_that_outgrows_its_pages_is_cut_and_the_ai_is_stopped() {
     assert!(m["type"] == "done" && m["truncated"] == true, "an answer that does not fit says so: {m}");
     tokio::time::timeout(Duration::from_secs(5), stopped.notified()).await.expect("the AI must stop when no more can be written");
 }
+
+/// Small frames must not wait for a delayed acknowledgement (Nagle's algorithm): the handshake and
+/// the welcome of a session on the loopback take a few milliseconds, not the ~40 ms a stalled
+/// small write costs. The Go bridge gets this from its HTTP server; here it is set on the listener.
+#[tokio::test]
+async fn small_frames_are_not_held_back_by_nagle() {
+    use spellink_bridge::server::{http, Deps};
+    use std::net::SocketAddr;
+    let deps: Deps = default_deps(ai(|_, _, _, _| async { Ok(String::new()) }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    // the same listener as the bridge's `serve` and the relay
+    let listener = spellink_bridge::util::low_latency(listener);
+    let app = http::router(Arc::new(deps), None, None).into_make_service_with_connect_info::<SocketAddr>();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let url = format!("ws://{addr}/v1");
+    let mut times = vec![];
+    for _ in 0..7 {
+        let t = std::time::Instant::now();
+        let (mut ws, _) = tokio_tungstenite::connect_async_with_config(&url, None, true).await.unwrap();
+        use futures_util::{SinkExt, StreamExt};
+        let (init, m1) = spellink_bridge::securechan::Initiator::start(&spellink_bridge::securechan::psk("secret")).unwrap();
+        ws.send(tokio_tungstenite::tungstenite::Message::Binary(m1.into())).await.unwrap();
+        let _ = ws.next().await.unwrap().unwrap(); // message 2
+        let _ = init;
+        let _ = ws.next().await.unwrap().unwrap(); // the welcome
+        times.push(t.elapsed());
+    }
+    times.sort();
+    assert!(times[3] < Duration::from_millis(25), "a session opened in {:?} (median): small frames are being held back", times[3]);
+}

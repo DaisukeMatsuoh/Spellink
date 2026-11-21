@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spellink Bridge App</title>
+<style>
+  body { font: 17px/1.5 system-ui, sans-serif; margin: 0 auto; max-width: 46rem; padding: 1rem; color: #111; background: #fff; }
+  h1 { font-size: 1.5rem; margin-bottom: .2rem; }
+  h2 { font-size: 1.15rem; margin-top: 1.6rem; border-bottom: 1px solid #ccc; padding-bottom: .2rem; }
+  .line { margin: .25rem 0; }
+  .ok::before { content: "● "; color: #1a7f37; }
+  .bad::before { content: "● "; color: #b42318; }
+  .info::before { content: "● "; color: #666; }
+  .device { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; padding: .5rem 0; border-bottom: 1px solid #eee; }
+  .device .name { font-weight: 600; min-width: 10rem; }
+  .device .state { color: #444; flex: 1; }
+  button { font-size: 1rem; padding: .3rem .8rem; }
+  input { font-size: 1.1rem; padding: .3rem; width: 14em; }
+  #message { min-height: 2.5rem; font-weight: 600; margin-top: 1rem; }
+  #steps { margin-top: .5rem; }
+  a { color: #0b57d0; }
+</style>
+</head>
+<body>
+<h1 id="title">Spellink Bridge App</h1>
+<div id="status"></div>
+<h2 id="devicesTitle"></h2>
+<div id="devices"></div>
+<h2 id="addTitle"></h2>
+<div><input id="addName" maxlength="64" autocomplete="off"> <button id="addButton" type="button"></button></div>
+<div id="steps"></div>
+<p id="message" role="status" aria-live="polite"></p>
+<script src="/pair/pairlogic.js"></script>
+<script src="/app/app.js"></script>
+<script>
+  appPage.start({
+    logic: pairLogic, document: document, navigator: navigator, location: location,
+    fetch: window.fetch.bind(window), setTimeout: window.setTimeout.bind(window),
+    confirm: window.confirm.bind(window),
+    download: function (blob, name) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    },
+  });
+</script>
+</body>
+</html>

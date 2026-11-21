@@ -1,0 +1,45 @@
+# The words of the Spellink Bridge App page. One row per message, one column per language; \n is a newline.
+# {name}, {why} and the like mark values filled in at run time. An empty cell in a language other than English uses the English text.
+# A language is added by adding a column here (the rules are the same as plugin/locales/strings.tsv).
+key	en	ja	es	fr
+title	Spellink Bridge App	Spellink Bridge App	Spellink Bridge App	Spellink Bridge App
+noToken	Open this page with: spellink-bridge open	このページは「spellink-bridge open」で開いてください。	Abre esta página con: spellink-bridge open	Ouvrez cette page avec : spellink-bridge open
+unauthorized	This page is not allowed to manage the bridge. Open it with: spellink-bridge open	このページにはブリッジを管理する権限がありません。「spellink-bridge open」で開いてください。	Esta página no tiene permiso para gestionar el puente. Ábrela con: spellink-bridge open	Cette page n’est pas autorisée à gérer le pont. Ouvrez-la avec : spellink-bridge open
+unreachable	The bridge does not answer ({why}).	ブリッジが応答しません（{why}）。	El puente no responde ({why}).	Le pont ne répond pas ({why}).
+bridgeLine	Bridge "{name}" (version {version})	ブリッジ「{name}」（版 {version}）	Puente "{name}" (versión {version})	Pont « {name} » (version {version})
+providerOk	{name} is ready: {path}	{name} を使えます: {path}	{name} está listo: {path}	{name} est prêt : {path}
+providerMissing	{name} was not found on this computer. Install it and log in, then reload this page.	{name} がこのパソコンに見つかりません。インストールしてログインしてから、このページを開き直してください。	No se encontró {name} en este ordenador. Instálalo e inicia sesión; después recarga esta página.	{name} est introuvable sur cet ordinateur. Installez-le et connectez-vous, puis rechargez cette page.
+relayOn	Devices can reach this bridge away from home (relay on).	外出先の端末からも、このブリッジに届きます（中継を使用中）。	Los dispositivos pueden llegar a este puente fuera de casa (relé activado).	Les appareils peuvent joindre ce pont hors de chez vous (relais activé).
+relayOff	Only devices on addresses listed in the settings can reach this bridge.	設定にある住所から届く端末だけが、このブリッジを使えます。	Solo los dispositivos en las direcciones indicadas en los ajustes pueden llegar a este puente.	Seuls les appareils aux adresses indiquées dans les réglages peuvent joindre ce pont.
+noAddress	No wss:// address is set, so a new device cannot be told where to connect. Set extraUrls, lan or relayUrl in config.json.	wss:// の住所が設定されていないので、新しい端末に接続先を教えられません。config.json の extraUrls・lan・relayUrl を設定してください。	No hay ninguna dirección wss:// configurada, así que no se puede indicar a un dispositivo nuevo dónde conectarse. Configura extraUrls, lan o relayUrl en config.json.	Aucune adresse wss:// n’est définie : impossible d’indiquer à un nouvel appareil où se connecter. Définissez extraUrls, lan ou relayUrl dans config.json.
+devicesTitle	Devices	端末	Dispositivos	Appareils
+noDevices	No devices yet. Add one below.	端末はまだありません。下で追加してください。	Aún no hay dispositivos. Añade uno abajo.	Aucun appareil pour l’instant. Ajoutez-en un ci-dessous.
+stateIssued	Setup file made. Install it on the device, then tap Pair there. (valid until {until})	セットアップファイルを作りました。端末に入れて、端末で「ペアリング」を押してください（{until} まで有効）。	Archivo de configuración creado. Instálalo en el dispositivo y pulsa Emparejar allí. (válido hasta {until})	Fichier d’installation créé. Installez-le sur l’appareil, puis appuyez sur Appairer. (valable jusqu’au {until})
+stateWaiting	The device is showing a code: scan its QR code.	端末がコードを表示しています。QRコードを読み取ってください。	El dispositivo muestra un código: escanea su código QR.	L’appareil affiche un code : scannez son code QR.
+stateGranting	Finishing…	仕上げています…	Terminando…	Finalisation…
+stateActive	Paired. Last used: {last}	ペアリング済み。最後に使った日時: {last}	Emparejado. Último uso: {last}	Appairé. Dernière utilisation : {last}
+stateExpired	The setup file expired. Make a new one.	セットアップファイルの期限が切れました。作り直してください。	El archivo de configuración caducó. Crea uno nuevo.	Le fichier d’installation a expiré. Créez-en un nouveau.
+stateRevoked	Removed. This device can no longer connect.	解除済み。この端末はもう接続できません。	Eliminado. Este dispositivo ya no puede conectarse.	Supprimé. Cet appareil ne peut plus se connecter.
+never	never	まだありません	nunca	jamais
+actionPair	Scan its QR code	QRコードを読み取る	Escanear su código QR	Scanner son code QR
+actionSave	Save setup file	セットアップファイルを保存	Guardar archivo de configuración	Enregistrer le fichier d’installation
+actionRevoke	Remove	解除	Eliminar	Supprimer
+actionReissue	Make a new setup file	作り直す	Crear un archivo de configuración nuevo	Créer un nouveau fichier d’installation
+actionForget	Delete from the list	一覧から削除	Borrar de la lista	Retirer de la liste
+confirmRevoke	Remove "{name}"? It will no longer be able to connect.	「{name}」を解除しますか？ この端末は接続できなくなります。	¿Eliminar "{name}"? Ya no podrá conectarse.	Supprimer « {name} » ? Il ne pourra plus se connecter.
+confirmReissue	Make a new setup file for "{name}"? The device must be paired again.	「{name}」のセットアップファイルを作り直しますか？ 端末は、ペアリングし直しになります。	¿Crear un archivo de configuración nuevo para "{name}"? Habrá que volver a emparejar el dispositivo.	Créer un nouveau fichier d’installation pour « {name} » ? L’appareil devra être appairé de nouveau.
+confirmForget	Delete "{name}" from the list?	「{name}」を一覧から削除しますか？	¿Borrar "{name}" de la lista?	Retirer « {name} » de la liste ?
+addTitle	Add a device	端末を追加	Añadir un dispositivo	Ajouter un appareil
+addPlaceholder	A name, e.g. Nomad	名前（例: Nomad）	Un nombre, p. ej. Nomad	Un nom, p. ex. Nomad
+addButton	Add	追加	Añadir	Ajouter
+nameEmpty	Give the device a name.	端末の名前を入れてください。	Ponle un nombre al dispositivo.	Donnez un nom à l’appareil.
+added	Added "{name}". The setup file was saved to your Downloads.	「{name}」を追加しました。セットアップファイルをダウンロードに保存しました。	Se añadió "{name}". El archivo de configuración se guardó en Descargas.	« {name} » ajouté. Le fichier d’installation a été enregistré dans Téléchargements.
+step1	1. Copy the file to the device (the MyStyle folder) and install the plugin from it.	1. ファイルを端末の MyStyle フォルダにコピーし、そこからプラグインをインストールします。	1. Copia el archivo al dispositivo (carpeta MyStyle) e instala el plugin desde él.	1. Copiez le fichier sur l’appareil (dossier MyStyle) et installez le plugin à partir de celui-ci.
+step2	2. On the device, open Spellink and tap Pair: a QR code appears.	2. 端末で Spellink を開き、「ペアリング」を押すと、QRコードが出ます。	2. En el dispositivo, abre Spellink y pulsa Emparejar: aparece un código QR.	2. Sur l’appareil, ouvrez Spellink et appuyez sur Appairer : un code QR s’affiche.
+step3	3. Scan the QR code with this computer's camera:	3. このパソコンのカメラで、そのQRコードを読み取ります:	3. Escanea el código QR con la cámara de este ordenador:	3. Scannez le code QR avec la caméra de cet ordinateur :
+stepLink	Open the pairing page	ペアリングのページを開く	Abrir la página de emparejamiento	Ouvrir la page d’appairage
+doneRevoke	Removed.	解除しました。	Eliminado.	Supprimé.
+doneReissue	A new setup file was made and saved to your Downloads. Install it on the device and pair again.	新しいセットアップファイルを作り、ダウンロードに保存しました。端末に入れて、ペアリングし直してください。	Se creó un archivo de configuración nuevo y se guardó en Descargas. Instálalo en el dispositivo y vuelve a emparejar.	Un nouveau fichier d’installation a été créé et enregistré dans Téléchargements. Installez-le sur l’appareil et appairez de nouveau.
+doneForget	Deleted.	削除しました。	Borrado.	Retiré.
+doneSave	The setup file was saved to your Downloads.	セットアップファイルをダウンロードに保存しました。	El archivo de configuración se guardó en Descargas.	Le fichier d’installation a été enregistré dans Téléchargements.
+failed	Could not do that ({why}).	できませんでした（{why}）。	No se pudo hacer ({why}).	Impossible ({why}).

@@ -42,6 +42,18 @@ pub fn create_private_dir(dir: &Path) -> std::io::Result<()> {
     }
 }
 
+fn no_delay(t: &mut tokio::net::TcpStream) {
+    // best effort: a socket that refuses is still a working socket, only a slower one
+    let _ = t.set_nodelay(true);
+}
+
+/// A listener whose connections send small frames at once instead of waiting for a delayed
+/// acknowledgement (Nagle's algorithm costs ~40 ms a stalled write). The Go bridge gets this from
+/// its HTTP server; a test pins it (tests/server.rs).
+pub fn low_latency(l: tokio::net::TcpListener) -> axum::serve::TapIo<tokio::net::TcpListener, fn(&mut tokio::net::TcpStream)> {
+    axum::serve::ListenerExt::tap_io(l, no_delay as fn(&mut tokio::net::TcpStream))
+}
+
 /// Days since 1970-01-01 → (year, month, day), proleptic Gregorian (Howard Hinnant's algorithm).
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;

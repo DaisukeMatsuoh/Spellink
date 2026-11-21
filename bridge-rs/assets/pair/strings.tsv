@@ -1,0 +1,18 @@
+# The words of the pairing page. One row per message, one column per language; \n is a newline.
+# {name} and {why} mark values filled in at run time. An empty cell in a language other than English uses the English text.
+# A language is added by adding a column here (the rules are the same as plugin/locales/strings.tsv).
+key	en	ja	es	fr
+title	Spellink Bridge App: pair a device	Spellink Bridge App: 端末のペアリング	Spellink Bridge App: emparejar un dispositivo	Spellink Bridge App : appairer un appareil
+hint	Show the QR code on your device to the camera.	端末に表示されたQRコードを、カメラに向けてください。	Muestra a la cámara el código QR de tu dispositivo.	Montrez le code QR de votre appareil à la caméra.
+manualLabel	No camera? Type the 8-digit code shown on the device:	カメラが使えないときは、端末に表示された8桁のコードを入力してください:	¿Sin cámara? Escribe el código de 8 dígitos que muestra el dispositivo:	Pas de caméra ? Saisissez le code à 8 chiffres affiché sur l’appareil :
+manualButton	Pair	ペアリング	Emparejar	Appairer
+sending	Pairing…	ペアリングしています…	Emparejando…	Appairage…
+paired	Paired: {name}. The device finishes by itself.	ペアリングしました: {name}。端末が自動で仕上げます。	Emparejado: {name}. El dispositivo termina por sí solo.	Appairé : {name}. L’appareil termine tout seul.
+notSpellink	That QR code is not from Spellink.	そのQRコードは、Spellinkのものではありません。	Ese código QR no es de Spellink.	Ce code QR ne vient pas de Spellink.
+badCode	A code is exactly eight digits.	コードは、ちょうど8桁の数字です。	El código tiene exactamente ocho dígitos.	Un code comporte exactement huit chiffres.
+notAccepted	The code was not accepted. Check the device's screen and try again.	コードが受け付けられませんでした。端末の画面を確かめて、もう一度試してください。	No se aceptó el código. Revisa la pantalla del dispositivo y vuelve a intentarlo.	Le code n’a pas été accepté. Vérifiez l’écran de l’appareil et réessayez.
+nobodyWaiting	No device is showing a code. Press Pair on the device first.	コードを表示している端末がありません。先に端末で「ペアリング」を押してください。	Ningún dispositivo muestra un código. Pulsa primero Emparejar en el dispositivo.	Aucun appareil n’affiche de code. Appuyez d’abord sur Appairer sur l’appareil.
+unauthorized	This page is not allowed to pair. Open it with: spellink-bridge device pair --web	このページにはペアリングの権限がありません。「spellink-bridge device pair --web」で開いてください。	Esta página no tiene permiso para emparejar. Ábrela con: spellink-bridge device pair --web	Cette page n’est pas autorisée à appairer. Ouvrez-la avec : spellink-bridge device pair --web
+noToken	Open this page with: spellink-bridge device pair --web	このページは「spellink-bridge device pair --web」で開いてください。	Abre esta página con: spellink-bridge device pair --web	Ouvrez cette page avec : spellink-bridge device pair --web
+cameraDenied	The camera cannot be used ({why}). Type the code below instead.	カメラを使えません（{why}）。下にコードを入力してください。	No se puede usar la cámara ({why}). Escribe el código abajo.	La caméra ne peut pas être utilisée ({why}). Saisissez plutôt le code ci-dessous.
+failed	Could not pair ({why}).	ペアリングできませんでした（{why}）。	No se pudo emparejar ({why}).	Appairage impossible ({why}).

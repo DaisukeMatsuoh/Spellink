@@ -4,6 +4,7 @@
 //   page-turn.md  -> src/insertTable.generated.ts, src/writeTable.generated.ts
 //   bridge-run.md -> ../bridge/src/server/run_table.rs
 //   pairing.md    -> ../bridge/src/devices/table.rs (record), src/pairTable.generated.ts (device)
+//   lan-cert.md   -> ../bridge/src/lan/reg_table.rs (registration), ../bridge/src/lan/cert_table.rs (certificate)
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -22,6 +23,8 @@ const SPECS = [
   {md: 'page-turn.md', out: '../src/writeTable.generated.ts', upper: 'WRITE', pascal: 'Write', sections: PAGE('書き込み')},
   {md: 'bridge-run.md', out: '../../bridge/src/server/run_table.rs', lang: 'rust', sections: DEFAULT_SECTIONS, rs: {t: 'Run', stateType: 'RunState'}},
   {md: 'pairing.md', out: '../../bridge/src/devices/table.rs', lang: 'rust', sections: PAIRING('記録'), rs: {t: 'Dev'}},
+  {md: 'lan-cert.md', out: '../../bridge/src/lan/reg_table.rs', lang: 'rust', sections: PAIRING('登録'), rs: {t: 'Reg'}},
+  {md: 'lan-cert.md', out: '../../bridge/src/lan/cert_table.rs', lang: 'rust', sections: PAIRING('証明書'), rs: {t: 'Cert'}},
   {md: 'pairing.md', out: '../src/pairTable.generated.ts', upper: 'PAIR', pascal: 'Pair', sections: PAIRING('端末')},
 ];
 

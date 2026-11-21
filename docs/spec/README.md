@@ -10,6 +10,7 @@
 | [page-turn.md](page-turn.md) | ページ追加・書き込みの手順表（手順 × 結果） |
 | [wave.md](wave.md) | 待機中の波線アニメーションの状態遷移表 |
 | [pairing.md](pairing.md) | ペアリング（ADR 0016）: ブリッジの端末の記録、プラグインのペアリングの流れ |
+| [lan-cert.md](lan-cert.md) | 家の中の直結（ADR 0017）: ブリッジの名前の登録と証明書の取得（2 つの状態遷移表） |
 | [bridge-app.md](bridge-app.md) | Spellink Bridge App（トレイ常駐アプリ）のプロセスの寿命。**草案・確認待ち**（コードの表にはまだしない） |
 | [interfaces.md](interfaces.md) | モジュール間・関数間・プロセス間の受け渡し（インターフェース）台帳 |
 

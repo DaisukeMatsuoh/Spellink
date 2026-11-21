@@ -15,6 +15,8 @@ pub mod lantls;
 pub mod layout;
 pub mod localguard;
 pub mod measure;
+pub mod names;
+pub mod namesproto;
 pub mod probe;
 pub mod protocol;
 pub mod provider;

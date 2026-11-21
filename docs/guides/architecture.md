@@ -126,3 +126,72 @@ flowchart TB
 - 形のパターン（`sk-ant`、`Bearer …`、`CF_API_TOKEN`、秘密鍵の PEM）も履歴を検索し、該当なし。
 - 追跡されている `plugin/android/app/debug.keystore` は React Native の標準のデバッグ用（公開された既定のパスワード）で、秘密ではない。配布版の署名には使わない。
 - **限界:** 照合できるのは、開発機に現にある値だけ。過去に作り直して捨てた古いトークンは照合できない。push 前に、`gitleaks` などの専用の道具でも全履歴を検索する（この開発機には未導入）。
+
+## 10. 証明書と CA はどこに立つか（名前サービス案。2026-11-21 検討中）
+
+**CA は Let's Encrypt（公的な CA）だけ。自前の CA は立てない。** 端末が信頼するのは公的な CA だけで、自前の CA は端末に入れられないため。
+
+### 10.1 中継と名前サービスは別の仕事（置き換えではない）
+| | 中継 | 名前サービス |
+|---|---|---|
+| 役目 | **外出先**の端末とブリッジをつなぐ（ブリッジは家のルーターの内側で、外から入れない） | **家の中**で、端末がブリッジに**直接**つなげるよう、名前と証明書を用意する |
+| なくなると | 外出先から使えない | 家でも中継経由になる（遅くなるだけ） |
+
+名前サービスがあっても、外出先のために中継は要る。両方を同じ VPS で動かす。
+
+### 10.2 利用者ごとの証明書を取る流れ
+```mermaid
+sequenceDiagram
+  participant B as ブリッジ(利用者のPC)
+  participant LE as Let's Encrypt (CA)
+  participant NS as 名前サービス (VPS。lan.spellink.uk の DNS サーバ)
+  participant D as 端末
+  Note over B: ① 自分の秘密鍵を作る（この鍵はPCの外に出ない）
+  B->>NS: ② 登録 {ID, 公開鍵, LAN の IP, 署名}
+  B->>LE: ③ <ID>.lan.spellink.uk の証明書がほしい
+  LE-->>B: ④ _acme-challenge.<ID>.lan… に、この値の TXT を置いて
+  B->>NS: ⑤ その TXT を置いて（署名つき）
+  LE->>NS: ⑥ DNS で TXT を問い合わせる
+  NS-->>LE: TXT の値
+  LE-->>B: ⑦ 証明書を発行（利用者ごとに 1 枚。90 日、自動更新）
+  D->>NS: ⑧ <ID>.lan.spellink.uk の IP は？
+  NS-->>D: ブリッジの LAN の IP
+  D->>B: ⑨ wss（⑦の証明書で TLS。中は Noise）
+```
+
+### 10.3 DNS の委任（Cloudflare 側の設定は、これだけ）
+`spellink.uk` のゾーン（Cloudflare）に、`lan` の **NS レコード**を足して、`lan.spellink.uk` 以下の問い合わせを VPS の名前サービスに任せる。`bridge.`・`relay.` など、ほかの名前は Cloudflare のまま。
+
+```mermaid
+flowchart LR
+  subgraph CFZ["Cloudflare: spellink.uk のゾーン"]
+    A["bridge.spellink.uk → トンネル"]
+    B["relay.spellink.uk → トンネル"]
+    C["lan.spellink.uk の NS → ns1.spellink.uk (VPS の IP)"]
+  end
+  subgraph VPSZ["VPS の名前サービス: lan.spellink.uk 以下の持ち主"]
+    D["<ID>.lan.spellink.uk の A → 各ブリッジの LAN の IP"]
+    E["_acme-challenge.<ID>.lan… の TXT"]
+  end
+  C --> VPSZ
+```
+- Cloudflare の API トークンは**要らない**（レコードの数の上限も受けない）。名前サービスが触れるのは `lan.spellink.uk` 以下だけ（委任された範囲）。
+- 代わりに、VPS で **UDP/TCP 53 を開ける**。小さな応答だけを返す（増幅攻撃に使われない）、回数制限を付ける。
+
+### 10.4 経路ごとの CA と、秘密鍵の持ち主
+| 経路 | 名前 | 証明書を出す CA | 秘密鍵の持ち主 |
+|---|---|---|---|
+| ① 自前のトンネル | `bridge.spellink.uk`（利用者は自分のドメイン） | Cloudflare（入口で TLS を終端） | Cloudflare |
+| ② 中継 | `relay.spellink.uk` | Cloudflare（いま）／Let's Encrypt（中継が自分で TLS を話す場合） | Cloudflare／中継 |
+| ③ 家の直結 | `<ID>.lan.spellink.uk`（利用者ごとに別の名前・別の証明書） | **Let's Encrypt** | **各利用者のブリッジ（外に出ない）** |
+
+### 10.5 全員で 1 枚の `*.lan.spellink.uk` を配らない理由
+- ワイルドカードの秘密鍵を全員のブリッジに配ることになる。**誰か 1 人の PC から鍵が漏れると、全員の名前を騙れる。** 漏れたら失効が必要で、全員が止まる。
+- 認証局の規約は、証明書の秘密鍵を他人に配ることを許していない。違反すると失効されうる。
+- 利用者ごとの名前と証明書にすれば、漏れても**その 1 人だけ**。同じ方式の前例がある（Plex が、利用者ごとの名前と証明書で家の直結をしていると理解している。要確認）。
+- 通信の中身は、証明書が漏れても Noise が守る（TLS は入口の鍵、Noise は端から端までの鍵）。
+
+### 10.6 Let's Encrypt の上限との関係
+- 新規 50 枚/週/登録ドメイン = **新しく直結を使い始める人が週 50 人まで**。更新は同じ名前なら上限を受けない。総数の上限ではない。
+- 同じドメイン `spellink.uk` で足りる（中継の証明書は 1 枚で、ほぼ影響しない）。超えそうなら、予備の CA（Google Trust Services）、登録ドメインの追加、例外申請。
+- 上限を超えても、直結が遅れるだけで、中継で使える。

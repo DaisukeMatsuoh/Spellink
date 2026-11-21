@@ -2,6 +2,7 @@
 //! One module per Go package; the state of the port is in docs/notes/progress/rust-port.md.
 
 pub mod config;
+pub mod devices;
 pub mod glyphs;
 pub mod handwriting;
 pub mod history;
@@ -13,3 +14,4 @@ pub mod random;
 pub mod securechan;
 pub mod util;
 pub mod relay;
+pub mod timestamp;

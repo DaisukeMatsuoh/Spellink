@@ -56,6 +56,21 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
+/// (year, month, day) → days since 1970-01-01.
+pub fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = if m > 2 { m - 3 } else { m + 9 } as i64;
+    let doy = (153 * mp + 2) / 5 + d as i64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+pub fn civil_date(secs: i64) -> (i64, u32, u32) {
+    civil_from_days(secs.div_euclid(86_400))
+}
+
 /// Seconds since the epoch → "2026-11-21T12:34:56Z" (RFC 3339, UTC).
 pub fn rfc3339_utc(secs: i64) -> String {
     let (y, m, d) = civil_from_days(secs.div_euclid(86_400));

@@ -12,7 +12,7 @@
     "typecheck": "node scripts/prepare-local-config.js && tsc --noEmit",
     "test:coverage": "jest --coverage",
     "strings": "node scripts/gen-strings.js && prettier --write src/strings.generated.ts",
-    "spec": "node scripts/gen-tables.js && prettier --write src/*.generated.ts && (cd ../bridge && $HOME/.local/go/bin/gofmt -w internal/server/runtable_gen.go internal/devices/table_gen.go)"
+    "spec": "node scripts/gen-tables.js && prettier --write src/*.generated.ts && (cd ../bridge && $HOME/.local/go/bin/gofmt -w internal/server/runtable_gen.go internal/devices/table_gen.go) && (cd ../bridge-rs && $HOME/.cargo/bin/rustfmt --edition 2024 src/server/run_table.rs src/devices/table.rs)"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

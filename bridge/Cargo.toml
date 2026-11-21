@@ -14,17 +14,17 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 hex = "0.4"
 rand = "0.9"
 sha2 = "0.10"
-snow = { version = "0.10", default-features = false, features = ["std", "default-resolver", "use-chacha20poly1305", "use-blake2", "use-curve25519", "use-getrandom"] }
+snow = { version = "0.10", default-features = false, features = ["default-resolver", "use-chacha20poly1305", "use-blake2", "use-curve25519", "use-getrandom"] }
 tokio-util = { version = "0.7", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal", "io-util", "process", "fs"] }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs", "std", "tls12"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zip = { version = "9.8.1", default-features = false, features = ["deflate"] }
 url = "2.5.9"
 if-addrs = "0.15.0"
-ureq = { version = "3.5.2", default-features = false, features = ["rustls"] }
+ureq = { version = "3.5.2", default-features = false, features = ["rustls-no-provider"] }
 png = "0.18.1"
 
 [profile.release]

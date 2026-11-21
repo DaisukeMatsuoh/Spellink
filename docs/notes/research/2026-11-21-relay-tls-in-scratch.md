@@ -43,3 +43,9 @@ C が混ざるのは**ビルド時だけ**。できあがりは外部のライ�
 - この開発機は Linux。**Docker Engine（Apache-2.0）をそのまま入れれば足りる**。Podman（Apache-2.0）でも同じ Dockerfile が動く。
 - **Colima**（MIT）は、macOS（や Linux）で docker の動く VM を用意する道具。Mac で動かすときに使う。Docker Desktop は、一定規模以上の会社では有料なので、個人・小規模でも避けるなら Colima が無難。
 - VPS では Docker Engine か Podman をそのまま使う。
+
+## 追記（同日）: 暗号の部品を ring から aws-lc-rs に変更した
+- 理由（ユーザーの指摘）: 保守の活発さ。ring は最後のリリースが 2025-03（0.17.14）、直近 6 か月のコミットは 24。aws-lc-rs は 2026-10 に 1.19.0、直近 6 か月で 100 以上。rustls の現在の既定も aws-lc-rs。
+- 変更: `rustls` を `aws-lc-rs`、`ureq` を `rustls-no-provider`、`snow` から `std`（使わない ring を引き込んでいた）を外した。`cargo tree` に ring は残らない。cmake なしでビルドできた。
+- 結果: 全機能のバイナリが 4.7 MB → 5.9 MB（musl 静的は 5.8 MB）。`cargo test` 312 件、clippy、fmt が通る。musl 静的を `/etc` 空の環境で動かし、公的 CA の wss のハンドシェイクが通る（ring のときと同じ確認）。
+- 次点: graviola（C なしの純 Rust。0.x）。成熟したら Alpine なしのビルドのために再検討する。

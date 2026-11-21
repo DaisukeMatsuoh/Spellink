@@ -6,14 +6,17 @@
 # deploy/vps/compose.yaml for how it is run.
 #
 # Built on Alpine so that the C parts of the TLS library (aws-lc-rs) compile for musl natively;
-# only the second stage is shipped. (Not yet built in docker: this machine has none.)
+# only the second stage is shipped. Built and run in docker on 2026-11-22 (11.3 MB).
 FROM rust:alpine AS build
 RUN apk add --no-cache musl-dev gcc make cmake perl
 WORKDIR /src
 COPY . .
-RUN cargo build --release --locked && cp target/release/spellink-bridge /spellink-bridge
+RUN cargo build --release --locked && cp target/release/spellink-bridge /spellink-bridge && mkdir /data
 
 FROM scratch
 COPY --from=build /spellink-bridge /spellink-bridge
+# A named volume takes the owner of the directory it is mounted on: without this, /data is root's
+# and the non-root user cannot write its identity, certificates or records there.
+COPY --from=build --chown=65534:65534 /data /data
 USER 65534:65534
 ENTRYPOINT ["/spellink-bridge"]

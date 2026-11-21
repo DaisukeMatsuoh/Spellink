@@ -31,6 +31,7 @@
 | [0017](0017-lan-name-service.md) | 家の中の直結: 名前サービスが DNS を持ち、各ブリッジが自分の証明書を取る | Accepted | ユーザーが決定（2026-11-21）。実装済み。本物の Let's Encrypt・VPS での確認待ち |
 | [0018](0018-bridge-in-rust.md) | ブリッジと中継を Rust に移植する（scratch コンテナの単一バイナリ） | Accepted | ユーザーが決定（2026-11-21）。移植完了・置き換え済み |
 | [0019](0019-self-hosted-edge.md) | 運営の入口: Cloudflare Tunnel をやめ、中継と名前サービスが自分で TLS と DNS を話す | Accepted | ユーザーが決定（2026-11-21）。実装済み。VPS での確認待ち |
+| [0020](0020-operating-model.md) | 運営の形: 中継は運営する・寄付で始める・ペアリングは QR と 8 桁・対応 OS は Windows/macOS/Linux | Accepted | ユーザーが決定（2026-11-22） |
 
 ## 関連する仕様
 - 状態遷移表・インターフェース台帳: [`docs/spec/`](../spec/README.md)

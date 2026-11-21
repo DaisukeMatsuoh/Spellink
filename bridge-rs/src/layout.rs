@@ -7,7 +7,7 @@ use crate::random::Random;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-#[derive(Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
     pub x: f64,
@@ -58,8 +58,8 @@ struct Pending {
     base: f64,
 }
 
-pub struct Composer<'a> {
-    font: &'a Font,
+pub struct Composer {
+    font: std::sync::Arc<Font>,
     layout: Layout,
     rng: Random,
     pub missing: BTreeSet<char>,
@@ -76,8 +76,8 @@ pub struct Composer<'a> {
     at_paragraph_start: bool,
 }
 
-impl<'a> Composer<'a> {
-    pub fn new(font: &'a Font, mut layout: Layout, seed: u32) -> Self {
+impl Composer {
+    pub fn new(font: std::sync::Arc<Font>, mut layout: Layout, seed: u32) -> Self {
         if layout.max_pages < 1 {
             layout.max_pages = 1;
         }

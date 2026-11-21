@@ -37,7 +37,7 @@ fn flag_f64(flags: &HashMap<String, String>, name: &str) -> Result<f64, String> 
     }
 }
 
-fn load(flags: &HashMap<String, String>) -> Result<(glyphs::Font, Layout, u32), String> {
+fn load(flags: &HashMap<String, String>) -> Result<(std::sync::Arc<glyphs::Font>, Layout, u32), String> {
     let path = flags.get("glyphs").ok_or("--glyphs is required")?;
     let file = std::fs::File::open(path).map_err(|e| format!("{path}: {e}"))?;
     let font = glyphs::read_font(BufReader::new(file)).map_err(|e| format!("{path}: {e}"))?;
@@ -52,7 +52,7 @@ fn load(flags: &HashMap<String, String>) -> Result<(glyphs::Font, Layout, u32), 
         None => 0,
         Some(s) => s.parse().map_err(|_| format!("--seed: not a 32-bit number: {s}"))?,
     };
-    Ok((font, layout, seed))
+    Ok((std::sync::Arc::new(font), layout, seed))
 }
 
 fn print_lines(out: &mut impl Write, lines: &[layout::Line]) -> Result<(), String> {
@@ -71,7 +71,7 @@ fn summary(out: &mut impl Write, c: &Composer) -> Result<(), String> {
 
 fn compose(flags: &HashMap<String, String>) -> Result<(), String> {
     let (font, layout, seed) = load(flags)?;
-    let mut c = Composer::new(&font, layout, seed);
+    let mut c = Composer::new(font.clone(), layout, seed);
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
     for line in std::io::stdin().lock().lines() {
@@ -103,7 +103,7 @@ fn ask(flags: &HashMap<String, String>, question: &str) -> Result<(), String> {
     let mut child = cmd.current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
         .spawn().map_err(|e| format!("{exe}: {e}"))?;
     child.stdin.take().unwrap().write_all(question.as_bytes()).map_err(|e| e.to_string())?;
-    let mut c = Composer::new(&font, layout, seed);
+    let mut c = Composer::new(font.clone(), layout, seed);
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     let mut first: Option<u128> = None;
@@ -154,7 +154,7 @@ fn bench(flags: &HashMap<String, String>) -> Result<(), String> {
     let started = Instant::now();
     let mut strokes = 0usize;
     for i in 0..n {
-        let mut c = Composer::new(&font, layout.clone(), seed.wrapping_add(i));
+        let mut c = Composer::new(font.clone(), layout.clone(), seed.wrapping_add(i));
         // pieces of ~8 characters, as the CLI streams them
         let chars: Vec<char> = text.chars().collect();
         for chunk in chars.chunks(8) {
@@ -200,12 +200,12 @@ mod tests {
     /// record it again, see README.md.
     #[test]
     fn writes_exactly_what_the_go_bridge_writes() {
-        let font = glyphs::read_font(fs::File::open("testdata/glyphs.bin").unwrap()).unwrap();
+        let font = std::sync::Arc::new(glyphs::read_font(fs::File::open("testdata/glyphs.bin").unwrap()).unwrap());
         let mut layout: Layout = serde_json::from_str(&fs::read_to_string("testdata/layout.json").unwrap()).unwrap();
         layout.slope = -0.005;
         layout.spacing_full = 1.1;
         layout.spacing_half = 1.2;
-        let mut c = Composer::new(&font, layout, 777);
+        let mut c = Composer::new(font.clone(), layout, 777);
         let mut out = Vec::new();
         for line in fs::read_to_string("testdata/input.jsonl").unwrap().lines() {
             let piece: String = serde_json::from_str(line).unwrap();

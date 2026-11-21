@@ -61,6 +61,8 @@ struct Record {
     /// When the last accepted request for this ID came (not saved).
     last_request: i64,
     txt: Vec<(String, i64)>,
+    /// This process's own identity: never forgotten (everyone else is, when nobody refreshes it).
+    local: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -120,7 +122,7 @@ impl Names {
                     let ip = if r.ip.is_empty() { Some(None) } else { namesproto::publishable_ip(&r.ip).map(Some) };
                     match (pk, ip) {
                         (Some(public_key), Some(ip)) if namesproto::valid_id(&id) && now - r.updated < FORGET_AFTER_SECS => {
-                            inner.records.insert(id, Record { public_key, ip, updated: r.updated, last_request: 0, txt: Vec::new() });
+                            inner.records.insert(id, Record { public_key, ip, updated: r.updated, last_request: 0, txt: Vec::new(), local: false });
                         }
                         (Some(_), Some(_)) if namesproto::valid_id(&id) => {} // old: forgotten on purpose
                         _ => problems.push(format!("{}: record {:?} is not valid; left out", path.display(), id.chars().take(40).collect::<String>())),
@@ -162,7 +164,7 @@ impl Names {
     /// record). Not saved: it is added again at every start.
     pub fn add_local(&self, id: &str, public_key: Vec<u8>, now: i64) {
         let mut inner = self.inner.lock().unwrap();
-        inner.records.insert(id.to_string(), Record { public_key, ip: None, updated: now, last_request: 0, txt: Vec::new() });
+        inner.records.insert(id.to_string(), Record { public_key, ip: None, updated: now, last_request: 0, txt: Vec::new(), local: true });
     }
 
     fn check_time(time: i64, now: i64) -> Result<(), ApiError> {
@@ -209,8 +211,9 @@ impl Names {
             return Err(ApiError::Unauthorized("bad_signature"));
         }
         let mut inner = self.inner.lock().unwrap();
-        Names::remember_nonce(&mut inner, &req.id, &req.nonce, now)?;
         let before = inner.records.get(&req.id).cloned();
+        // The checks that cost nothing to pass come before the nonce is remembered: a request that
+        // is refused (full, too often, another key) must not use up the nonce memory.
         match &before {
             Some(r) => {
                 if r.public_key != public_key {
@@ -226,8 +229,10 @@ impl Names {
                 }
             }
         }
+        Names::remember_nonce(&mut inner, &req.id, &req.nonce, now)?;
+        let local = before.as_ref().is_some_and(|r| r.local);
         let txt = before.as_ref().map(|r| r.txt.clone()).unwrap_or_default();
-        inner.records.insert(req.id.clone(), Record { public_key, ip, updated: now, last_request: now, txt });
+        inner.records.insert(req.id.clone(), Record { public_key, ip, updated: now, last_request: now, txt, local });
         if let Err(e) = self.save(&inner) {
             // the answer must match what is on disk: put it back
             match before {
@@ -259,6 +264,9 @@ impl Names {
         }
         Names::remember_nonce(&mut inner, &req.id, &req.nonce, now)?;
         let rec = inner.records.get_mut(&req.id).expect("checked above, under the same lock");
+        // a signed request is a sign of life: an ID that still orders certificates is not forgotten
+        let was = rec.updated;
+        rec.updated = now;
         rec.txt.retain(|(_, until)| *until > now);
         match req.op.as_str() {
             "set" => {
@@ -270,6 +278,9 @@ impl Names {
             }
             _ => rec.txt.retain(|(v, _)| v != &req.value),
         }
+        if now - was > 86_400 {
+            let _ = self.save(&inner); // the sign of life is kept across a restart; a failure loses nothing the next save does not fix
+        }
         Ok(())
     }
 
@@ -277,7 +288,7 @@ impl Names {
     pub fn forget_old(&self, now: i64) -> usize {
         let mut inner = self.inner.lock().unwrap();
         let before = inner.records.len();
-        inner.records.retain(|_, r| now - r.updated < FORGET_AFTER_SECS || r.ip.is_none());
+        inner.records.retain(|_, r| r.local || now - r.updated < FORGET_AFTER_SECS);
         let gone = before - inner.records.len();
         if gone > 0 {
             let _ = self.save(&inner); // the next registration saves again; a failure here loses nothing new
@@ -312,6 +323,41 @@ mod tests {
         Names::new(None, Limits::default())
     }
     const T: i64 = 1_800_000_000;
+
+    #[test]
+    fn an_id_nobody_uses_is_forgotten_with_or_without_an_address_and_a_sign_of_life_keeps_it() {
+        let n = names();
+        let (_d1, with_ip) = me();
+        let (_d2, no_ip) = me();
+        let (_d3, orders) = me();
+        let (_d4, own) = me();
+        n.register(&with_ip.register("192.168.1.5", T), T).unwrap();
+        n.register(&no_ip.register("", T), T).unwrap();
+        n.register(&orders.register("", T), T).unwrap();
+        n.add_local(own.id(), own.public_key(), T);
+        // 100 days on: the one that orders a certificate shows it is alive
+        let later = T + 100 * 86_400;
+        n.acme(&orders.acme("set", &"A".repeat(43), later), later).unwrap();
+        let much_later = T + FORGET_AFTER_SECS + 10;
+        assert_eq!(n.forget_old(much_later), 2, "the one with an address and the one without go; no kind is exempt");
+        assert!(!n.exists(with_ip.id()) && !n.exists(no_ip.id()));
+        assert!(n.exists(orders.id()), "refreshed by a signed request");
+        assert!(n.exists(own.id()), "this process's own identity is never forgotten");
+    }
+
+    #[test]
+    fn a_refused_registration_does_not_use_up_the_nonce_memory() {
+        let n = Names::new(None, Limits { max_ids: 1, min_interval_secs: 10 });
+        let (_d1, a) = me();
+        let (_d2, b) = me();
+        n.register(&a.register("192.168.1.5", T), T).unwrap();
+        let before = n.inner.lock().unwrap().nonces.len();
+        // full: refused, and the nonce is not kept
+        assert!(matches!(n.register(&b.register("192.168.1.6", T), T), Err(ApiError::TooMany("full"))));
+        // too often: refused, and the nonce is not kept
+        assert!(matches!(n.register(&a.register("192.168.1.7", T + 1), T + 1), Err(ApiError::TooMany("too_often"))));
+        assert_eq!(n.inner.lock().unwrap().nonces.len(), before);
+    }
 
     #[test]
     fn registering_publishes_the_address_for_that_id_only() {

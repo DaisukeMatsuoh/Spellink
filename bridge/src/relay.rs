@@ -403,8 +403,11 @@ impl Relay {
 
         let frame = format!("{{\"type\":\"session\",\"id\":\"{sid}\"}}");
         let (written_tx, written_rx) = oneshot::channel();
-        let sent = ctrl.send(Ctrl::Session { frame, written: written_tx }).await.is_ok();
-        if !sent || !written_rx.await.unwrap_or(false) {
+        // both waits have a deadline: a bridge whose connection is dead without a reset must not
+        // hold this plugin's slot until TCP gives up
+        let sent = tokio::time::timeout(ACCEPT_TIMEOUT, ctrl.send(Ctrl::Session { frame, written: written_tx })).await.is_ok_and(|r| r.is_ok());
+        let written = sent && tokio::time::timeout(ACCEPT_TIMEOUT, written_rx).await.is_ok_and(|r| r.unwrap_or(false));
+        if !written {
             leave(self);
             close_with(&mut sock, STATUS_BRIDGE_OFFLINE, "bridge offline").await;
             return;

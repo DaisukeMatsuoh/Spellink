@@ -113,6 +113,12 @@ impl Session {
     /// accept the encrypted handshake.
     pub async fn serve(deps: Arc<Deps>, transport: Transport, peer: &str, require_encryption: bool, device_id: &str) {
         let Transport { rx, tx } = transport;
+        if deps.token.is_empty() && device_id.is_empty() {
+            // (a device's session uses that device's own secrets, not this token)
+            // the config never gives an empty token (it makes a new one); if one gets here anyway,
+            // nobody is let in: the hash of "" would open both the plain and the encrypted way
+            return;
+        }
         let s = Arc::new(Session {
             expected: Sha256::digest(deps.token.as_bytes()).into(),
             deps,

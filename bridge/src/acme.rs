@@ -103,29 +103,34 @@ impl CertFiles {
         CertFiles { dir: dir.to_path_buf() }
     }
 
-    fn chain(&self) -> PathBuf {
-        self.dir.join("cert-chain.pem")
-    }
-    fn key(&self) -> PathBuf {
-        self.dir.join("cert-key.pem")
+    /// The key and the chain are ONE file (key first): two files could be left as a new key next to
+    /// an old chain by a crash between the writes, and the still valid old certificate would be lost.
+    fn file(&self) -> PathBuf {
+        self.dir.join("cert.pem")
     }
 
-    /// Writes both, then reads them back and checks them; only a checked pair counts as saved (L7).
+    /// Writes the pair, then reads it back and checks it; only a checked pair counts as saved (L7).
     pub fn save(&self, chain_pem: &str, key_pem: &str, domain: &str, now: i64) -> Result<Checked, String> {
         check(chain_pem, key_pem, domain, now)?; // nothing is written for a pair that is not good
+        if key_pem.contains(CERT_MARK) {
+            return Err("the key text holds a certificate".into());
+        }
         crate::util::create_private_dir(&self.dir).map_err(|e| format!("{}: {e}", self.dir.display()))?;
-        crate::util::write_private_atomic(&self.key(), key_pem.as_bytes()).map_err(|e| format!("{}: {e}", self.key().display()))?;
-        crate::util::write_private_atomic(&self.chain(), chain_pem.as_bytes()).map_err(|e| format!("{}: {e}", self.chain().display()))?;
+        let both = format!("{key_pem}{chain_pem}");
+        crate::util::write_private_atomic(&self.file(), both.as_bytes()).map_err(|e| format!("{}: {e}", self.file().display()))?;
         self.load(domain, now).map(|(_, _, c)| c).ok_or_else(|| "the saved certificate did not read back as valid".to_string())
     }
 
     /// The saved certificate, if there is one that is valid now for `domain`.
     pub fn load(&self, domain: &str, now: i64) -> Option<(String, String, Checked)> {
-        let chain = std::fs::read_to_string(self.chain()).ok()?;
-        let key = std::fs::read_to_string(self.key()).ok()?;
-        check(&chain, &key, domain, now).ok().map(|c| (chain, key, c))
+        let both = std::fs::read_to_string(self.file()).ok()?;
+        let at = both.find(CERT_MARK)?;
+        let (key, chain) = both.split_at(at);
+        check(chain, key, domain, now).ok().map(|c| (chain.to_string(), key.to_string(), c))
     }
 }
+
+const CERT_MARK: &str = "-----BEGIN CERTIFICATE-----";
 
 /// Let's Encrypt (or any ACME CA at `directory`), DNS-01.
 pub struct Acme {
@@ -279,9 +284,7 @@ mod tests {
         assert_eq!((c, k, ch.not_after), (chain.clone(), key.clone(), now + 1000));
         // the files are private
         use std::os::unix::fs::PermissionsExt;
-        for f in ["cert-key.pem", "cert-chain.pem"] {
-            assert_eq!(std::fs::metadata(dir.path().join(f)).unwrap().permissions().mode() & 0o777, 0o600, "{f}");
-        }
+        assert_eq!(std::fs::metadata(dir.path().join("cert.pem")).unwrap().permissions().mode() & 0o777, 0o600);
         // a certificate for another name is refused and the saved one stays
         let (c2, k2) = cert_for(&["b.lan.test"], now - 10, now + 1000);
         assert!(files.save(&c2, &k2, "a.lan.test", now).is_err());

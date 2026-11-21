@@ -14,12 +14,13 @@ use std::net::IpAddr;
 ///     127.0.0.1 after re-pointing its own name there ("DNS rebinding"); the Host it carries is
 ///     still its own name.
 pub fn local(headers: &HeaderMap, host: &str) -> bool {
-    for h in ["cf-connecting-ip", "x-forwarded-for", "forwarded"] {
-        if headers.get(h).is_some_and(|v| !v.as_bytes().is_empty()) {
-            return false;
-        }
-    }
-    loopback_host(host)
+    !via_proxy(headers) && loopback_host(host)
+}
+
+/// Whether a request carries a header that a proxy or tunnel adds. One list for the whole bridge:
+/// the local pages and the plain-text handshake must agree on what "came through a proxy" means.
+pub fn via_proxy(headers: &HeaderMap) -> bool {
+    ["cf-connecting-ip", "x-forwarded-for", "forwarded", "x-real-ip"].iter().any(|h| headers.get(*h).is_some_and(|v| !v.as_bytes().is_empty()))
 }
 
 /// The Host of a request: the Host header (HTTP/1.1) or, failing that, the URI's authority.

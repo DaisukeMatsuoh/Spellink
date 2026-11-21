@@ -292,6 +292,13 @@ impl Config {
     }
 }
 
+/// A new shared token: 24 random bytes, base64url.
+fn fresh_token() -> String {
+    let mut secret = [0u8; 24];
+    rand::rng().fill_bytes(&mut secret);
+    URL_SAFE_NO_PAD.encode(secret)
+}
+
 /// The directory where config.json, glyphs.bin, reports.jsonl and the rest live.
 #[derive(Debug, Clone)]
 pub struct Store {
@@ -393,15 +400,19 @@ impl Store {
                 if c.claude_executable.is_empty() {
                     c.claude_executable = "claude".into();
                 }
-                if c.ensure_tilt() {
+                // A missing or empty token is replaced, never accepted: the documented way to change
+                // the token is to delete it and restart, and an empty one would let anyone in.
+                let new_token = c.token.is_empty();
+                if new_token {
+                    c.token = fresh_token();
+                }
+                if c.ensure_tilt() || new_token {
                     self.save(&c)?;
                 }
                 Ok(c)
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let mut secret = [0u8; 24];
-                rand::rng().fill_bytes(&mut secret);
-                let mut c = Config { name: hostname(), port: 8765, token: URL_SAFE_NO_PAD.encode(secret), claude_executable: "claude".into(), ..Config::default() };
+                let mut c = Config { name: hostname(), port: 8765, token: fresh_token(), claude_executable: "claude".into(), ..Config::default() };
                 c.ensure_tilt();
                 util::create_private_dir(&self.dir).map_err(|e| format!("{}: {e}", self.dir.display()))?;
                 let mut out = serde_json::to_vec_pretty(&c).map_err(|e| e.to_string())?;
@@ -476,6 +487,18 @@ mod tests {
         assert_eq!(mode(&s.config_file()), 0o600);
         let again = s.load().unwrap();
         assert_eq!((again.token, again.tilt_degrees), (c.token, c.tilt_degrees), "the token and the slope are stable across runs");
+    }
+
+    #[test]
+    fn a_deleted_or_empty_token_is_replaced_and_saved_not_accepted() {
+        let (_d, s) = store();
+        for body in [r#"{"port":8765}"#, r#"{"port":8765,"token":""}"#] {
+            write_config(&s, body);
+            let c = s.load().unwrap();
+            assert!(c.token.len() >= 30, "{body}: {c:?}");
+            let again = s.load().unwrap();
+            assert_eq!(again.token, c.token, "{body}: the new token is saved, not made anew at every start");
+        }
     }
 
     #[test]

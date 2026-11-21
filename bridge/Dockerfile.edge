@@ -8,13 +8,16 @@
 # Built on Alpine so that the C parts of the TLS library (aws-lc-rs) compile for musl natively;
 # only the second stage is shipped. Built and run in docker on 2026-11-22 (11.3 MB).
 FROM rust:alpine AS build
-RUN apk add --no-cache musl-dev gcc make cmake perl
+RUN apk add --no-cache musl-dev gcc make cmake perl ca-certificates
 WORKDIR /src
 COPY . .
 RUN cargo build --release --locked && cp target/release/spellink-bridge /spellink-bridge && mkdir /data
 
 FROM scratch
 COPY --from=build /spellink-bridge /spellink-bridge
+# The certificate authorities that the ACME client (instant-acme) trusts when it talks to Let's
+# Encrypt: it reads the system's list, and a scratch image has none of its own.
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 # A named volume takes the owner of the directory it is mounted on: without this, /data is root's
 # and the non-root user cannot write its identity, certificates or records there.
 COPY --from=build --chown=65534:65534 /data /data

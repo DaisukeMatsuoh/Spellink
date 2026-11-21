@@ -164,7 +164,7 @@ async fn a_new_bridge_registers_then_orders_then_serves_the_certificate() {
     assert_eq!(s.not_after, Some(T0 + 90 * 86_400));
     assert_eq!(*w.registers.lock().unwrap(), vec!["192.168.1.10"], "registered once, with the private address");
     assert_eq!(w.orders(), 1);
-    assert!(w.dir.path().join("cert-key.pem").exists(), "kept for the next start");
+    assert!(w.dir.path().join("cert.pem").exists(), "kept for the next start");
     no_impossible_events(&w);
     cancel.cancel();
 }
@@ -379,7 +379,7 @@ async fn the_result_of_an_order_that_was_given_up_is_dropped() {
     settle().await;
     let s = lan.status();
     assert_eq!(s.cert, CertState::Off, "a late result does not turn the machine back on");
-    assert!(!lan.resolver.has() && !w.dir.path().join("cert-key.pem").exists(), "and nothing was kept");
+    assert!(!lan.resolver.has() && !w.dir.path().join("cert.pem").exists(), "and nothing was kept");
     no_impossible_events(&w);
     cancel.cancel();
 }
@@ -391,7 +391,7 @@ async fn a_certificate_for_another_name_is_a_failed_order_and_is_neither_kept_no
     let (lan, cancel) = w.start();
     let s = until(&lan, "OrderWait", |s| s.cert == CertState::OrderWait).await;
     assert!(s.error.contains("not usable") && s.error.contains("does not name"), "{:?}", s.error);
-    assert!(!lan.resolver.has() && !w.dir.path().join("cert-chain.pem").exists());
+    assert!(!lan.resolver.has() && !w.dir.path().join("cert.pem").exists());
     cancel.cancel();
 }
 

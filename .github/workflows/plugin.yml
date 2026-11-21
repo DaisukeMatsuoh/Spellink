@@ -32,6 +32,7 @@ jobs:
       - run: npm run typecheck
       - run: npx eslint index.js App.tsx src
       - name: Unit tests with coverage
+        shell: bash # `bash -eo pipefail`: a failing jest must fail the step, not only tee
         run: npx jest --coverage --coverageReporters=text --coverageReporters=json-summary --coverageReporters=lcov | tee jest.txt
       - name: Coverage summary and gate
         env:

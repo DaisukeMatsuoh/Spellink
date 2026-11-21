@@ -122,7 +122,14 @@ impl Addresses for LanAddress {
             })
             .collect();
         found.sort(); // stable between calls: a change of the first one is a real change
-        found.first().map(|ip| ip.to_string())
+        // The address the machine itself uses to reach the outside is the one on the LAN; a docker
+        // bridge (172.17.x) or a VPN (10.x) sorts first just as well and is not reachable from the
+        // device. Connecting a UDP socket sends nothing: it only makes the system pick a route.
+        let routed = std::net::UdpSocket::bind(("0.0.0.0", 0)).and_then(|s| s.connect(("192.0.2.1", 9)).and_then(|_| s.local_addr())).ok().and_then(|a| match a.ip() {
+            std::net::IpAddr::V4(v4) if found.contains(&v4) => Some(v4),
+            _ => None,
+        });
+        routed.or_else(|| found.first().copied()).map(|ip| ip.to_string())
     }
 }
 

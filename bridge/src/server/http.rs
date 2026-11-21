@@ -17,7 +17,7 @@ use std::sync::Arc;
 /// Anything arriving through a proxy or tunnel (e.g. Cloudflare) has crossed the internet: only the
 /// end-to-end encrypted handshake is accepted there.
 fn proxied(h: &HeaderMap) -> bool {
-    ["cf-connecting-ip", "x-forwarded-for"].iter().any(|n| h.get(*n).is_some_and(|v| !v.as_bytes().is_empty()))
+    crate::localguard::via_proxy(h)
 }
 
 fn query_param(req: &Request, name: &str) -> String {

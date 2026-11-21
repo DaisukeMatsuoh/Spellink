@@ -37,9 +37,9 @@ describe('the older ways of finding a bridge', () => {
     jest.resetModules();
     jest.dontMock('../src/pairingState');
   });
-  const load = () => {
+  const load = (bridges: unknown[] = []) => {
     jest.doMock('../src/pairingState', () => ({
-      loadPairing: async () => ({plan: {bridges: [], problems: []}}),
+      loadPairing: async () => ({plan: {bridges, problems: []}}),
     }));
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     return require('../src/bridgeConfig').loadBridges as () => Promise<{
@@ -53,6 +53,30 @@ describe('the older ways of finding a bridge', () => {
     g.fetch = async () => ({json: async () => ({bridges: [ok]})});
     const r = await load()();
     expect(r).toMatchObject({source: 'file', endpoints: [ok]});
+  });
+
+  it('does not read the shared file once the device is paired (anything in MyStyle could have written it)', async () => {
+    let fetched = false;
+    g.fetch = async () => {
+      fetched = true;
+      return {json: async () => ({bridges: [ok]})};
+    };
+    const paired = {
+      id: '0123456789abcdef',
+      state: 'Paired',
+      stored: {
+        name: 'home',
+        key: 'k'.repeat(43),
+        urls: ['wss://real.example/v1'],
+      },
+    };
+    const r = await load([paired])();
+    expect(fetched).toBe(false);
+    expect(r).toMatchObject({
+      source: 'paired',
+      endpoints: [{name: 'home', urls: ['wss://real.example/v1']}],
+    });
+    expect(r.endpoints).toHaveLength(1);
   });
 
   it('finds no bridge when the file has no usable one (nothing is baked in)', async () => {

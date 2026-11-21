@@ -337,7 +337,14 @@ pub async fn serve_tcp(dns: Arc<Dns>, listener: tokio::net::TcpListener, cancel:
     loop {
         let (mut sock, peer) = tokio::select! {
             _ = cancel.cancelled() => return,
-            r = listener.accept() => match r { Ok(v) => v, Err(_) => continue },
+            r = listener.accept() => match r {
+                Ok(v) => v,
+                Err(_) => {
+                    // e.g. out of file descriptors: do not spin
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    continue;
+                }
+            },
         };
         let Ok(permit) = slots.clone().try_acquire_owned() else { continue };
         let dns = dns.clone();

@@ -215,6 +215,9 @@ pub fn new_provider(cfg: &Config) -> Result<Arc<dyn Provider>, String> {
 pub async fn serve() -> Result<(), String> {
     let store = ConfigStore::user()?;
     let mut cfg = store.load()?;
+    // What gets written back when a setting changes: the file as it was loaded. `prepare_lan` turns
+    // lan off for this run when it cannot be used; that must not be saved as the user's choice.
+    let loaded = cfg.clone();
     let log = stdout_log();
     let lan_identity = prepare_lan(&mut cfg, store.dir(), &log)?;
     let font = {
@@ -224,7 +227,7 @@ pub async fn serve() -> Result<(), String> {
     let ai = new_provider(&cfg)?;
     let (first, gap, total) = cfg.provider_timeouts();
     let notes = if cfg.history_chars() > 0 { Arc::new(history::Store::new(store.history_dir())) } else { Arc::new(history::Store::none()) };
-    let shared = Arc::new(Mutex::new(cfg.clone()));
+    let shared = Arc::new(Mutex::new(loaded));
     let (cfg_for_settings, store_for_settings, log_for_settings) = (shared.clone(), store.clone(), log.clone());
     let (cfg_for_set, store_for_set) = (shared.clone(), store.clone());
     let (store_for_report, log_for_report) = (store.clone(), log.clone());

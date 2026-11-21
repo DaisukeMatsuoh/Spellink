@@ -69,21 +69,18 @@ async function pairedEndpoints(): Promise<BridgeEndpoint[]> {
 }
 
 /**
- * The bridges to connect to: first those paired one by one (ADR 0016), then the older ways — the
- * pairing file in MyStyle (needs FILE:READ). Nothing is baked into the build: a package carries no
+ * The bridges to connect to: those paired one by one (ADR 0016); only when there are none, the older
+ * way — the pairing file in MyStyle (needs FILE:READ). Nothing is baked into the build: a package carries no
  * bridge address or token of its own, so a build made on any machine is safe to hand out.
  */
 export async function loadBridges(): Promise<LoadedBridges> {
   const paired = await pairedEndpoints();
-  const older = await loadOlderBridges();
-  if (paired.length === 0) {
-    return older;
+  if (paired.length > 0) {
+    // Once a device is paired, the shared file in MyStyle is not read: anything that can write
+    // MyStyle could add an address there, and the paired key is never offered to it.
+    return {endpoints: paired.slice(0, MAX_BRIDGES), source: 'paired'};
   }
-  return {
-    ...older,
-    endpoints: [...paired, ...older.endpoints].slice(0, MAX_BRIDGES),
-    source: 'paired',
-  };
+  return loadOlderBridges();
 }
 
 async function loadOlderBridges(): Promise<LoadedBridges> {

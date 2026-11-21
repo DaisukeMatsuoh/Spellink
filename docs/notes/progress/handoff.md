@@ -14,7 +14,7 @@
 ## 確認コマンド
 ```bash
 export PATH=$HOME/.cargo/bin:$PATH
-cd ~/GitWorkspaces/Cloute/bridge  && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked   # 312 件 ok（Rust。ADR 0018）
+cd ~/GitWorkspaces/Cloute/bridge  && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked   # 369 件 ok（Rust。ADR 0018・0017・0019）
 cd ~/GitWorkspaces/Cloute/plugin  && npx tsc --noEmit && npx jest                                  # 18 スイート・30 スイート・858 件（統合テストは cargo が要る）
 cd ~/GitWorkspaces/Cloute/plugin  && npm run spec && git diff --stat                                # 表を直したあと。差分は生成物だけ
 ```

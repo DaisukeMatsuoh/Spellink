@@ -1,3 +1,5 @@
+> **この手順の位置づけ（2026-11-21）:** 利用者が**自分で**トンネルを用意する経路①（上級者向け）の手順。Spellink の運営の入口は Cloudflare Tunnel を使わない（ADR 0019、`relay-operations.md`）。一般の利用者は、中継（経路②）と、家の中の直結（経路③。ADR 0017）で足りる。
+
 # Cloudflare の名前付きトンネルを設定する手順書
 
 目的: Supernote から、いつでも同じ URL（例 `wss://spellink.example.com/v1`）で、自宅のブリッジにつなげるようにする。
@@ -83,7 +85,7 @@ Cloudflare は、ダッシュボードから作る「リモート管理のトン
 
    # 2) 常駐させる
    mkdir -p ~/.config/systemd/user
-   cp ~/GitWorkspaces/Cloute/bridge/contrib/cloudflared-spellink.service ~/.config/systemd/user/
+   cp ~/GitWorkspaces/Spellink/bridge/contrib/cloudflared-spellink.service ~/.config/systemd/user/
    systemctl --user daemon-reload
    systemctl --user enable --now cloudflared-spellink
    loginctl enable-linger $USER      # ログアウトしても動かし続ける

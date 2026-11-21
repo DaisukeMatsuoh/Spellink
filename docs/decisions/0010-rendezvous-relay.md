@@ -54,3 +54,6 @@ spellink-bridge ──常時接続（外向き）──▶  ルーム（ペア�
 - 中継サーバ（`spellink-bridge relay`）は実装済み。実 Claude Code での確認は済んでいるが、端末経由の確認と、運営（ホスティング）の方針は未決定。
 - 開発者本人の運用は、Cloudflare の名前付きトンネル（`bridge.spellink.uk`）で足りている。この ADR の中継は、**一般の利用者**（自分でトンネルを作れない人）向けの経路。
 - 公開前の課題は `docs/notes/progress/README.md`（ペアリング情報の端末側保存、中継の運営）。
+
+## 追記（2026-11-21）: ホスティングの決定
+運営の VPS（Kagoya、固定の IP）で、**Cloudflare Tunnel を使わず、中継が自分で TLS を話す**。証明書は Let's Encrypt（DNS-01、名前サービス経由。DNS 用のトークンは存在しない）。コンテナは scratch。詳細は ADR 0019。公開の判断（規約・プライバシー・費用）は `docs/notes/research/2026-11-20-relay-decisions.md`。

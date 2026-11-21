@@ -2,7 +2,7 @@
 
 新しいセッションのエージェントは、**まずこのファイル**を読む。次に `CLAUDE.md`（規約）。リリースまでの全体は `release-plan.md`。経緯が要るときだけ `history.md`。別のエージェントに作業を渡すときは `handoff.md`。
 
-最終更新: 2026-11-20（Remote Control のセッションを終えて、ローカルの IDE に移るときの区切り）
+最終更新: 2026-11-21（ブリッジを Rust に移植し、家の直結・運営の入口〔名前サービス、自前の TLS〕を実装した区切り）
 
 ## このファイルの管理ルール
 - ここには「**いまの状態・次にやること・未決事項・手順**」だけを書く。経緯や実機での試行錯誤は `log/<年-月>.md` に**追記**する（追記専用。過去の記述は直さず、誤りは新しい項目で訂正）。`history.md` は、まとめ直した読み物。
@@ -15,11 +15,15 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 ## 前提（変わらないもの）
 - 端末: Nomad（Chauvet 3.31.45）。Manta にも対応する設計。
 - AI は **API キーを使わず**、ユーザーのサブスクリプションで、**公式の Claude Code CLI をそのまま**使う（ADR 0005）。プラグイン内にログインを持たない。
-- 構成: プラグイン（RN）⇄ wss（Cloudflare トンネル／リレー／LAN）⇄ ブリッジ（Go）⇄ `claude -p`。端末とブリッジの間は Noise で暗号化（ADR 0007）。
+- 構成: プラグイン（RN）⇄ wss（Cloudflare トンネル／リレー／LAN）⇄ ブリッジ（**Rust**。ADR 0018）⇄ `claude -p`。端末とブリッジの間は Noise で暗号化（ADR 0007）。
 - **push はユーザーの指示があるまでしない**（コミットは可）。特許・知財の分析は `docs/notes/ip/private/`（git 管理外）にだけ書く。
 - **開発ポリシー（ADR 0014）**: 戻り値は必ず確認／全ケースを洗い出す／状態遷移表を先に書く（表がコードの元データ）／信頼境界の値は必ず検証／場当たり的な再試行をしない。
 
-## 現在の状態（2026-11-20）
+## 現在の状態（2026-11-21）
+- **2026-11-21 の区切り**（詳細は `log/2026-11.md`）: ①ブリッジと中継を **Rust に移植**（ADR 0018。`bridge/` は Rust、Go は git の履歴）。暗号は `aws-lc-rs`。②**家の直結を実装**（ADR 0017）: 名前サービス（`spellink-bridge names`。権威 DNS と署名つき API）、各ブリッジが自分の証明書を Let's Encrypt から取る（ACME DNS-01。**DNS 用のトークンは存在しない**）。状態は 2 つの表（`docs/spec/lan-cert.md`。登録・証明書。生成して使う）。既定は無効（`lan.enabled`）。③**運営の入口**（ADR 0019）: Cloudflare Tunnel をやめ、中継が自分で TLS（`relay --tls-domain …`）。`bridge/Dockerfile.edge`（scratch）と `deploy/vps/compose.yaml`。④構成図 `docs/guides/architecture.md`、運営の手順 `docs/guides/relay-operations.md`、調査メモの結論の一覧 `docs/notes/research/README.md`。
+- **未確認（実環境）**: 本物の Let's Encrypt での注文（まず staging）、VPS への委任（NS）と DNS、docker でのイメージのビルド、端末が家の中で `<id>.lan.spellink.uk:8766` に直接つながること。偽の CA・偽の登録先での状態機械、TLS の受け口、DNS、API、バイナリでの登録→DNS の引きは、自動テストで確認済み。
+- **push 前（ユーザー指定）**: セキュリティレビュー、コードレビュー、`gitleaks` での全履歴の検索（開発機に未導入）。トークンの照合は 2026-11-21 に済み（`docs/guides/architecture.md` §9）。
+- **（以下は 2026-11-20 までの状態。Go を Rust に読み替える）**
 - **コード**: `stg` ブランチ、**未 push**（この区切りでコミット済み。push はユーザーの指示まで）。テスト: Go 全パッケージ緑（`-race`）、端末 **30 スイート・855 件**緑。**件数だけでなくスイート数を確認する**。CI（`.github/workflows/`）は一度も動かしていない（本物のブリッジとの結合テストが `go`・`zip`・`unzip` を使うので、CI の端末のジョブにも要る）。
 - **表がコード**（`docs/spec/README.md`）: 6 つ（端末の質問の流れ・波線・ページ追加と書き込み・ブリッジの run・**ペアリングの記録・ペアリングの端末**）。文書を直す → `cd plugin && npm run spec` → ハンドラ → テスト。**ペアリング（記録・端末）とブリッジの run の状態名・イベント名は、読める名前（先頭だけ大文字: `Issued`、`OwnerAdds` など）に変えた**（2026-11-20）。**質問の流れ・波線・ページ追加は、まだ ALL_CAPS の名前**（同じ形にそろえるかはユーザーの判断。コードの変更が大きい）。台帳の保存形式の状態名は、コードの名前と切り離した `issued` / `granted` / `active` / `expired` / `revoked`。
 - **この期間に作ったもの**（詳細は `log/2026-11.md`）:
@@ -52,8 +56,8 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 2. **[U] `docs/spec/bridge-app.md`（Bridge App の寿命の表）を読んで確認** → **[A]** コードの表にして実装（`/app` を土台に、`spellink-bridge app`、トレイ、自動起動。トレイは Mac・Windows の実機で試す必要がある）。仕様の草案: `docs/notes/research/2026-11-20-bridge-app-draft.md`。初回の同意の画面を含む。
 3. **[U] 公開の前に埋める文書**: `docs/legal/privacy-policy-draft.md`・`terms-of-service-draft.md` の `[ ]`（前段のサービス名、保存期間、告知の場所、連絡先、準拠法・管轄）。専門家の確認を勧める。`README.md`・`CONTRIBUTING.md`・`SECURITY.md`・`THIRD_PARTY_NOTICES.md`（連絡手段、著作権者の表示）。
 4. **[U] Anthropic の規約を、公開の前と変更のたびに確認**（特に、`claude -p` の利用が、2026-06-15 から別枠の月ごとのクレジットから引かれる、という報道。公式の最新の扱いを `support.claude.com` で確認）。必要なら Anthropic に書面で問い合わせる。
-5. **[U] 中継の運営の判断**（`relay-decisions.md`）: 運営は決定。残りは、置き場所（公開前に VPS へ）、費用、可用性の約束、公開の時期。**[A]** 手順書・systemd 単位・帯域の上限・プライバシーポリシーの草案は済み。
-6. **[U→A] 家の中の直結の名前サービス（ADR 0017。作ると決定 2026-11-21）**: [U] 設計を確認、Cloudflare の API トークン（`spellink.uk` のゾーンだけ、または名前用の別ドメイン）。[A] 名前サービス（`spellink-bridge names`）とブリッジ側の登録クライアントを、表と一緒に実装。
+5. **[U] 中継の運営の判断**（`docs/notes/research/2026-11-20-relay-decisions.md`）: 運営と置き場所（Kagoya の VPS、scratch、自前の TLS。ADR 0019）は決定。残りは、公開の時期、費用の持ち方、可用性の約束、利用規約・プライバシーの文書（名前サービスが ID と LAN の IP を見ること、証明書透明性に名前が載ることを入れる）。**[A]** VPS での初回の運用の立ち会い（`docs/guides/relay-operations.md`。まず Let's Encrypt の staging）。
+6. **[U→A] 家の中の直結（ADR 0017。実装済み 2026-11-21）の実環境での確認**: [U] VPS を用意し、DNS に `ns1` の A・`lan` の NS・2 つの CNAME を置く（`relay-operations.md` §3）。[A] staging で注文を通し、本番に切り替え、`lan.enabled` を既定にするか判断。端末で家の中の直結を確認。
 7. **[U] 状態名・イベント名を、残りの表（質問の流れ・波線・ページ追加）も読める名前にそろえるか。** [A] は機械的にできる（生成器は対応済み）が、コードとテストの変更が大きい。
 8. **[A] 多言語**: TSV に `zh_CN`・`zh_TW` の列を足す（翻訳は [A]、母語の方の確認を勧める）。筆跡のグリフは文字体系ごとにデータが要る（ADR 0006 の追記の表。ハングル・キリル・ギリシャ・アクセント付きラテン・中国語の漢字は未着手）。本体の表示言語は、実機の設定で確認する。
 9. **[U] 配布**: 署名なし。公式サイトに SHA-256 を載せる（`release.yml` は、各配布物の `.sha256` を作る）。macOS・Windows の警告の回避の手順を、利用者向けの文書に書く。
@@ -64,7 +68,7 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 ## 未決（ユーザーの判断）
 - **名前**: 現行は Spellink。`spellink.com` は取得済みで買えず、`spellink.uk` を取得。dancink などの案は `docs/notes/research/2026-11-03-naming-round2.md`。決めるまで改名しない（`pluginID` は変更禁止）。
 - 公開の時期と形（OSS・寄付〔Buy Me a Coffee など〕）、**push の許可**。
-- 中継の置き場所・費用・可用性の約束（運営すること自体は決定）。名前・証明書サービスを作るか。
+- 中継の公開の時期、費用の持ち方、可用性の約束（運営・置き場所・名前サービスは決定。ADR 0017・0019）。
 - Bridge App の寿命の表の確認（`bridge-app.md` の末尾の 3 つ: 終了の待ちの上限、確認の間隔、失敗時もトレイを残すか）。
 - 残りの表の状態名・イベント名を読める名前にそろえるか。
 - 他社の AI（ChatGPT など）を足す順番と、各社の規約の確認（ADR 0015）。

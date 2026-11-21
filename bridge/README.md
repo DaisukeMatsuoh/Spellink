@@ -9,14 +9,15 @@ Supernote のプラグインと AI（公式の Claude Code CLI）の間に立つ
 | `device …` / `open` | 端末の追加・ペアリング・取り消し、アプリ画面を開く |
 | `service install\|uninstall\|status` | パソコンの起動と一緒に動かす |
 | `build-glyphs` | KanjiVG・Hershey から字のデータを作る |
-| `relay [--listen ADDR] [--trust-proxy]` | 家の外から使うための中継 |
+| `relay …` | 家の外から使うための中継（自前の TLS、または TLS を話す前段の後ろ） |
+| `names …` | 名前サービス（家の中の直結のための DNS と API。ADR 0017） |
 | `preview TEXT OUT.png` | 端末なしで筆跡を確かめる |
 | `compose` `ask` `bench` `idle` `testfont` | 計測・試験用 |
 
 ```bash
 cargo test --locked                     # 単体・結合・上書き更新・Go が記録した筆跡との一致
 cargo build --release --locked          # ./target/release/spellink-bridge
-docker build -f Dockerfile.relay .      # 中継だけの、scratch の単一バイナリ
+docker build -f Dockerfile.edge .       # 中継・名前サービスの、scratch の単一バイナリ
 ```
 
 ## 作り

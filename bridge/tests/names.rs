@@ -71,12 +71,17 @@ fn query(dns: SocketAddr, name: &str, qtype: u16) -> Vec<u8> {
     q.push(0);
     q.extend_from_slice(&qtype.to_be_bytes());
     q.extend_from_slice(&1u16.to_be_bytes());
+    // UDP may lose a datagram; a resolver asks again after a second, and so does this
     let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
-    s.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-    s.send_to(&q, dns).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
     let mut buf = [0u8; 600];
-    let n = s.recv(&mut buf).expect("the name service answered");
-    buf[..n].to_vec()
+    for _ in 0..3 {
+        s.send_to(&q, dns).unwrap();
+        if let Ok(n) = s.recv(&mut buf) {
+            return buf[..n].to_vec();
+        }
+    }
+    panic!("the name service did not answer three times");
 }
 
 fn clock() -> spellink_bridge::lan::Clock {
@@ -139,4 +144,64 @@ async fn the_service_answers_only_for_its_zone_and_keeps_its_records_across_a_re
     let again = Server::start_in(data);
     let r = query(again.dns, &format!("{}.lan.test", me.id()), 1);
     assert_eq!(&r[r.len() - 4..], &[10, 9, 8, 7], "the record was kept");
+}
+
+fn read_until(child: &mut Child, needle: &str) -> String {
+    use std::io::Read;
+    let mut out = child.stdout.take().unwrap();
+    let mut seen = String::new();
+    let mut buf = [0u8; 512];
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while std::time::Instant::now() < deadline && !seen.contains(needle) {
+        let n = out.read(&mut buf).unwrap();
+        if n == 0 {
+            break;
+        }
+        seen.push_str(&String::from_utf8_lossy(&buf[..n]));
+    }
+    seen
+}
+
+#[test]
+fn a_relay_with_its_own_tls_says_which_record_to_add_and_refuses_handshakes_until_it_has_a_certificate() {
+    let dir = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let mut child = Command::new(BIN)
+        .args(["relay", "--tls-domain", "relay.example.test", "--data", dir.path().to_str().unwrap(), "--names", "http://127.0.0.1:1", "--zone", "lan.test", "--listen", &format!("127.0.0.1:{port}")])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let said = read_until(&mut child, "listening on");
+    assert!(said.contains("_acme-challenge.relay.example.test.  CNAME  _acme-challenge.") && said.contains(".lan.test."), "{said}");
+    assert!(said.contains("(TLS)"), "{said}");
+    // a client that starts a handshake is turned away: there is no certificate yet
+    let mut tcp = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    use std::io::{Read, Write};
+    // a TLS 1.2 ClientHello is long; a plain HTTP request is not TLS and must not get an answer either
+    tcp.write_all(b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();
+    let mut buf = [0u8; 64];
+    let n = tcp.read(&mut buf).unwrap_or(0);
+    assert!(!buf[..n].starts_with(b"HTTP/1.1 200"), "plain HTTP must not be served on the TLS port");
+    // the identity was written (private) so that the record to add stays the same on the next start
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(dir.path().join("names-identity.pk8")).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn the_relay_refuses_its_own_tls_together_with_trust_proxy_and_a_data_directory_is_required() {
+    let run = |args: &[&str]| {
+        let o = Command::new(BIN).args(args).output().unwrap();
+        (o.status.success(), String::from_utf8_lossy(&o.stderr).into_owned())
+    };
+    let (ok, err) = run(&["relay", "--tls-domain", "r.example.test", "--trust-proxy", "--data", "/tmp/x", "--listen", "127.0.0.1:0"]);
+    assert!(!ok && err.contains("do not go together"), "{err}");
+    let (ok, err) = run(&["relay", "--tls-domain", "r.example.test", "--listen", "127.0.0.1:0"]);
+    assert!(!ok && err.contains("--data"), "{err}");
+    let (ok, err) = run(&["names", "--data", "/tmp/x"]);
+    assert!(!ok && err.contains("--ns"), "{err}");
 }

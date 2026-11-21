@@ -1,5 +1,7 @@
 # 中継サーバ（Go）をどこで動かすか（2026-11-01）
 
+> 状態: **決着（2026-11-21）** → ADR 0019。結論: **Kagoya の VPS（固定 IP、定額）で、scratch のコンテナ**。Cloudflare Tunnel は使わず、中継が自分で TLS を話す。この文書の「Go」「開発機＋Cloudflare Tunnel」「Oracle・Workers の比較」は、歴史として残す（採らなかった）。
+
 中継サーバ（`spellink-bridge relay`）は、暗号化された WebSocket のフレームを右から左へ流すだけなので、とても軽い。
 CPU・メモリはほぼ使わず、効いてくるのは**通信量**と**常時接続の数**（ブリッジ 1 台につき 1 本）だけ。
 

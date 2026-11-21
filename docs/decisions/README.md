@@ -9,7 +9,7 @@
 - 設計の「仕様」（状態遷移表・インターフェース台帳）は ADR ではなく `docs/spec/` に置く。ADR はなぜそう決めたか、`docs/spec/` は何をどう処理するか。
 - 開発の作法は ADR 0014（`CLAUDE.md` にも要約）。
 
-## 一覧（2026-11-07 時点）
+## 一覧（2026-11-21 時点）
 | # | タイトル | 状態 | 確認の根拠 |
 |---|---|---|---|
 | [0001](0001-use-official-plugin-sdk.md) | 拡張方式に公式プラグイン SDK を採用する | Accepted | — |
@@ -21,15 +21,16 @@
 | [0007](0007-relay-transport-and-security.md) | プラグイン⇔ブリッジ間の通信方式とセキュリティ | Accepted | wss + Noise を実機で確認（2026-11-07）。平文 hello の削除が残る |
 | [0008](0008-bridge-in-go.md) | ブリッジを Go で実装し、単一バイナリで配る | Superseded by 0018 | — |
 | [0009](0009-long-answers-continue-on-new-pages.md) | 長い回答は字数を合わせ、溢れたら直後に挿入したページへ続ける | Proposed | ページ追加の堅牢化（0013・0014）の実機確認待ち |
-| [0010](0010-rendezvous-relay.md) | 外出先からの接続は Spellink の中継サーバ（ランデブー）で受け持つ | Proposed | 実装済み。端末経由の確認・運営方針が未決定 |
-| [0011](0011-lan-direct-wss.md) | 家の中は Let's Encrypt 証明書つきの wss:// で直接つなぐ | Proposed | 実証明書での確認待ち（API トークンが要る） |
+| [0010](0010-rendezvous-relay.md) | 外出先からの接続は Spellink の中継サーバ（ランデブー）で受け持つ | Proposed | 実装済み。運営の入口は ADR 0019 で決定。端末経由・VPS での確認待ち |
+| [0011](0011-lan-direct-wss.md) | 家の中は Let's Encrypt 証明書つきの wss:// で直接つなぐ | Superseded by 0017 | 利用者の Cloudflare トークンで取る方式。名前サービスに置き換え（2026-11-21） |
 | [0012](0012-note-conversation-memory.md) | 同じノートでの質問は、前のやり取りを踏まえて答える（ブリッジが会話を記憶する） | Accepted | 実機で確認（2026-11-07） |
 | [0013](0013-resumable-answers.md) | 回答は接続から切り離し、番号つきのフレームで再開できるようにする | Proposed | 実機で、切断後の再開を確認待ち |
 | [0014](0014-engineering-policy.md) | 開発ポリシー: 戻り値は必ず確認し、全ケースを表にしてから実装する | Accepted | ユーザー指示（2026-11-07） |
 | [0015](0015-ai-provider-abstraction.md) | 問い合わせ先の AI を差し替え可能な「プロバイダ」にし、利用者向けの呼称を中立にする | Accepted | 実装済み（2026-11-08）。実機未確認 |
 | [0016](0016-per-device-pairing.md) | ペアリング: ブリッジが端末ごとの 2 段の秘密（B・K）を発行し、台帳で管理する | Proposed | 実装済み（2026-11-20）。実機でのペアリング全体の確認待ち |
+| [0017](0017-lan-name-service.md) | 家の中の直結: 名前サービスが DNS を持ち、各ブリッジが自分の証明書を取る | Accepted | ユーザーが決定（2026-11-21）。実装済み。本物の Let's Encrypt・VPS での確認待ち |
+| [0018](0018-bridge-in-rust.md) | ブリッジと中継を Rust に移植する（scratch コンテナの単一バイナリ） | Accepted | ユーザーが決定（2026-11-21）。移植完了・置き換え済み |
+| [0019](0019-self-hosted-edge.md) | 運営の入口: Cloudflare Tunnel をやめ、中継と名前サービスが自分で TLS と DNS を話す | Accepted | ユーザーが決定（2026-11-21）。実装済み。VPS での確認待ち |
 
 ## 関連する仕様
 - 状態遷移表・インターフェース台帳: [`docs/spec/`](../spec/README.md)
-| [0017](0017-lan-name-service.md) | 家の中の直結のために、名前と証明書の発行を手伝う小さなサービスを運営する | Proposed | ユーザーが作ると決定（2026-11-21）。設計の確認待ち |
-| [0018](0018-bridge-in-rust.md) | ブリッジと中継を Rust に移植する（scratch コンテナの単一バイナリ） | Accepted | ユーザーが決定（2026-11-21）。移植完了・置き換え済み（`lan` の証明書取得を除く） |

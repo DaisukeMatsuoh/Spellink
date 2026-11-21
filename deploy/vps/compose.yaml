@@ -1,0 +1,43 @@
+# The operator's server (ADR 0019): the relay and the name service, each in an empty container.
+#   docker compose -f deploy/vps/compose.yaml up -d
+# What is open to the internet: 443/tcp (the relay), 8443/tcp (the name service's API), and
+# 53/udp+tcp (DNS for the LAN zone). Close everything else in the host's firewall.
+# Change the names below (spellink.uk) when running it for another domain.
+name: spellink
+
+x-hardened: &hardened
+  image: spellink-edge        # docker build -f bridge/Dockerfile.edge -t spellink-edge bridge
+  restart: unless-stopped
+  read_only: true             # the only place it writes is its own volume
+  user: "65534:65534"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 512
+  mem_limit: 512m
+  logging: {driver: json-file, options: {max-size: 10m, max-file: "3"}}
+
+services:
+  names:
+    <<: *hardened
+    command: >
+      names --zone lan.spellink.uk --ns ns1.spellink.uk --data /data
+      --dns :5353 --listen :8443 --tls-domain names.spellink.uk
+    ports:
+      - "53:5353/udp"
+      - "53:5353/tcp"
+      - "8443:8443/tcp"
+    volumes: ["names-data:/data"]
+
+  relay:
+    <<: *hardened
+    command: >
+      relay --listen :8443 --tls-domain relay.spellink.uk --data /data
+      --names https://names.spellink.uk:8443 --zone lan.spellink.uk
+    ports:
+      - "443:8443/tcp"
+    volumes: ["relay-data:/data"]
+    depends_on: [names]
+
+volumes:
+  names-data:
+  relay-data:

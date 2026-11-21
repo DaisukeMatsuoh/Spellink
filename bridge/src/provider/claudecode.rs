@@ -212,6 +212,20 @@ mod tests {
         path.to_string_lossy().into_owned()
     }
 
+    /// Starting a script that was written a moment ago can fail with "Text file busy" (ETXTBSY) when
+    /// another test thread forks at that very time: a known Linux race between writing an
+    /// executable and starting it. Only the tests write executables, and a start that failed this
+    /// way never ran, so asking again is exact (no text, no sign of life was produced).
+    async fn ask_script(r: &Runner, request: Request, sink: Sink, cancel: CancellationToken) -> Result<String, AskError> {
+        for _ in 0..40 {
+            match r.ask(request.clone(), sink.clone(), cancel.clone()).await {
+                Err(AskError::Failed(m)) if m.contains("Text file busy") => tokio::time::sleep(Duration::from_millis(25)).await,
+                other => return other,
+            }
+        }
+        r.ask(request, sink, cancel).await
+    }
+
     fn delta(text: &str) -> String {
         format!(r#"{{"type":"stream_event","event":{{"type":"content_block_delta","delta":{{"type":"text_delta","text":"{text}"}}}}}}"#)
     }
@@ -235,7 +249,7 @@ mod tests {
         let exe = fake_claude(d.path(), &[&d1, r#"{"type":"system","subtype":"init"}"#, &d2, r#"{"type":"result","is_error":false}"#], 0);
         let r = Runner::new(&exe, "haiku").unwrap();
         let (sink, texts, _) = sink_collecting();
-        let answer = r.ask(req(), sink, CancellationToken::new()).await.unwrap();
+        let answer = ask_script(&r, req(), sink, CancellationToken::new()).await.unwrap();
         assert_eq!(answer, "こんにちは");
         assert_eq!(texts.lock().unwrap().join("|"), "こん|にちは");
     }
@@ -245,11 +259,11 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let exe = fake_claude(d.path(), &[r#"{"type":"result","is_error":true,"result":"Not logged in"}"#], 0);
         let r = Runner::new(&exe, "").unwrap();
-        let e = r.ask(req(), Sink::silent(), CancellationToken::new()).await.unwrap_err();
+        let e = ask_script(&r, req(), Sink::silent(), CancellationToken::new()).await.unwrap_err();
         assert_eq!(e, AskError::Failed("Not logged in".into()));
         let exe = fake_claude(d.path(), &[r#"{"type":"result","is_error":true,"subtype":"error_max_turns"}"#], 0);
         let r = Runner::new(&exe, "").unwrap();
-        assert_eq!(r.ask(req(), Sink::silent(), CancellationToken::new()).await.unwrap_err(), AskError::Failed("error_max_turns".into()), "no result text: the subtype says what happened");
+        assert_eq!(ask_script(&r, req(), Sink::silent(), CancellationToken::new()).await.unwrap_err(), AskError::Failed("error_max_turns".into()), "no result text: the subtype says what happened");
     }
 
     #[tokio::test]
@@ -257,7 +271,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let exe = script(&d.path().join("claude"), "#!/bin/sh\ncat >/dev/null\necho 'boom happened' >&2\nexit 3\n");
         let r = Runner::new(&exe, "").unwrap();
-        match r.ask(req(), Sink::silent(), CancellationToken::new()).await {
+        match ask_script(&r, req(), Sink::silent(), CancellationToken::new()).await {
             Err(AskError::Failed(m)) => assert!(m.contains("boom happened") && m.contains('3'), "{m}"),
             other => panic!("expected a failure for exit status 3, got {other:?}"),
         }
@@ -266,7 +280,7 @@ mod tests {
     #[tokio::test]
     async fn a_missing_cli_is_a_failure_that_names_it() {
         let r = Runner::new("/nonexistent/claude", "").unwrap();
-        match r.ask(req(), Sink::silent(), CancellationToken::new()).await {
+        match ask_script(&r, req(), Sink::silent(), CancellationToken::new()).await {
             Err(AskError::Failed(m)) => assert!(m.contains("/nonexistent/claude"), "{m}"),
             other => panic!("{other:?}"),
         }
@@ -285,7 +299,7 @@ mod tests {
             c2.cancel();
         });
         let start = Instant::now();
-        let e = r.ask(req(), Sink::silent(), cancel).await.unwrap_err();
+        let e = ask_script(&r, req(), Sink::silent(), cancel).await.unwrap_err();
         assert!(start.elapsed() < Duration::from_secs(5), "cancel should stop the process quickly, took {:?}", start.elapsed());
         assert_eq!(e, AskError::Cancelled("途中".into()));
     }
@@ -297,7 +311,17 @@ mod tests {
         let exe = script(&d.path().join("claude"), &format!("#!/bin/sh\necho $$ > {}\nexec sleep 30\n", pid_file.display()));
         let r = Runner::new(&exe, "").unwrap();
         let fut = r.ask(req(), Sink::silent(), CancellationToken::new());
-        let _ = tokio::time::timeout(Duration::from_millis(400), fut).await; // the caller's silence limit fires: the future is dropped
+        // the caller's silence limit fires: the future is dropped. It is dropped once the CLI has
+        // really started (it wrote its pid), however slow this machine is just now.
+        let started = async {
+            for _ in 0..600 {
+                if std::fs::read_to_string(&pid_file).is_ok_and(|p| p.trim().parse::<i32>().is_ok()) {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        };
+        tokio::select! { _ = fut => panic!("the CLI sleeps for 30 s: the answer cannot have ended"), _ = started => {} }
         let pid: i32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert!(!std::path::Path::new(&format!("/proc/{pid}")).exists() || std::fs::read_to_string(format!("/proc/{pid}/stat")).map(|s| s.contains(") Z")).unwrap_or(true), "the CLI must not outlive the dropped answer");
@@ -321,7 +345,7 @@ mod tests {
         );
         let r = Runner::new(&exe, "").unwrap();
         let (sink, _, signs) = sink_collecting();
-        r.ask(req(), sink, CancellationToken::new()).await.unwrap();
+        ask_script(&r, req(), sink, CancellationToken::new()).await.unwrap();
         assert_eq!(*signs.lock().unwrap(), vec![false, false, true, true, true, true]);
     }
 
@@ -331,7 +355,7 @@ mod tests {
         let exe = fake_claude(d.path(), &["not json at all", r#"{"type":"system"}"#, r#"{"type":"result","is_error":false}"#], 0);
         let r = Runner::new(&exe, "").unwrap();
         let (sink, _, signs) = sink_collecting();
-        r.ask(req(), sink, CancellationToken::new()).await.unwrap();
+        ask_script(&r, req(), sink, CancellationToken::new()).await.unwrap();
         assert_eq!(signs.lock().unwrap().len(), 2, "a line that is not JSON is no sign of life");
     }
 
@@ -342,7 +366,7 @@ mod tests {
         let exe = script(&d.path().join("claude"), &format!("#!/bin/sh\ncat > {}\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false}}'\n", out.display()));
         let r = Runner::new(&exe, "").unwrap();
         let request = Request { system: "sys".into(), question: "それを3倍して".into(), lang: "ja".into(), earlier: vec![Turn { at: String::new(), q: "1+1は？".into(), a: "2です。".into() }] };
-        r.ask(request, Sink::silent(), CancellationToken::new()).await.unwrap();
+        ask_script(&r, request, Sink::silent(), CancellationToken::new()).await.unwrap();
         let got = std::fs::read_to_string(out).unwrap();
         for want in ["1+1は？", "2です。", "それを3倍して"] {
             assert!(got.contains(want), "the CLI must be given {want:?}, got {got:?}");
@@ -358,7 +382,7 @@ mod tests {
             &format!("#!/bin/sh\ncat >/dev/null\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > {}\npwd >> {}\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false}}'\n", out.display(), out.display()),
         );
         let r = Runner::new(&exe, "haiku").unwrap();
-        r.ask(req(), Sink::silent(), CancellationToken::new()).await.unwrap();
+        ask_script(&r, req(), Sink::silent(), CancellationToken::new()).await.unwrap();
         let got = std::fs::read_to_string(out).unwrap();
         for want in ["-p", "stream-json", "--include-partial-messages", "--strict-mcp-config", "--no-session-persistence", "--system-prompt\nsys", "--model\nhaiku", "spellink-bridge-"] {
             assert!(got.contains(want), "missing {want:?} in:\n{got}");

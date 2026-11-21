@@ -1,5 +1,7 @@
 # 中継を scratch コンテナで動かす: TLS をどこに置くか
 
+> 状態: **決着** → ADR 0019。結論: 中継が自分で TLS を話す（案 C）。暗号は `aws-lc-rs`（末尾の追記）。scratch で動くことは、静的バイナリで確認済み。docker でのビルドは未確認。
+
 日付: 2026-11-21。ユーザーの問い: 「Rust で TLS を使える scratch コンテナはできないか。Alpine は sh が入る。OpenSSL の代わりの Rust のライブラリで足りるはず」。
 
 ## 結論
@@ -49,3 +51,6 @@ C が混ざるのは**ビルド時だけ**。できあがりは外部のライ�
 - 変更: `rustls` を `aws-lc-rs`、`ureq` を `rustls-no-provider`、`snow` から `std`（使わない ring を引き込んでいた）を外した。`cargo tree` に ring は残らない。cmake なしでビルドできた。
 - 結果: 全機能のバイナリが 4.7 MB → 5.9 MB（musl 静的は 5.8 MB）。`cargo test` 312 件、clippy、fmt が通る。musl 静的を `/etc` 空の環境で動かし、公的 CA の wss のハンドシェイクが通る（ring のときと同じ確認）。
 - 次点: graviola（C なしの純 Rust。0.x）。成熟したら Alpine なしのビルドのために再検討する。
+
+## 追記（同日・後）: 決定
+ユーザーが、Kagoya の VPS（固定 IP）で、**案 C（中継が自分で TLS を話す）**に決めた（ADR 0019）。上の「推奨: 最初は A」は、この決定で置き換わった。確認の DNS-01 は、`_acme-challenge.<名前>` を名前サービスの確認名への CNAME にする方式（DNS 用のトークンが存在しない）。

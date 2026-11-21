@@ -1,4 +1,5 @@
-# systemd unit for the Spellink relay (docs/guides/relay-operations.md).
+# systemd unit for a Spellink relay that sits behind a proxy that does TLS (the plain mode).
+# The normal way to run the relay is the containers in deploy/vps (its own TLS, no proxy).
 # Install: sudo cp spellink-relay.service /etc/systemd/system/ && sudo systemctl enable --now spellink-relay
 [Unit]
 Description=Spellink relay (passes encrypted frames between a Supernote plugin and a bridge)
@@ -10,8 +11,8 @@ Wants=network-online.target
 User=spellink-relay
 Group=spellink-relay
 # Listen on the loopback only: the tunnel (cloudflared) or a reverse proxy is the one door.
-# -trust-proxy: take the client's address from the proxy's header, which is right ONLY behind that door.
-ExecStart=/usr/local/bin/spellink-bridge relay -listen 127.0.0.1:8780 -trust-proxy
+# --trust-proxy: take the client's address from the proxy's header, which is right ONLY behind that door.
+ExecStart=/usr/local/bin/spellink-bridge relay --listen 127.0.0.1:8780 --trust-proxy
 Restart=always
 RestartSec=2
 # The relay keeps nothing on disk and needs no privileges.

@@ -1,0 +1,19 @@
+# The relay and the name service as one static binary in an empty container (ADR 0018, 0019):
+#   docker build -f Dockerfile.edge -t spellink-edge .
+#   docker run ... spellink-edge relay --tls-domain relay.example.org --data /data ...
+#   docker run ... spellink-edge names --ns ns1.example.org --data /data ...
+# The image has no shell, no package manager and no libc: nothing but /spellink-bridge. See
+# deploy/vps/compose.yaml for how it is run.
+#
+# Built on Alpine so that the C parts of the TLS library (aws-lc-rs) compile for musl natively;
+# only the second stage is shipped. (Not yet built in docker: this machine has none.)
+FROM rust:alpine AS build
+RUN apk add --no-cache musl-dev gcc make cmake perl
+WORKDIR /src
+COPY . .
+RUN cargo build --release --locked && cp target/release/spellink-bridge /spellink-bridge
+
+FROM scratch
+COPY --from=build /spellink-bridge /spellink-bridge
+USER 65534:65534
+ENTRYPOINT ["/spellink-bridge"]

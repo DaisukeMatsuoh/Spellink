@@ -91,3 +91,54 @@ pub fn read_font<R: Read>(r: R) -> Result<Font, FontError> {
     }
     Ok(Font { em, sources, glyphs })
 }
+
+/// Writes a font in the format `read_font` reads (the Go bridge's `Font.Write`): gzip, the magic,
+/// little-endian, glyphs in code point order, points after the first of each stroke as deltas.
+pub fn write_font<W: std::io::Write>(f: &Font, w: W) -> io::Result<()> {
+    use std::io::Write;
+    let mut gz = flate2::write::GzEncoder::new(w, flate2::Compression::default());
+    gz.write_all(MAGIC)?;
+    gz.write_all(&f.em.to_le_bytes())?;
+    gz.write_all(&(f.sources.len() as u16).to_le_bytes())?;
+    for s in &f.sources {
+        gz.write_all(&(s.len() as u16).to_le_bytes())?;
+        gz.write_all(s.as_bytes())?;
+    }
+    let mut chars: Vec<char> = f.glyphs.keys().copied().collect();
+    chars.sort();
+    gz.write_all(&(chars.len() as u32).to_le_bytes())?;
+    for c in chars {
+        let g = &f.glyphs[&c];
+        gz.write_all(&(c as u32).to_le_bytes())?;
+        gz.write_all(&g.advance.to_le_bytes())?;
+        gz.write_all(&(g.strokes.len() as u16).to_le_bytes())?;
+        for s in &g.strokes {
+            gz.write_all(&((s.len() / 2) as u16).to_le_bytes())?;
+            for i in 0..s.len() {
+                let v = if i < 2 { s[i] } else { s[i].wrapping_sub(s[i - 2]) };
+                gz.write_all(&v.to_le_bytes())?;
+            }
+        }
+    }
+    gz.finish()?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod write_tests {
+    use super::*;
+
+    #[test]
+    fn what_is_written_is_read_back_and_the_real_file_survives_a_round_trip() {
+        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/glyphs.bin")).unwrap();
+        let font = read_font(&bytes[..]).unwrap();
+        let mut out = Vec::new();
+        write_font(&font, &mut out).unwrap();
+        let again = read_font(&out[..]).unwrap();
+        assert_eq!((again.em, again.sources.clone(), again.glyphs.len()), (font.em, font.sources.clone(), font.glyphs.len()));
+        for (c, g) in &font.glyphs {
+            let h = &again.glyphs[c];
+            assert!(h.advance == g.advance && h.strokes == g.strokes, "{c:?} changed");
+        }
+    }
+}

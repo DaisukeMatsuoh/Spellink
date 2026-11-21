@@ -7,6 +7,7 @@ pub mod config;
 pub mod connector;
 pub mod devicecli;
 pub mod devices;
+pub mod glyphbuild;
 pub mod glyphs;
 pub mod handwriting;
 pub mod history;

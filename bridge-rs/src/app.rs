@@ -173,18 +173,21 @@ fn clamp(v: i64, lo: i64, hi: i64) -> i64 {
     v.clamp(lo, hi)
 }
 
-/// Reads the glyph data. It is built the first time (`build-glyphs`).
+/// Reads the glyph data, building it the first time (a missing file or one of an older format).
 pub fn load_font(store: &ConfigStore) -> Result<Arc<Font>, String> {
     let file = store.glyph_file();
     match std::fs::File::open(&file) {
         Ok(f) => match glyphs::read_font(std::io::BufReader::new(f)) {
-            Ok(font) => Ok(Arc::new(font)),
-            Err(glyphs::FontError::Format) => Err(format!("{}: not a glyph file of this version; run `spellink-bridge build-glyphs`", file.display())),
-            Err(e) => Err(format!("{}: {e}", file.display())),
+            Ok(font) => return Ok(Arc::new(font)),
+            Err(glyphs::FontError::Format) => {}
+            Err(e) => return Err(format!("{}: {e}", file.display())),
         },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(format!("{}: no glyph data yet; run `spellink-bridge build-glyphs`", file.display())),
-        Err(e) => Err(format!("{}: {e}", file.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("{}: {e}", file.display())),
     }
+    crate::glyphbuild::command(store)?;
+    let f = std::fs::File::open(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    glyphs::read_font(std::io::BufReader::new(f)).map(Arc::new).map_err(|e| format!("{}: {e}", file.display()))
 }
 
 /// Builds the AI the config names. Adding another AI is a case here and a module under provider;
@@ -201,7 +204,10 @@ pub fn new_provider(cfg: &Config) -> Result<Arc<dyn Provider>, String> {
 pub async fn serve() -> Result<(), String> {
     let store = ConfigStore::user()?;
     let cfg = store.load()?;
-    let font = load_font(&store)?;
+    let font = {
+        let store = store.clone();
+        tokio::task::spawn_blocking(move || load_font(&store)).await.map_err(|e| e.to_string())??
+    };
     let ai = new_provider(&cfg)?;
     let log = stdout_log();
     let (first, gap, total) = cfg.provider_timeouts();

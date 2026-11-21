@@ -15,6 +15,7 @@ hex = "0.4"
 rand = "0.9"
 sha2 = "0.10"
 snow = { version = "0.10", default-features = false, features = ["std", "default-resolver", "use-chacha20poly1305", "use-blake2", "use-curve25519", "use-getrandom"] }
+tokio-util = { version = "0.7", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal", "io-util", "process", "fs"] }
 tokio-tungstenite = "0.29"
 serde = { version = "1", features = ["derive"] }
@@ -29,4 +30,5 @@ panic = "abort"
 
 [dev-dependencies]
 tempfile = "3"
+tokio-util = { version = "0.7", default-features = false }
 tokio = { version = "1", features = ["test-util"] }

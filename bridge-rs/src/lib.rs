@@ -4,9 +4,11 @@
 pub mod config;
 pub mod glyphs;
 pub mod handwriting;
+pub mod history;
 pub mod lantls;
 pub mod layout;
 pub mod measure;
+pub mod provider;
 pub mod random;
 pub mod securechan;
 pub mod util;

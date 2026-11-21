@@ -27,6 +27,7 @@ async fn main() -> ExitCode {
             }
         }
         "preview" => spellink_bridge::cli::preview(&rest),
+        "testfont" => spellink_bridge::cli::testfont(&rest),
         "service" => spellink_bridge::service::command(&std::env::args().skip(2).collect::<Vec<_>>()),
         "open" => spellink_bridge::cli::open_app().await,
         "device" => spellink_bridge::cli::device(&std::env::args().skip(2).collect::<Vec<_>>()).await,

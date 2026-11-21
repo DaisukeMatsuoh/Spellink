@@ -178,3 +178,30 @@ mod tests {
         assert!(dark > 500 && dark < 400_000, "{dark} dark pixels");
     }
 }
+
+/// Writes a tiny glyph file — every hiragana, digit and ASCII letter as a two-stroke mark — so that
+/// tests can run a bridge without downloading the real glyph data. It is for the plugin's
+/// integration tests (plugin/__tests__/integration.test.ts), not for use.
+pub fn testfont(args: &[String]) -> Result<(), String> {
+    use crate::glyphs::{Font, Glyph};
+    let [out] = args else { return Err("usage: spellink-bridge testfont OUT".into()) };
+    let mut f = Font { em: 100, sources: vec![], glyphs: std::collections::HashMap::new() };
+    let mut mark = |c: char, full: bool| {
+        f.glyphs.insert(c, Glyph { advance: if full { 100 } else { 55 }, strokes: vec![vec![10, 10, 60, 10, 60, 90], vec![10, 50, 50, 50]] });
+    };
+    for c in 'ぁ'..='ん' {
+        mark(c, true);
+    }
+    for c in '0'..='9' {
+        mark(c, false);
+    }
+    for c in 'a'..='z' {
+        mark(c, false);
+        mark(c.to_ascii_uppercase(), false);
+    }
+    for c in "。、？！：:.,?!+-=".chars() {
+        mark(c, c as u32 > 0x7f);
+    }
+    let file = std::fs::File::create(out).map_err(|e| format!("{out}: {e}"))?;
+    crate::glyphs::write_font(&f, std::io::BufWriter::new(file)).map_err(|e| format!("{out}: {e}"))
+}

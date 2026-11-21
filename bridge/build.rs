@@ -1,10 +1,9 @@
 // Puts the plugin package (Spellink.snplg) into the binary, so that `device add` needs no setup
 // (docs/notes/research/2026-11-20-bridge-app-draft.md). Which file is named by the environment
-// variable SPELLINK_BASE_PACKAGE, never by a default path: a package built on a developer's machine
-// carries that machine's bridge address and token (the plugin bakes plugin/src/bridges.local.json
-// in), and must not end up inside a binary that is handed out. `scripts/build-with-plugin.sh`
-// builds a clean package and sets the variable. Without it the binary has no package, and the
-// config's pairing.pluginPackage names one.
+// variable SPELLINK_BASE_PACKAGE, never by a default path: plugin/build/outputs may hold an old or
+// experimental build, and a binary should carry the package that was built for it on purpose.
+// `scripts/build-with-plugin.sh` builds one and sets the variable. Without it the binary has no
+// package, and the config's pairing.pluginPackage names one.
 use std::path::PathBuf;
 
 fn main() {

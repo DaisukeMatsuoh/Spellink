@@ -1,4 +1,3 @@
-jest.mock('../src/bridges.local.json', () => ({bridges: []}), {virtual: true});
 import {encodeBase64Url} from '../src/base64url';
 import {setFakeLanguage} from '../__mocks__/sn-plugin-lib';
 import {realFileOps} from '../src/fileOps';
@@ -219,14 +218,14 @@ describe('loading what the device knows', () => {
     withStore([]);
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const {loadBridges} = require('../src/bridgeConfig');
-    expect((await loadBridges()).source).toBe('baked');
+    expect((await loadBridges()).source).toBe('none');
   });
 
   it('a store that cannot be read does not stop the older ways of finding a bridge', async () => {
     withStore(new Error('no store'));
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const {loadBridges} = require('../src/bridgeConfig');
-    expect((await loadBridges()).source).toBe('baked');
+    expect((await loadBridges()).source).toBe('none');
   });
 
   it('a pairing that crashes while loading is the same as no pairing', async () => {
@@ -237,7 +236,7 @@ describe('loading what the device knows', () => {
     }));
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const {loadBridges} = require('../src/bridgeConfig');
-    expect((await loadBridges()).source).toBe('baked');
+    expect((await loadBridges()).source).toBe('none');
     jest.dontMock('../src/pairingState');
   });
 });

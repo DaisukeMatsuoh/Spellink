@@ -2,7 +2,7 @@ import {fakeNote} from '../__mocks__/sn-plugin-lib';
 import {getAskState, startAsk} from '../src/askController';
 
 jest.mock('../src/bridgeConfig', () => ({
-  loadBridges: async () => ({endpoints: [], source: 'baked'}),
+  loadBridges: async () => ({endpoints: [], source: 'none'}),
 }));
 jest.mock('../src/bridgeClient', () => ({
   connectFirst: async () => {

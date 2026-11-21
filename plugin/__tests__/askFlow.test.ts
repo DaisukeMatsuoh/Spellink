@@ -43,7 +43,7 @@ let mockScript: (
   id: string,
 ) => void | Promise<void>;
 jest.mock('../src/bridgeConfig', () => ({
-  loadBridges: async () => ({endpoints: [], source: 'baked'}),
+  loadBridges: async () => ({endpoints: [], source: 'none'}),
 }));
 jest.mock('../src/bridgeClient', () => ({
   connectFirst: async () => {

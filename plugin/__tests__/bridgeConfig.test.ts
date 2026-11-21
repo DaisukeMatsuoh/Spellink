@@ -1,4 +1,3 @@
-jest.mock('../src/bridges.local.json', () => ({bridges: []}), {virtual: true});
 import {parse} from '../src/bridgeConfig';
 
 const ok = {name: 'home', token: 'abc', urls: ['wss://bridge.example/v1']};
@@ -56,20 +55,21 @@ describe('the older ways of finding a bridge', () => {
     expect(r).toMatchObject({source: 'file', endpoints: [ok]});
   });
 
-  it('falls back to the baked list when the file has no usable bridge', async () => {
+  it('finds no bridge when the file has no usable one (nothing is baked in)', async () => {
     g.fetch = async () => ({json: async () => ({bridges: []})});
     expect(await load()()).toMatchObject({
-      source: 'baked',
+      source: 'none',
+      endpoints: [],
       fileError: 'no bridges in file',
     });
   });
 
-  it('falls back to the baked list, saying why, when the file cannot be read', async () => {
+  it('finds no bridge, saying why, when the file cannot be read', async () => {
     g.fetch = async () => {
       throw new Error('Network request failed');
     };
     const r = await load()();
-    expect(r.source).toBe('baked');
+    expect(r.source).toBe('none');
     expect(r.fileError).toMatch(/Network request failed/);
   });
 });

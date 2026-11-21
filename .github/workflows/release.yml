@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   # The bridge carries the plugin package, so that `device add` needs no setup. It is built here,
-  # once, from a clean checkout (no local bridge address baked in), and given to every build.
+  # once, and given to every build.
   plugin-package:
     if: startsWith(github.ref_name, 'bridge-v')
     runs-on: ubuntu-latest

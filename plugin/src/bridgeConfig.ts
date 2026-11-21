@@ -11,10 +11,6 @@ export interface BridgeEndpoint {
 /** Written by `spellink-bridge pair` and copied to the device. */
 export const CONFIG_PATH = '/storage/emulated/0/MyStyle/Spellink/bridges.json';
 
-// Fallback baked in at build time (plugin/src/bridges.local.json, git-ignored).
-
-const baked = require('./bridges.local.json') as {bridges?: BridgeEndpoint[]};
-
 const MAX_BRIDGES = 8;
 const MAX_URLS = 8;
 
@@ -48,7 +44,7 @@ export function parse(json: unknown): BridgeEndpoint[] {
 
 export interface LoadedBridges {
   endpoints: BridgeEndpoint[];
-  source: 'paired' | 'file' | 'baked';
+  source: 'paired' | 'file' | 'none';
   fileError?: string;
 }
 
@@ -74,7 +70,8 @@ async function pairedEndpoints(): Promise<BridgeEndpoint[]> {
 
 /**
  * The bridges to connect to: first those paired one by one (ADR 0016), then the older ways — the
- * pairing file in MyStyle (needs FILE:READ), falling back to the list baked into the build.
+ * pairing file in MyStyle (needs FILE:READ). Nothing is baked into the build: a package carries no
+ * bridge address or token of its own, so a build made on any machine is safe to hand out.
  */
 export async function loadBridges(): Promise<LoadedBridges> {
   const paired = await pairedEndpoints();
@@ -96,12 +93,8 @@ async function loadOlderBridges(): Promise<LoadedBridges> {
     if (endpoints.length > 0) {
       return {endpoints, source: 'file'};
     }
-    return {
-      endpoints: parse(baked),
-      source: 'baked',
-      fileError: 'no bridges in file',
-    };
+    return {endpoints: [], source: 'none', fileError: 'no bridges in file'};
   } catch (e) {
-    return {endpoints: parse(baked), source: 'baked', fileError: String(e)};
+    return {endpoints: [], source: 'none', fileError: String(e)};
   }
 }

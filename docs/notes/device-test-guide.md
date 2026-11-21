@@ -15,7 +15,7 @@ spellink-bridge serve    # ポート 8765。初回だけ KanjiVG / Hershey を�
 ## 1. プラグインを入れる
 - `plugin/build/outputs/Spellink.snplg` を Nomad の `MyStyle/` にコピー（USB / Browse & Access / クラウド）。
 - 設定 > アプリ > プラグイン > プラグインを追加 → Spellink をインストール。
-- 開発中はブリッジの接続先（IP とトークン）をビルド時に埋め込んでいる（`plugin/src/bridges.local.json`、git 管理外）。
+- ブリッジの接続先（住所とトークン）は、ビルドに埋め込まない（2026-11-22 にやめた）。ペアリングで端末に渡す（`docs/guides/install-guide.md`）。
   配布版では `MyStyle/Spellink/bridges.json`（`spellink-bridge pair <出力先>` で作れる）を読む予定。
 
 ## 2. 診断画面（ノートを開いて、左のツールバーの「プラグイン」（パズルのピース）→「Spellink 診断」）
@@ -62,7 +62,7 @@ spellink-bridge serve    # ポート 8765。初回だけ KanjiVG / Hershey を�
 
 ## 6. ペアリング（端末ごとの鍵。ADR 0016、`docs/spec/pairing.md`）
 **ブリッジを新しい版に入れ替えてから**行う（`device` コマンドと管理 API は新しい版にだけある）。
-1. **基になるパッケージは、ブリッジに組み込む**（`bridge/scripts/build-with-plugin.sh`。クリーンなプラグインを作って埋め込む。ビルド時の環境変数 `SPELLINK_BASE_PACKAGE`）。`config.json` には、端末から届く `wss://` の住所だけ書く: `"extraUrls": ["wss://bridge.spellink.uk/v1"]`。組み込みなしのブリッジ（`cargo build` だけ）では、`"pairing": {"pluginPackage": "/…/Spellink.snplg"}` が要る。**開発機のローカルビルド（`plugin/build/outputs/Spellink.snplg`、`bridges.local.json` の住所とトークンが入る）は、人に配るブリッジに埋め込まない。**利用者向けの手順は `docs/guides/install-guide.md`。ブリッジを再起動。
+1. **基になるパッケージは、ブリッジに組み込む**（`bridge/scripts/build-with-plugin.sh`。プラグインを作って埋め込む。ビルド時の環境変数 `SPELLINK_BASE_PACKAGE`）。`config.json` には、端末から届く `wss://` の住所だけ書く: `"extraUrls": ["wss://bridge.spellink.uk/v1"]`。組み込みなしのブリッジ（`cargo build` だけ）では、`"pairing": {"pluginPackage": "/…/Spellink.snplg"}` が要る。利用者向けの手順は `docs/guides/install-guide.md`。ブリッジを再起動。
 2. `spellink-bridge device add Nomad` → `Spellink-Nomad.snplg` ができる（**この端末だけが使う、期限つきのファイル**。人に渡さない）。
 3. その `.snplg` を端末の `MyStyle/` に入れ、プラグインとしてインストール。
 4. 端末で、設定（プラグインの設定ボタン）→「ブリッジとペアリング」→「ペアリング」。8 桁のコードと QR が出る。

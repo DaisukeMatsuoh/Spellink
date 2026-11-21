@@ -21,7 +21,7 @@ const WS = require('ws');
 
 let mockEndpoints: {name: string; token: string; urls: string[]}[] = [];
 jest.mock('../src/bridgeConfig', () => ({
-  loadBridges: async () => ({endpoints: mockEndpoints, source: 'baked'}),
+  loadBridges: async () => ({endpoints: mockEndpoints, source: 'none'}),
 }));
 
 const REPO = path.join(__dirname, '../..');

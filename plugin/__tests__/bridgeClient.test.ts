@@ -1,4 +1,3 @@
-jest.mock('../src/bridges.local.json', () => ({bridges: []}), {virtual: true});
 import {setFakeLanguage} from '../__mocks__/sn-plugin-lib';
 import {
   connectFirst,

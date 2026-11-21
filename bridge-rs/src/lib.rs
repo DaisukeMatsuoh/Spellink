@@ -19,6 +19,7 @@ pub mod protocol;
 pub mod provider;
 pub mod random;
 pub mod securechan;
+pub mod service;
 pub mod util;
 pub mod relay;
 pub mod server;

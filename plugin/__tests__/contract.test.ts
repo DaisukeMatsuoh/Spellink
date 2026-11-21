@@ -2,15 +2,15 @@ import fs from 'fs';
 import path from 'path';
 import {MAX_EXTRA_PAGES, parseFrame, parseSettings} from '../src/frames';
 
-// The frames the Go bridge really sends (recorded by its test, bridge/internal/server/
-// contract_test.go). The plugin's validator must accept every one of them: if the bridge renames
+// The frames the bridge really sends (recorded by its test, bridge/tests/contract.rs, into bridge/testdata/frames.golden.json).
+// The plugin's validator must accept every one of them: if the bridge renames
 // a field or changes a type, this fails here instead of on the device. After a deliberate
-// change on the bridge: `cd bridge && go test ./internal/server -run Contract -update`.
+// change on the bridge: `cd bridge && UPDATE_GOLDEN=1 cargo test --test contract`.
 const golden: Record<string, unknown>[] = JSON.parse(
   fs.readFileSync(
     path.join(
       __dirname,
-      '../../bridge/internal/server/testdata/frames.golden.json',
+      '../../bridge/testdata/frames.golden.json',
     ),
     'utf8',
   ),

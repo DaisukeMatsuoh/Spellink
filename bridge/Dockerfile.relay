@@ -1,0 +1,15 @@
+# The relay as a single static binary in an empty container (ADR 0018):
+#   docker build -f Dockerfile.relay -t spellink-relay .
+#   docker run --rm -p 8780:8780 spellink-relay        # behind Cloudflare/a proxy: add --trust-proxy
+# Built on Alpine so that the C parts of the TLS library (ring) compile for musl natively.
+FROM rust:alpine AS build
+RUN apk add --no-cache musl-dev gcc
+WORKDIR /src
+COPY . .
+RUN cargo build --release --locked && cp target/release/spellink-bridge /spellink-bridge
+
+FROM scratch
+COPY --from=build /spellink-bridge /spellink-bridge
+USER 65534:65534
+EXPOSE 8780
+ENTRYPOINT ["/spellink-bridge", "relay"]

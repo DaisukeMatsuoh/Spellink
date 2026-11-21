@@ -33,9 +33,10 @@ function tool(candidates: string[], probe: string[]): string | null {
   }
   return null;
 }
+// (the name is left from the Go bridge: it is the Rust toolchain that builds it now)
 const go = tool(
-  [path.join(os.homedir(), '.local/go/bin/go'), 'go'],
-  ['version'],
+  [path.join(os.homedir(), '.cargo/bin/cargo'), 'cargo'],
+  ['--version'],
 );
 const zip = tool(['zip'], ['-v']);
 const unzip = tool(['unzip'], ['-v']);
@@ -143,10 +144,12 @@ suite('pairing a device, for real', () => {
   beforeAll(async () => {
     (globalThis as unknown as {WebSocket: unknown}).WebSocket = WS;
     exe = path.join(tmp, 'bridge');
-    execFileSync(go!, ['build', '-o', exe, '.'], {
+    execFileSync(go!, ['build', '--locked'], {
       cwd: path.join(REPO, 'bridge'),
-      timeout: 180000,
+      timeout: 600000,
     });
+    fs.copyFileSync(path.join(REPO, 'bridge/target/debug/spellink-bridge'), exe);
+    fs.chmodSync(exe, 0o755);
     const cfgDir = path.join(home, 'spellink-bridge');
     fs.mkdirSync(cfgDir, {recursive: true});
     execFileSync(exe, ['testfont', path.join(cfgDir, 'glyphs.bin')], {env});

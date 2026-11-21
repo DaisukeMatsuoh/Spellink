@@ -4,28 +4,19 @@
 
 進め方（毎回同じ）: ①Go のパッケージとテストを読む ②Rust の同名のモジュールに写す ③**テストを先に写し**、通す ④変異（コードを壊す）で、テストが落ちることを確かめる ⑤コミット。相互接続（Go ⇄ Rust）は、両方がそろった段階で、`check` と中継で確かめる。表（状態遷移）は `docs/spec/` が元で、生成器を Rust の出力にも対応させる。
 
-| Go のパッケージ | Rust のモジュール | 状態 |
-|---|---|---|
-| `internal/ink`（random・glyphs・handwriting・layout） | `random`・`glyphs`・`handwriting`・`layout` | 済み（Go と出力が1バイトも違わない。12 場面） |
-| `internal/relay`（サーバー） | `relay` | 済み（17 件。変異で確認。musl・静的 1.4 MB） |
-| `internal/relay`（connector・RoomSet） | `relay::connector` | 未 |
-| `internal/securechan` | `securechan` | 済み（10 件。Go との相互接続は、サーバーがそろってから `check` で確認） |
-| `internal/protocol` | `protocol` | 未 |
-| `internal/config` | `config` | 済み（20 件。未知のキーの保持、0600、tmp+rename を含む） |
-| `internal/history` | `history` | 済み（9 件） |
-| `internal/provider`・`claudecode` | `provider`・`provider::claudecode` | 済み（14 件。取消と drop で CLI を止める） |
-| `internal/devices`（ledger・registry・pkg・表） | `devices` | 済み（82 件。表は `npm run spec` が `devices/table.rs` に生成。変異で確認） |
-| `internal/server`（server・runs・pairing・admin・表） | `server` | 未 |
-| `internal/server/appui`・`pairpage`・`localguard` | `ui` | 未 |
-| `internal/lantls` | `lantls` | 未（instant-acme） |
-| `internal/probe`・`check` | `probe` | 未 |
-| `internal/glyphbuild` | `glyphbuild` | 未 |
-| `internal/service`・`service.go` | `service` | 未 |
-| `internal/devicecli`・`devices.go` | `devicecli` | 未 |
-| `main.go`・`preview.go`・`compose.go` | `main`・`cli` | 一部（relay・compose・ask・bench・idle） |
-| 結合テスト・上書き更新テスト | `tests/` | 未 |
+全部のパッケージを移し、`bridge/` を Rust にした（2026-11-21）。Go 版は git の履歴（このコミットの直前）。テスト: Rust 312 件、端末側 858 件（Rust のブリッジに対して）。
 
-置き換えるときにやること: `CLAUDE.md`・CI・`release.yml`・手順書の Go の記述を直す。実測（待機のメモリ・バイナリ・起動時間）を取り直す。`cargo audit`・`cargo deny` を CI に置く。
+| 項目 | 状態 |
+|---|---|
+| 筆跡の核・中継・暗号・設定・履歴・プロバイダ・台帳・サーバー・画面・疎通確認・グリフ生成・サービス・端末用コマンド・プレビュー | 済み |
+| 結合テスト・上書き更新テスト・Go との相互接続 | 済み |
+| `lan`（Cloudflare のトークンで家の中の wss の証明書を取る） | **移していない**。ADR 0017 の名前サービスで置き換える（要・ユーザーの設計確認とドメイン／トークンの判断） |
+| scratch コンテナの中継 | `Dockerfile.relay` を書いた。**docker のある環境で未確認** |
+| `THIRD_PARTY_NOTICES.md` | Go の依存のまま。Rust の依存の一覧に作り直す（`cargo deny list` か `cargo about`） |
+| CI（`bridge.yml`・`release.yml`・`plugin.yml`） | 書き換えた。**一度も動かしていない**（push の許可が要る） |
+| 実機（Nomad）での確認 | 未。開発機のブリッジは、まだ Go の古い版が動いている |
+
+残り: `docs/` の古い Go の記述（手順書・ADR の本文は、当時の記録なので直さない）、`THIRD_PARTY_NOTICES.md`、`device-test-guide.md` の手順（Go のビルドの所）。
 
 ## 実装メモ（次の担当へ）
 - **Go のソースの読み方**: 出力が省略されることがある。`sed 's/^/| /' ファイル` のように行頭に印をつけると、全文が読める。

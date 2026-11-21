@@ -19,31 +19,25 @@ jobs:
         working-directory: bridge
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          go-version-file: bridge/go.mod
-          cache-dependency-path: bridge/go.sum
-      - run: go vet ./...
-      - name: Test with coverage
-        run: go test -race -coverprofile=cover.out ./...
-      - name: Coverage summary and gate
-        env:
-          MIN_COVERAGE: '60'
-        run: |
-          go tool cover -func=cover.out > cover.txt
-          total=$(tail -1 cover.txt | awk '{print $3}' | tr -d '%')
-          {
-            echo "### Bridge coverage: ${total}%"
-            echo
-            echo '| package | coverage |'
-            echo '|---|---|'
-            go test -cover ./... 2>/dev/null | awk '/coverage:/ {print "| " $2 " | " $5 " |"}' | sed 's#github.com/DaisukeMatsuoh/Spellink/bridge/##'
-          } >> "$GITHUB_STEP_SUMMARY"
-          go tool cover -html=cover.out -o cover.html
-          awk -v t="$total" -v m="$MIN_COVERAGE" 'BEGIN { if (t+0 < m+0) { print "coverage " t "% is below " m "%"; exit 1 } }'
-      - uses: actions/upload-artifact@v4
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: bridge-coverage
-          path: |
-            bridge/cover.out
-            bridge/cover.html
+          workspaces: bridge
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  supply-chain:
+    # the dependencies are few and pinned (Cargo.lock); this watches them for known holes and for licences
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bridge
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install --locked cargo-audit cargo-deny
+      - run: cargo audit
+      - run: cargo deny check

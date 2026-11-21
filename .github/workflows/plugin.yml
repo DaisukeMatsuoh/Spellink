@@ -3,9 +3,9 @@ name: plugin
 on:
   push:
     branches: [main]
-    paths: ['plugin/**', 'bridge/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/internal/server/testdata/**']
+    paths: ['plugin/**', 'bridge/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/testdata/**']
   pull_request:
-    paths: ['plugin/**', 'bridge/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/internal/server/testdata/**']
+    paths: ['plugin/**', 'bridge/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/testdata/**']
 
 permissions:
   contents: read
@@ -24,10 +24,10 @@ jobs:
           cache: npm
           cache-dependency-path: plugin/package-lock.json
       # the integration tests build the real bridge and run the plugin's code against it
-      - uses: actions/setup-go@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          go-version-file: bridge/go.mod
-          cache-dependency-path: bridge/go.sum
+          workspaces: bridge
       - run: npm ci
       - run: npm run typecheck
       - run: npx eslint index.js App.tsx src

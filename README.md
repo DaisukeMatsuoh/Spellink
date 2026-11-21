@@ -19,7 +19,7 @@ Supernote (plugin)  ── wss ──▶  spellink-bridge  (your Mac / Linux / W
 ```
 
 - `plugin/` — the Supernote plugin (React Native, [sn-plugin-lib](https://docs.supernote.com/en)). Recognition happens on the device.
-- `bridge/` — a small Go program, one binary per OS (about 7 MB, 20 MB of RAM). **You run it on your own computer.** It never sees or
+- `bridge/` — a small Rust program, one binary per OS (about 4 MB, 10 MB of RAM). **You run it on your own computer.** It never sees or
   stores your AI credentials: it only starts the unmodified CLI you have already signed in to
   ([ADR 0005](docs/decisions/0005-claude-code-bridge-on-user-machine.md)). Which AI it asks is a setting
   ([ADR 0015](docs/decisions/0015-ai-provider-abstraction.md)); Claude Code is the only one so far.
@@ -37,7 +37,7 @@ Supernote (plugin)  ── wss ──▶  spellink-bridge  (your Mac / Linux / W
 
 ```bash
 cd bridge
-go build -o spellink-bridge .             # Go 1.26+; scripts/build.sh builds every OS
+cargo build --release --locked             # Rust (rustup.rs); target/release/spellink-bridge
 ./spellink-bridge serve                    # first run downloads the glyph data and creates the config
 ./spellink-bridge service install          # start by itself with the computer (add --dry-run to look first)
 ./spellink-bridge check                    # reach the bridge the way the plugin does, encrypted handshake included

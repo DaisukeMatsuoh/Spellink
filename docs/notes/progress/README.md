@@ -71,13 +71,13 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 - 保留: 履歴の削除と実行中の回答の関係、ホストのライフサイクルの意味、ページ数の変化の扱い、波線の消し残しの通知。
 
 ## 手順（再開時）
-**ローカルの IDE で再開するとき**: リポジトリは `~/GitWorkspaces/Cloute`、ブランチは `stg`（`git log --oneline | head -30` で、この期間のコミットが見える）。まず、このファイルと `CLAUDE.md`、次に `log/2026-11.md` の末尾（11-19〜20 の項）。テストは下の手順で、Go（`~/.local/go/bin`）と Node が要る。結合テストは `zip`・`unzip` も使う。**開発機のブリッジは古い版**（上の「実行中」）。
+**ローカルの IDE で再開するとき**: リポジトリは `~/GitWorkspaces/Cloute`、ブランチは `stg`（`git log --oneline | head -30` で、この期間のコミットが見える）。まず、このファイルと `CLAUDE.md`、次に `log/2026-11.md` の末尾（11-19〜20 の項）。テストは下の手順で、Rust（`~/.cargo/bin`）と Node が要る。**ブリッジは 2026-11-21 に Go から Rust に置き換えた（ADR 0018、`rust-port.md`）**。結合テストは `zip`・`unzip` も使う。**開発機のブリッジは古い版**（上の「実行中」）。
 ```bash
-export PATH=$HOME/.local/go/bin:$PATH
+export PATH=$HOME/.cargo/bin:$PATH
 # ブリッジ: テスト → ビルド → 入れ替え → 再起動 → 疎通
-cd ~/GitWorkspaces/Cloute/bridge && gofmt -l . ; go vet ./... && go test -race -count=1 ./...
-go build -o /tmp/spellink-bridge-dev . && pkill -f '^/home/daisuke/.local/bin/spellink-bridge serve'; sleep 1
-install -m 755 /tmp/spellink-bridge-dev ~/.local/bin/spellink-bridge
+cd ~/GitWorkspaces/Cloute/bridge && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked
+cargo build --release --locked && cp target/release/spellink-bridge /tmp/spellink-bridge-dev && pkill -f '^/home/daisuke/.local/bin/spellink-bridge serve'; sleep 1
+install -m 755 /tmp/spellink-bridge-dev ~/.local/bin/spellink-bridge   # 設定・台帳・履歴はそのまま使える（上書き更新のテストあり）
 (cd /tmp && nohup ~/.local/bin/spellink-bridge serve > /tmp/spellink-bridge.log 2>&1 &)
 ~/.local/bin/spellink-bridge check            # 端末と同じ道（LAN と、トンネル）で、暗号化の握手まで確かめる
 # プラグイン: 表の生成 → 型 → テスト → ビルド（成果物 plugin/build/outputs/Spellink.snplg）

@@ -1,9 +1,9 @@
-// The Spellink Bridge App page (bridge/internal/server/appui): its whole flow in a fake browser.
+// The Spellink Bridge App page (bridge/assets/app): its whole flow in a fake browser.
 /* eslint-disable @typescript-eslint/no-var-requires */
 export {}; // a module of its own: the page tests share nothing with each other
-const dir = '../../bridge/internal/server';
-const logic = require(`${dir}/pairpage/pairlogic.js`);
-const app = require(`${dir}/appui/app.js`);
+const dir = '../../bridge/assets';
+const logic = require(`${dir}/pair/pairlogic.js`);
+const app = require(`${dir}/app/app.js`);
 
 // every message is "<lang>:<key>" with the values after it, so a test sees which message was used
 const words: Record<string, Record<string, string>> = {

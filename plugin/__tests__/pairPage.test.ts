@@ -1,7 +1,7 @@
-// The pairing page of the bridge (bridge/internal/server/pairpage): its logic, and its whole flow
+// The pairing page of the bridge (bridge/assets/pair): its logic, and its whole flow
 // from the camera to the request, with a fake browser.
 /* eslint-disable @typescript-eslint/no-var-requires */
-const dir = '../../bridge/internal/server/pairpage';
+const dir = '../../bridge/assets/pair';
 const logic = require(`${dir}/pairlogic.js`);
 const page = require(`${dir}/pair.js`);
 

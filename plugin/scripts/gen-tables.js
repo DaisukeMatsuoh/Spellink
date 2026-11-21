@@ -2,8 +2,8 @@
 //   ask-flow.md   -> src/askTable.generated.ts
 //   wave.md       -> src/waveTable.generated.ts
 //   page-turn.md  -> src/insertTable.generated.ts, src/writeTable.generated.ts
-//   bridge-run.md -> ../bridge/internal/server/runtable_gen.go, ../bridge-rs/src/server/run_table.rs
-//   pairing.md    -> ../bridge/internal/devices/table_gen.go, ../bridge-rs/src/devices/table.rs (record), src/pairTable.generated.ts (device)
+//   bridge-run.md -> ../bridge/src/server/run_table.rs
+//   pairing.md    -> ../bridge/src/devices/table.rs (record), src/pairTable.generated.ts (device)
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -20,10 +20,8 @@ const SPECS = [
   {md: 'wave.md', out: '../src/waveTable.generated.ts', upper: 'WAVE', pascal: 'Wave', sections: DEFAULT_SECTIONS},
   {md: 'page-turn.md', out: '../src/insertTable.generated.ts', upper: 'INSERT', pascal: 'Insert', sections: PAGE('挿入')},
   {md: 'page-turn.md', out: '../src/writeTable.generated.ts', upper: 'WRITE', pascal: 'Write', sections: PAGE('書き込み')},
-  {md: 'bridge-run.md', out: '../../bridge/internal/server/runtable_gen.go', lang: 'go', sections: DEFAULT_SECTIONS, go: {pkg: 'server', t: 'run', p: 'r'}},
-  {md: 'pairing.md', out: '../../bridge/internal/devices/table_gen.go', lang: 'go', sections: PAIRING('記録'), go: {pkg: 'devices', t: 'dev', p: 'd'}},
-  {md: 'bridge-run.md', out: '../../bridge-rs/src/server/run_table.rs', lang: 'rust', sections: DEFAULT_SECTIONS, rs: {t: 'Run', stateType: 'RunState'}},
-  {md: 'pairing.md', out: '../../bridge-rs/src/devices/table.rs', lang: 'rust', sections: PAIRING('記録'), rs: {t: 'Dev'}},
+  {md: 'bridge-run.md', out: '../../bridge/src/server/run_table.rs', lang: 'rust', sections: DEFAULT_SECTIONS, rs: {t: 'Run', stateType: 'RunState'}},
+  {md: 'pairing.md', out: '../../bridge/src/devices/table.rs', lang: 'rust', sections: PAIRING('記録'), rs: {t: 'Dev'}},
   {md: 'pairing.md', out: '../src/pairTable.generated.ts', upper: 'PAIR', pascal: 'Pair', sections: PAIRING('端末')},
 ];
 

@@ -7,9 +7,9 @@ Thank you for helping. This project is small and works from a written specificat
 
 | 何を | どうやって |
 |---|---|
-| ブリッジ（Go 1.26+） | `cd bridge && go vet ./... && go test -race -count=1 ./...` |
+| ブリッジ（Rust、edition 2024） | `cd bridge && cargo clippy --all-targets -- -D warnings && cargo test --locked` |
 | プラグイン（Node 22+） | `cd plugin && npm ci && npm run spec && npx tsc --noEmit && npx jest` |
-| 端末側の統合テスト | `plugin/__tests__/integration.test.ts`。Go が入っていれば、本物のブリッジをビルドして動かす（なければスキップ） |
+| 端末側の統合テスト | `plugin/__tests__/integration.test.ts`。`cargo` が入っていれば、本物のブリッジをビルドして動かす（なければスキップ） |
 | プラグインのビルド | `cd plugin && npm run build` → `build/outputs/Spellink.snplg` |
 
 実機（Supernote）がなくても、ほとんどの変更はテストで確かめられる。SDK の呼び出しは、`plugin/__mocks__/sn-plugin-lib.ts` の偽のノートで再現している。
@@ -29,7 +29,7 @@ Thank you for helping. This project is small and works from a written specificat
 - 件数だけでなく、**スイートの数**を見る（スイートが落ちると件数が減る）。
 - **本番の入口から**通すテストを書く（ラッソなら `AskFlow.run()`）。診断用の入口だけを通すテストは、見逃しを生む。
 - 新しいテストは、**壊して落ちることを一度確かめる**。
-- プロトコルを変えたら、`cd bridge && go test ./internal/server -run Contract -update` で記録を更新し、端末側のテスト（`contract.test.ts`）を通す。
+- プロトコルを変えたら、`cd bridge && UPDATE_GOLDEN=1 cargo test --test contract` で記録を更新し、端末側のテスト（`contract.test.ts`）を通す。
 
 ## 変更の出し方
 

@@ -28,9 +28,10 @@ const REPO = path.join(__dirname, '../..');
 const TOKEN = 'integration-token';
 
 function goTool(): string | null {
-  for (const go of [path.join(os.homedir(), '.local/go/bin/go'), 'go']) {
+  // (the name is left from the Go bridge: it is the Rust toolchain that builds it now)
+  for (const go of [path.join(os.homedir(), '.cargo/bin/cargo'), 'cargo']) {
     try {
-      execFileSync(go, ['version'], {stdio: 'ignore'});
+      execFileSync(go, ['--version'], {stdio: 'ignore'});
       return go;
     } catch {
       // try the next
@@ -77,10 +78,12 @@ suite('the plugin and the bridge, for real', () => {
   beforeAll(async () => {
     (globalThis as unknown as {WebSocket: unknown}).WebSocket = WS;
     const exe = path.join(tmp, 'bridge');
-    execFileSync(go!, ['build', '-o', exe, '.'], {
+    execFileSync(go!, ['build', '--locked'], {
       cwd: path.join(REPO, 'bridge'),
-      timeout: 180000,
+      timeout: 600000,
     });
+    fs.copyFileSync(path.join(REPO, 'bridge/target/debug/spellink-bridge'), exe);
+    fs.chmodSync(exe, 0o755);
     const cfgDir = path.join(tmp, 'cfg', 'spellink-bridge');
     fs.mkdirSync(cfgDir, {recursive: true});
     execFileSync(exe, ['testfont', path.join(cfgDir, 'glyphs.bin')]);

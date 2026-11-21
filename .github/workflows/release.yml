@@ -13,35 +13,56 @@ permissions:
 jobs:
   bridge:
     if: startsWith(github.ref_name, 'bridge-v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    strategy:
+      matrix:
+        include:
+          - {os: ubuntu-latest, target: x86_64-unknown-linux-gnu}
+          - {os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu}
+          - {os: macos-13, target: x86_64-apple-darwin}
+          - {os: macos-latest, target: aarch64-apple-darwin}
+          - {os: windows-latest, target: x86_64-pc-windows-msvc}
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
+        shell: bash
         working-directory: bridge
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          go-version-file: bridge/go.mod
-          cache-dependency-path: bridge/go.sum
-      - run: go vet ./...
-      - run: go test -race -count=1 ./...
-      - name: Build every target
-        run: scripts/build.sh "${GITHUB_REF_NAME#bridge-v}"
+          targets: ${{ matrix.target }}
+      - run: cargo test --locked
+      - name: Build
+        run: scripts/build.sh "${GITHUB_REF_NAME#bridge-v}" ${{ matrix.target }}
       - name: The built program runs, and says the version of the tag
         run: |
-          got=$(./dist/spellink-bridge-linux-amd64 version)
+          exe=$(ls dist/spellink-bridge-${{ matrix.target }}*)
+          got=$("$exe" version)
           want="${GITHUB_REF_NAME#bridge-v}"
           [ "$got" = "$want" ] || { echo "version is '$got', the tag says '$want'"; exit 1; }
-          ./dist/spellink-bridge-linux-amd64 service install --dry-run >/dev/null
-      - name: The checksums match the files
-        run: cd dist && sha256sum -c SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: bridge/dist/*
+
+  publish-bridge:
+    needs: bridge
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - name: The checksums of everything
+        run: cd dist && rm -f SHA256SUMS && sha256sum spellink-bridge-* > SHA256SUMS
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* --prerelease \
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "spellink-bridge ${GITHUB_REF_NAME#bridge-v}" \
             --notes "Pre-release. Binaries for macOS, Linux and Windows; verify with SHA256SUMS. Windows and macOS are not yet verified on real machines. See README.md."
 
@@ -60,10 +81,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: plugin/package-lock.json
-      - uses: actions/setup-go@v5 # the integration tests build the real bridge
-        with:
-          go-version-file: bridge/go.mod
-          cache-dependency-path: bridge/go.sum
+      - uses: dtolnay/rust-toolchain@stable # the integration tests build the real bridge
       - run: npm ci
       - run: npm run typecheck
       - run: npx jest

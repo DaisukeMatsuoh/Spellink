@@ -11,7 +11,30 @@ permissions:
   contents: read
 
 jobs:
+  # The bridge carries the plugin package, so that `device add` needs no setup. It is built here,
+  # once, from a clean checkout (no local bridge address baked in), and given to every build.
+  plugin-package:
+    if: startsWith(github.ref_name, 'bridge-v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugin
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - run: npm ci
+      - run: bash scripts/clean-package.sh "$PWD/build/Spellink-public.snplg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-package
+          path: plugin/build/Spellink-public.snplg
+
   bridge:
+    needs: plugin-package
     if: startsWith(github.ref_name, 'bridge-v')
     strategy:
       matrix:
@@ -31,8 +54,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-package
+          path: ${{ runner.temp }}/pkg
       - run: cargo test --locked
       - name: Build
+        env:
+          SPELLINK_BASE_PACKAGE: ${{ runner.temp }}/pkg/Spellink-public.snplg
         run: scripts/build.sh "${GITHUB_REF_NAME#bridge-v}" ${{ matrix.target }}
       - name: The built program runs, and says the version of the tag
         run: |

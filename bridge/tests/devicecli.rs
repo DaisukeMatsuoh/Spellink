@@ -71,7 +71,7 @@ async fn add_writes_a_private_setup_file_and_says_what_to_do_next() {
         assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
     }
     assert!(data.starts_with("PACKAGE:Nomad:"), "content {data:?}");
-    for want in [path.to_str().unwrap(), "Copy the file", "tap Pair", "device pair", "Keep it private"] {
+    for want in [path.to_str().unwrap(), "Copy the file", "MyStyle", "choose pairing", "device pair", "device list", "Keep it private"] {
         assert!(out.contains(want), "output lacks {want:?}:\n{out}");
     }
     let other = tempfile::tempdir().unwrap();

@@ -62,8 +62,7 @@ spellink-bridge serve    # ポート 8765。初回だけ KanjiVG / Hershey を�
 
 ## 6. ペアリング（端末ごとの鍵。ADR 0016、`docs/spec/pairing.md`）
 **ブリッジを新しい版に入れ替えてから**行う（`device` コマンドと管理 API は新しい版にだけある）。
-1. `config.json` に、端末から届く `wss://` の住所と、基になるプラグインのパッケージを書く:
-   `"extraUrls": ["wss://bridge.spellink.uk/v1"]`、`"pairing": {"pluginPackage": "/…/plugin/build/outputs/Spellink.snplg", "windowSec": 90}`（`windowSec` は 10〜600。省略で 90）。ブリッジを再起動。
+1. **基になるパッケージは、ブリッジに組み込む**（`bridge/scripts/build-with-plugin.sh`。クリーンなプラグインを作って埋め込む。ビルド時の環境変数 `SPELLINK_BASE_PACKAGE`）。`config.json` には、端末から届く `wss://` の住所だけ書く: `"extraUrls": ["wss://bridge.spellink.uk/v1"]`。組み込みなしのブリッジ（`cargo build` だけ）では、`"pairing": {"pluginPackage": "/…/Spellink.snplg"}` が要る。**開発機のローカルビルド（`plugin/build/outputs/Spellink.snplg`、`bridges.local.json` の住所とトークンが入る）は、人に配るブリッジに埋め込まない。**利用者向けの手順は `docs/guides/install-guide.md`。ブリッジを再起動。
 2. `spellink-bridge device add Nomad` → `Spellink-Nomad.snplg` ができる（**この端末だけが使う、期限つきのファイル**。人に渡さない）。
 3. その `.snplg` を端末の `MyStyle/` に入れ、プラグインとしてインストール。
 4. 端末で、設定（プラグインの設定ボタン）→「ブリッジとペアリング」→「ペアリング」。8 桁のコードと QR が出る。

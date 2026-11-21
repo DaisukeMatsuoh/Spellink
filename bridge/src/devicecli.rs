@@ -262,9 +262,10 @@ async fn add(c: &Client, name: &str, dir: &Path, out: &mut dyn Write) -> Result<
     let path = write_package(c, &d, dir).await.map_err(|e| format!("the device was added but its setup file could not be written: {e}\n(write it again with `spellink-bridge device package {name:?}`)"))?;
     let w = |e: std::io::Error| e.to_string();
     writeln!(out, "Added {name:?}. Setup file: {}", path.display()).map_err(w)?;
-    writeln!(out, "  1. Copy the file to the device (MyStyle folder) and install the plugin from it.").map_err(w)?;
-    writeln!(out, "  2. On the device, open Spellink and tap Pair: an 8-digit code appears.").map_err(w)?;
-    writeln!(out, "  3. Run `spellink-bridge device pair` and type the code.").map_err(w)?;
+    writeln!(out, "  1. Copy the file to the device's MyStyle folder, then install it on the device (Settings > Apps > Plugins).").map_err(w)?;
+    writeln!(out, "  2. On the device, open Spellink's settings and choose pairing: an 8-digit code and a QR code appear.").map_err(w)?;
+    writeln!(out, "  3. While the code is shown (90 seconds by default), run `spellink-bridge device pair` here and type it.").map_err(w)?;
+    writeln!(out, "  4. `spellink-bridge device list` shows the device as active.").map_err(w)?;
     writeln!(out, "The file works only for this device, only until it is paired (24 hours by default). Keep it private until then.").map_err(w)
 }
 

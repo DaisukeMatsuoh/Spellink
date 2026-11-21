@@ -62,16 +62,27 @@ pub fn bridge_name(cfg: &Config) -> String {
     if devices::valid_name(&cfg.name) { cfg.name.clone() } else { "bridge".into() }
 }
 
-const NO_BASE_PACKAGE: &str = "set pairing.pluginPackage in config.json to the path of the plugin package (Spellink.snplg) to build setup files from";
+/// The plugin package built into this binary (empty when it was built without one; build.rs).
+const EMBEDDED_PACKAGE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/base.snplg"));
+
+const NO_BASE_PACKAGE: &str = "this bridge has no plugin package built in: download Spellink.snplg from the Spellink releases and set pairing.pluginPackage in config.json to its path";
+
+/// The plugin package that setup files are made from: the one named in the config if there is one
+/// (for a plugin newer or older than this bridge), otherwise the one built into the binary.
+fn base_package(configured: &str, embedded: &[u8]) -> Result<Vec<u8>, String> {
+    if !configured.is_empty() {
+        return std::fs::read(configured).map_err(|e| format!("reading {configured}: {e}"));
+    }
+    if embedded.is_empty() {
+        return Err(NO_BASE_PACKAGE.into());
+    }
+    Ok(embedded.to_vec())
+}
 
 /// The function that builds a device's setup file from the plugin package.
 pub fn package_builder(cfg: Arc<Config>) -> Arc<dyn Fn(PackageData) -> Result<Vec<u8>, String> + Send + Sync> {
     Arc::new(move |mut d: PackageData| {
-        let path = cfg.plugin_package();
-        if path.is_empty() {
-            return Err(NO_BASE_PACKAGE.into());
-        }
-        let base = std::fs::read(path).map_err(|e| format!("reading {path}: {e}"))?;
+        let base = base_package(cfg.plugin_package(), EMBEDDED_PACKAGE)?;
         // the setup names the BRIDGE (what the device shows); the device's own name stays in the ledger
         d.name = bridge_name(&cfg);
         let urls = device_urls(&cfg, &d.id, &d.b);
@@ -501,12 +512,17 @@ mod tests {
     }
 
     #[test]
-    fn the_package_builder_says_what_is_missing() {
-        let build = package_builder(Arc::new(cfg()));
-        let d = PackageData { id: "0123456789abcdef".into(), name: "n".into(), generation: 1, b: String::new(), window: Duration::from_secs(90) };
-        assert!(build(d.clone()).unwrap_err().contains("pluginPackage"));
-        let c = Config { pairing: Some(crate::config::Pairing { plugin_package: "/nonexistent/x.snplg".into(), ..Default::default() }), ..cfg() };
-        assert!(package_builder(Arc::new(c))(d).unwrap_err().contains("/nonexistent/x.snplg"));
+    fn the_package_comes_from_the_config_or_from_the_binary() {
+        // nothing built in and nothing configured: say what to do
+        assert!(base_package("", &[]).unwrap_err().contains("pluginPackage"));
+        // built in: used as it is
+        assert_eq!(base_package("", b"PKembedded").unwrap(), b"PKembedded");
+        // configured: wins over the built-in one, and a bad path is named
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("x.snplg");
+        std::fs::write(&f, b"PKconfigured").unwrap();
+        assert_eq!(base_package(f.to_str().unwrap(), b"PKembedded").unwrap(), b"PKconfigured");
+        assert!(base_package("/nonexistent/x.snplg", b"PKembedded").unwrap_err().contains("/nonexistent/x.snplg"));
     }
 
     #[test]

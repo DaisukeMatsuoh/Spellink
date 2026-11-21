@@ -19,7 +19,7 @@
 | [0005](0005-claude-code-bridge-on-user-machine.md) | 自宅機で公式 Claude Code を動かす「ブリッジ」経由で Claude を使う | Accepted | — |
 | [0006](0006-localization-strategy.md) | UI と筆跡出力のローカライズ方針 | Accepted（ja/en の範囲） | ja/en を実装・実機使用 |
 | [0007](0007-relay-transport-and-security.md) | プラグイン⇔ブリッジ間の通信方式とセキュリティ | Accepted | wss + Noise を実機で確認（2026-11-07）。平文 hello の削除が残る |
-| [0008](0008-bridge-in-go.md) | ブリッジを Go で実装し、単一バイナリで配る | Accepted | — |
+| [0008](0008-bridge-in-go.md) | ブリッジを Go で実装し、単一バイナリで配る | Superseded by 0018 | — |
 | [0009](0009-long-answers-continue-on-new-pages.md) | 長い回答は字数を合わせ、溢れたら直後に挿入したページへ続ける | Proposed | ページ追加の堅牢化（0013・0014）の実機確認待ち |
 | [0010](0010-rendezvous-relay.md) | 外出先からの接続は Spellink の中継サーバ（ランデブー）で受け持つ | Proposed | 実装済み。端末経由の確認・運営方針が未決定 |
 | [0011](0011-lan-direct-wss.md) | 家の中は Let's Encrypt 証明書つきの wss:// で直接つなぐ | Proposed | 実証明書での確認待ち（API トークンが要る） |
@@ -32,3 +32,4 @@
 ## 関連する仕様
 - 状態遷移表・インターフェース台帳: [`docs/spec/`](../spec/README.md)
 | [0017](0017-lan-name-service.md) | 家の中の直結のために、名前と証明書の発行を手伝う小さなサービスを運営する | Proposed | ユーザーが作ると決定（2026-11-21）。設計の確認待ち |
+| [0018](0018-bridge-in-rust.md) | ブリッジと中継を Rust に移植する（scratch コンテナの単一バイナリ） | Accepted | ユーザーが決定（2026-11-21）。移植中 |

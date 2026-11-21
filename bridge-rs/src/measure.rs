@@ -1,4 +1,5 @@
-//! spellink-bridge-rs — a measurement prototype of the bridge's core in Rust (see README.md).
+//! The measurement commands (compose, ask, bench, idle) kept from the prototype: they print what
+//! the Go bridge's commands of the same names print, so the two can be compared byte for byte.
 //!
 //!   compose  --glyphs F --layout JSON [--seed N] [--slope S] [--full F] [--half H]
 //!            stdin: one JSON string per line (the pieces of text as they stream in)
@@ -8,18 +9,13 @@
 //!   bench    --glyphs F --layout JSON --text FILE [--iterations N]
 //!   idle     --glyphs F [--seconds S]     load the glyphs and wait, to measure resident memory
 
-mod glyphs;
-mod handwriting;
-mod layout;
-mod random;
-
-use layout::{Composer, Layout};
+use crate::{glyphs, layout, layout::{Composer, Layout}};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Command, Stdio};
 use std::time::Instant;
 
-fn args() -> (String, HashMap<String, String>, Vec<String>) {
+pub fn parse_args() -> (String, HashMap<String, String>, Vec<String>) {
     let mut it = std::env::args().skip(1);
     let cmd = it.next().unwrap_or_default();
     let mut flags = HashMap::new();
@@ -184,21 +180,13 @@ fn idle(flags: &HashMap<String, String>) -> Result<(), String> {
     Ok(())
 }
 
-fn main() -> ExitCode {
-    let (cmd, flags, rest) = args();
-    let r = match cmd.as_str() {
-        "compose" => compose(&flags),
-        "ask" => ask(&flags, &rest.join(" ")),
-        "bench" => bench(&flags),
-        "idle" => idle(&flags),
-        _ => Err("usage: spellink-bridge-rs compose|ask|bench|idle (see src/main.rs)".to_string()),
-    };
-    match r {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("error: {e}");
-            ExitCode::FAILURE
-        }
+pub fn run(cmd: &str, flags: &HashMap<String, String>, rest: &[String]) -> Result<(), String> {
+    match cmd {
+        "compose" => compose(flags),
+        "ask" => ask(flags, &rest.join(" ")),
+        "bench" => bench(flags),
+        "idle" => idle(flags),
+        _ => Err(format!("unknown command {cmd}")),
     }
 }
 
@@ -236,7 +224,7 @@ mod tests {
     #[test]
     fn mulberry32_matches_the_reference_values() {
         // mulberry32(0): the first outputs of the Go bridge (bridge/internal/ink/random.go), ×2^32
-        let mut r = random::Random::new(0);
+        let mut r = crate::random::Random::new(0);
         let got: Vec<u64> = (0..3).map(|_| (r.float() * 4294967296.0) as u64).collect();
         assert_eq!(got, vec![1144304738, 1416247, 958946056]);
     }

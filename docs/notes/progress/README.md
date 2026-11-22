@@ -78,7 +78,7 @@ export PATH=$HOME/.cargo/bin:$PATH
 # ブリッジ: テスト → ビルド → 入れ替え → 再起動 → 疎通
 cd ~/GitWorkspaces/Spellink/bridge && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked
 # 設置用の .snplg を作るバイナリは、プラグインを埋め込んで作る: bridge/scripts/build-with-plugin.sh（下の素の cargo build は、埋め込みなし）
-cargo build --release --locked && cp target/release/spellink-bridge /tmp/spellink-bridge-dev && pkill -f '^/home/daisuke/.local/bin/spellink-bridge serve'; sleep 1
+cargo build --release --locked && cp target/release/spellink-bridge /tmp/spellink-bridge-dev && pkill -f "^$HOME/.local/bin/spellink-bridge serve"; sleep 1
 install -m 755 /tmp/spellink-bridge-dev ~/.local/bin/spellink-bridge   # 設定・台帳・履歴はそのまま使える（上書き更新のテストあり）
 (cd /tmp && nohup ~/.local/bin/spellink-bridge serve > /tmp/spellink-bridge.log 2>&1 &)
 ~/.local/bin/spellink-bridge check            # 端末と同じ道（LAN と、トンネル）で、暗号化の握手まで確かめる

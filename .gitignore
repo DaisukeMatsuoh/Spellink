@@ -37,3 +37,6 @@ google-services.json
 # Patent/IP analysis stays local (see docs/notes/ip/README.md)
 docs/notes/ip/private/
 docs/References/SPI_Monitor.zip
+
+# The operator's server settings (deploy/vps/.env.example is the template)
+deploy/vps/.env

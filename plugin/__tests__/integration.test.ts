@@ -82,7 +82,10 @@ suite('the plugin and the bridge, for real', () => {
       cwd: path.join(REPO, 'bridge'),
       timeout: 600000,
     });
-    fs.copyFileSync(path.join(REPO, 'bridge/target/debug/spellink-bridge'), exe);
+    fs.copyFileSync(
+      path.join(REPO, 'bridge/target/debug/spellink-bridge'),
+      exe,
+    );
     fs.chmodSync(exe, 0o755);
     const cfgDir = path.join(tmp, 'cfg', 'spellink-bridge');
     fs.mkdirSync(cfgDir, {recursive: true});
@@ -115,7 +118,12 @@ printf '%s\\n' '{"type":"result","is_error":false}'
     );
     bridge = spawn(exe, ['serve'], {
       cwd: tmp,
-      env: {...process.env, HOME: tmp, XDG_CONFIG_HOME: path.join(tmp, 'cfg')},
+      env: {
+        ...process.env,
+        HOME: tmp,
+        XDG_CONFIG_HOME: path.join(tmp, 'cfg'),
+        LC_ALL: 'C',
+      },
     });
     bridge.stdout!.on('data', d => (log += d));
     bridge.stderr!.on('data', d => (log += d));

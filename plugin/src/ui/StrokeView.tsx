@@ -4,8 +4,8 @@ import {strokeBounds, strokeSegments} from '../pairStroke';
 import type {InkStroke} from '../protocol';
 
 /** Pieces closer together than this are merged: a phrase is far fewer views that way. */
-const MIN_STEP = 8;
-const PEN = 3;
+const MIN_STEP = 4;
+const PEN = 4;
 
 /**
  * Handwriting on the screen: every stroke as short straight pieces, pure black on white. Returns

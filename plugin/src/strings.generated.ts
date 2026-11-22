@@ -74,7 +74,7 @@ export const STRINGS = {
     pairBridgePaired: '{name}: paired',
     pairBridgeReady: '{name}: ready to pair',
     pairIdle:
-      'Press Pair. A QR code appears; scan it with the Spellink Bridge App on your computer.',
+      'Press Pair. An 8-digit code and a QR code appear. On the computer, run "spellink-bridge device pair" and type the code.',
     pairConnecting: 'Connecting to the bridge…',
     pairSeconds: '{n} seconds left',
     pairStoring: 'Saving the key…',
@@ -90,8 +90,11 @@ export const STRINGS = {
     pairRefused:
       'The bridge no longer accepts this device. Ask for a new file with "spellink-bridge device reissue <name>".',
     pairProblems: '{n} saved pairing item(s) could not be used.',
-    pairScanQr: 'Scan this QR code with the Spellink Bridge App.',
-    pairOrType: 'No camera? Type this code in the Bridge App instead.',
+    pairScanQr:
+      'On the computer, run "spellink-bridge device pair" and type the 8 digits below. (With a camera: "spellink-bridge device pair --web" reads the QR code.)',
+    pairOrType:
+      'No camera? The 8 digits are enough: type them into "spellink-bridge device pair".',
+    pairBanner: 'Type this on the computer',
     keyRefused:
       '{name} no longer accepts this device. On the computer run "spellink-bridge device reissue <name>", then install the new file and pair again.',
   },
@@ -166,7 +169,7 @@ export const STRINGS = {
     pairBridgePaired: '{name}: ペアリング済み',
     pairBridgeReady: '{name}: ペアリング待ち',
     pairIdle:
-      '「ペアリング」を押すとQRコードが出ます。パソコンのSpellink Bridge Appで読み取ってください。',
+      '「ペアリング」を押すと、8桁の数字とQRコードが出ます。パソコンで「spellink-bridge device pair」を実行して、数字を入力してください。',
     pairConnecting: 'ブリッジに接続しています…',
     pairSeconds: '残り {n} 秒',
     pairStoring: '鍵を保存しています…',
@@ -183,9 +186,11 @@ export const STRINGS = {
     pairRefused:
       'ブリッジがこの端末を受け付けなくなりました。「spellink-bridge device reissue <名前>」で新しいファイルを作ってください。',
     pairProblems: '保存されたペアリングの情報のうち {n} 件は使えませんでした。',
-    pairScanQr: 'このQRコードをSpellink Bridge Appで読み取ってください。',
+    pairScanQr:
+      'パソコンで「spellink-bridge device pair」を実行して、下の8桁の数字を入力してください。(カメラがあれば「spellink-bridge device pair --web」でQRコードも読めます。)',
     pairOrType:
-      'カメラが使えないときは、このコードをSpellink Bridge Appに入力してください。',
+      'カメラが使えないときは、8桁の数字だけで大丈夫です。「spellink-bridge device pair」に入力してください。',
+    pairBanner: 'この数字をパソコンに入力',
     keyRefused:
       '{name} が、この端末を受け付けなくなりました。パソコンで「spellink-bridge device reissue <名前>」を実行し、新しいファイルを入れて、ペアリングし直してください。',
   },
@@ -260,7 +265,7 @@ export const STRINGS = {
     pairBridgePaired: '{name}: emparejado',
     pairBridgeReady: '{name}: listo para emparejar',
     pairIdle:
-      'Pulsa Emparejar. Aparecerá un código QR; escanéalo con Spellink Bridge App en tu ordenador.',
+      'Pulsa Emparejar. Aparecerán un código de 8 dígitos y un código QR. En el ordenador, ejecuta "spellink-bridge device pair" e introduce el código.',
     pairConnecting: 'Conectando con el puente…',
     pairSeconds: 'Quedan {n} segundos',
     pairStoring: 'Guardando la clave…',
@@ -278,8 +283,11 @@ export const STRINGS = {
       'El puente ya no acepta este dispositivo. Pide un archivo nuevo con "spellink-bridge device reissue <nombre>".',
     pairProblems:
       'No se pudieron usar {n} elemento(s) de emparejamiento guardados.',
-    pairScanQr: 'Escanea este código QR con Spellink Bridge App.',
-    pairOrType: '¿Sin cámara? Escribe este código en Bridge App.',
+    pairScanQr:
+      'En el ordenador, ejecuta "spellink-bridge device pair" e introduce los 8 dígitos de abajo. (Con cámara: "spellink-bridge device pair --web" lee el código QR.)',
+    pairOrType:
+      '¿Sin cámara? Bastan los 8 dígitos: introdúcelos en "spellink-bridge device pair".',
+    pairBanner: 'Escríbelo en el ordenador',
     keyRefused:
       '{name} ya no acepta este dispositivo. En el ordenador, ejecuta "spellink-bridge device reissue <nombre>", instala el archivo nuevo y vuelve a emparejar.',
   },
@@ -354,7 +362,7 @@ export const STRINGS = {
     pairBridgePaired: '{name} : appairé',
     pairBridgeReady: '{name} : prêt à appairer',
     pairIdle:
-      'Appuyez sur Appairer. Un code QR s’affiche ; scannez-le avec Spellink Bridge App sur votre ordinateur.',
+      'Appuyez sur Appairer. Un code à 8 chiffres et un code QR apparaissent. Sur l’ordinateur, lancez « spellink-bridge device pair » et saisissez le code.',
     pairConnecting: 'Connexion au pont…',
     pairSeconds: 'Encore {n} secondes',
     pairStoring: 'Enregistrement de la clé…',
@@ -371,8 +379,11 @@ export const STRINGS = {
     pairRefused:
       'Le pont n’accepte plus cet appareil. Demandez un nouveau fichier avec « spellink-bridge device reissue <nom> ».',
     pairProblems: '{n} élément(s) d’appairage enregistré(s) inutilisable(s).',
-    pairScanQr: 'Scannez ce code QR avec Spellink Bridge App.',
-    pairOrType: 'Pas de caméra ? Saisissez plutôt ce code dans Bridge App.',
+    pairScanQr:
+      'Sur l’ordinateur, lancez « spellink-bridge device pair » et saisissez les 8 chiffres ci-dessous. (Avec une caméra : « spellink-bridge device pair --web » lit le code QR.)',
+    pairOrType:
+      'Pas de caméra ? Les 8 chiffres suffisent : saisissez-les dans « spellink-bridge device pair ».',
+    pairBanner: 'À saisir sur l’ordinateur',
     keyRefused:
       '{name} n’accepte plus cet appareil. Sur l’ordinateur, lancez « spellink-bridge device reissue <nom> », installez le nouveau fichier et appairez de nouveau.',
   },

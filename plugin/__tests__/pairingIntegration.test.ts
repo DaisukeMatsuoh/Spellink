@@ -72,7 +72,8 @@ async function until<T>(
 suite('pairing a device, for real', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'spellink-pair-'));
   const home = path.join(tmp, 'cfg');
-  const env = {...process.env, HOME: tmp, XDG_CONFIG_HOME: home};
+  // the command line speaks the owner's language (Japanese when LANG says so); these tests read English
+  const env = {...process.env, HOME: tmp, XDG_CONFIG_HOME: home, LC_ALL: 'C'};
   let exe = '';
   let bridge: ChildProcess | null = null;
   let port = 0;
@@ -148,7 +149,10 @@ suite('pairing a device, for real', () => {
       cwd: path.join(REPO, 'bridge'),
       timeout: 600000,
     });
-    fs.copyFileSync(path.join(REPO, 'bridge/target/debug/spellink-bridge'), exe);
+    fs.copyFileSync(
+      path.join(REPO, 'bridge/target/debug/spellink-bridge'),
+      exe,
+    );
     fs.chmodSync(exe, 0o755);
     const cfgDir = path.join(home, 'spellink-bridge');
     fs.mkdirSync(cfgDir, {recursive: true});

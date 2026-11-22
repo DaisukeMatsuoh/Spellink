@@ -75,7 +75,6 @@ Supernote のプラグイン（React Native）
 - 表を後回しにすると、シナリオごとの処理が散らばる。**表が元データなら、直しはマスの書き換え**で済む（ユーザーの指摘で、順序を逆にして正した）。
 - `jest.spyOn` は同じ関数に対して同じ spy を返す。`mockImplementationOnce` の積み残しと呼び出し回数は、テスト間で引き継がれる。
 - シェルの heredoc でバッククォートがエスケープされる、Python の `re.sub` が置換文字列の `\x` を解釈する、など、ファイルを生成するときの落とし穴に注意。
-- 開発機の `~/.claude/settings.json` に、caveman のプロキシ（`ANTHROPIC_BASE_URL`）がある。**Claude Code の Remote Control は、これが原因で使えない**（公式の API でないため）。
 
 ## 6. 現状の限界
 - 実機（Nomad）で確認していない: 切断後の再開、再接続 3 回、フレームの検証、`busyNotice`、`avoidOverwriting`、表で動く新しい流れ全体。

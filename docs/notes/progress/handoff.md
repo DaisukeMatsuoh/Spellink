@@ -2,7 +2,7 @@
 
 # 別のエージェントへの引き継ぎ（遠隔での作業用）
 
-2026-11-08。ユーザーが外出し、**この開発機の Claude Code は、遠隔操作（Remote Control）では使えない**ため、一部の作業を別のエージェントが行う。先に `CLAUDE.md`（規約）と `README.md`（現状）を読み、経緯が要るときだけ `history.md` を読む。
+2026-11-08。一部の作業を、別のエージェントが行うための引き継ぎ。先に `CLAUDE.md`（規約）と `README.md`（現状）を読み、経緯が要るときだけ `history.md` を読む。
 
 ## 守ること（要約。詳しくは `CLAUDE.md`、ADR 0014）
 1. **push しない。** コミットは可。コミットの末尾に `Co-Authored-By: <使っているモデル> <noreply@anthropic.com>` を付ける。
@@ -44,9 +44,6 @@ cd ~/GitWorkspaces/Spellink/plugin  && npm run spec && git diff --stat          
 - 波線の消し残しを、利用者に知らせる方法。
 
 ## 遠隔のエージェントを動かすときの注意
-- **Remote Control は、`claude remote-control` をそのまま使うと、「公式の API でない」と断られる。** 理由: caveman のインストーラが `~/.claude/settings.json` の `env` に `ANTHROPIC_BASE_URL=http://127.0.0.1:8787/w/claude`（この機械の caveman のゲートウェイ）を書いており、Remote Control は、向き先が `api.anthropic.com` 以外だと使えないため（二重の中継ではなく、1 段。向き先を変えるだけで、上流は Anthropic）。`settings.json` の `env` は、起動時の環境変数より**優先される**（実測）ので、環境変数で上書きしても効かない。
-- **起動は `claude-rc`**（`~/.local/bin/claude-rc [作業ディレクトリ]`）。`~/.claude-rc` という別の設定ディレクトリを使い、ログイン情報・`projects`（記憶や会話の履歴）は `~/.claude` と共有（シンボリックリンク）、caveman の hooks は残し、ゲートウェイの `env` だけを外してある。**初回だけ、端末で `claude-rc` を実行して `y` と答える**（「Enable Remote Control?」。一度答えれば、聞かれない）。caveman のゲートウェイ（入力・出力の圧縮の測定）は、この経路では使われない。
-- `~/.claude/settings.json` を caveman が書き換えたら（更新や再設定）、`~/.claude-rc/settings.json` は自動では追従しない。hooks が変わったら、`env` を除いて作り直す。
 - **コミットは push していない**（`stg` ブランチ）。別の機械のエージェントは、このリポジトリのコミットを見られない。同じ機械で動かすか、ユーザーが push を許可するか（または `git bundle` で渡す）。
 - 作業ツリーに、ユーザーの未コミットの変更があれば（`git status`）、触らない。
 - 実行中のもの: ブリッジ（`~/.local/bin/spellink-bridge serve`。**再起動すると自動では起動しない**）、cloudflared（システムのサービス、起動時に自動）。ブリッジを止める・入れ替える作業は、ローカルのエージェントかユーザーが行う。

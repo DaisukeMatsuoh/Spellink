@@ -23,7 +23,7 @@ describe('the words of the pairing screen', () => {
   it.each([
     ['idle', undefined, /Press Pair/],
     ['connecting', undefined, /Connecting/],
-    ['showing', undefined, /Scan this QR code/],
+    ['showing', undefined, /spellink-bridge device pair/],
     ['storing', undefined, /Saving/],
     ['paired', undefined, /Paired with Nomad/],
     ['timeout', undefined, /not entered in time/],
@@ -295,8 +295,8 @@ describe('the real parts of a pairing', () => {
       expect(views).toHaveLength(1);
       expect(typeof d.connect).toBe('function');
       expect(d.banner()).toEqual({
-        text: expect.stringMatching(/QR/),
-        width: 1000,
+        text: expect.stringMatching(/^.{4,40}$/), // short: the handwriting must fit the width, in any language
+        width: 800,
         charSize: 40,
       });
       expect(

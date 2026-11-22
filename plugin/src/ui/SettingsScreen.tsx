@@ -65,7 +65,6 @@ export function SettingsScreen() {
   const toggle = useCallback(
     (
       key:
-        | 'showProgress'
         | 'lineTilt'
         | 'thinkingAnimation'
         | 'busyNotice'
@@ -94,16 +93,6 @@ export function SettingsScreen() {
             {t('destination', {name: destination})}
           </Text>
         ) : null}
-        <View style={styles.row}>
-          <Button
-            disabled={!settings}
-            label={`${t('showProgress')}: ${
-              settings?.showProgress ? 'ON' : 'OFF'
-            }`}
-            onPress={() => toggle('showProgress')}
-          />
-        </View>
-        <Text style={styles.small}>{t('showProgressHelp')}</Text>
         <View style={styles.row}>
           <Button
             disabled={!settings}

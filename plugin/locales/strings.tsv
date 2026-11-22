@@ -29,8 +29,6 @@ answer	Answer	回答	Respuesta	Réponse
 close	Close	閉じる	Cerrar	Fermer
 cancel	Cancel	キャンセル	Cancelar	Annuler
 settingsTitle	Spellink settings	Spellink の設定	Ajustes de Spellink	Réglages de Spellink
-showProgress	Show progress panel (debug)	進捗パネルを表示（デバッグ）	Mostrar panel de progreso (depuración)	Afficher le panneau de progression (débogage)
-showProgressHelp	Off: the answer is simply written onto the page. The panel still opens when something goes wrong.	OFF のときは、回答をそのままページに書き込みます。エラーのときだけパネルが開きます。	Desactivado: la respuesta simplemente se escribe en la página. El panel se abre igualmente si algo falla.	Désactivé : la réponse est simplement écrite sur la page. Le panneau s’ouvre quand même en cas de problème.
 thinkingAnimation	Thinking animation	待機中のアニメーション	Animación mientras piensa	Animation de réflexion
 thinkingAnimationHelp	Draws a wavy line on the page while the AI is thinking, and removes it before the answer.	AI が考えている間、ページに波線を描き、回答の直前に消します。	Dibuja una línea ondulada en la página mientras la IA piensa y la borra antes de la respuesta.	Trace une ligne ondulée sur la page pendant que l’IA réfléchit, et l’efface avant la réponse.
 fullWidthSpacing	Spacing: kanji / kana	字間: 漢字・かな	Espaciado: kanji / kana	Espacement : kanji / kana

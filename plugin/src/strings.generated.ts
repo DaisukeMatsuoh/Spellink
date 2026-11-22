@@ -38,9 +38,6 @@ export const STRINGS = {
     close: 'Close',
     cancel: 'Cancel',
     settingsTitle: 'Spellink settings',
-    showProgress: 'Show progress panel (debug)',
-    showProgressHelp:
-      'Off: the answer is simply written onto the page. The panel still opens when something goes wrong.',
     thinkingAnimation: 'Thinking animation',
     thinkingAnimationHelp:
       'Draws a wavy line on the page while the AI is thinking, and removes it before the answer.',
@@ -138,9 +135,6 @@ export const STRINGS = {
     close: '閉じる',
     cancel: 'キャンセル',
     settingsTitle: 'Spellink の設定',
-    showProgress: '進捗パネルを表示（デバッグ）',
-    showProgressHelp:
-      'OFF のときは、回答をそのままページに書き込みます。エラーのときだけパネルが開きます。',
     thinkingAnimation: '待機中のアニメーション',
     thinkingAnimationHelp:
       'AI が考えている間、ページに波線を描き、回答の直前に消します。',
@@ -240,9 +234,6 @@ export const STRINGS = {
     close: 'Cerrar',
     cancel: 'Cancelar',
     settingsTitle: 'Ajustes de Spellink',
-    showProgress: 'Mostrar panel de progreso (depuración)',
-    showProgressHelp:
-      'Desactivado: la respuesta simplemente se escribe en la página. El panel se abre igualmente si algo falla.',
     thinkingAnimation: 'Animación mientras piensa',
     thinkingAnimationHelp:
       'Dibuja una línea ondulada en la página mientras la IA piensa y la borra antes de la respuesta.',
@@ -343,9 +334,6 @@ export const STRINGS = {
     close: 'Fermer',
     cancel: 'Annuler',
     settingsTitle: 'Réglages de Spellink',
-    showProgress: 'Afficher le panneau de progression (débogage)',
-    showProgressHelp:
-      'Désactivé : la réponse est simplement écrite sur la page. Le panneau s’ouvre quand même en cas de problème.',
     thinkingAnimation: 'Animation de réflexion',
     thinkingAnimationHelp:
       'Trace une ligne ondulée sur la page pendant que l’IA réfléchit, et l’efface avant la réponse.',

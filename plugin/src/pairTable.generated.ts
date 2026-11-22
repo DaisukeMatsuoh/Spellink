@@ -22,7 +22,6 @@ export const PAIR_EVENTS = [
   'Denied',
   'UserCancels',
   'KeyRefused',
-  'BannerArrives',
 ] as const;
 export type PairEvent = (typeof PAIR_EVENTS)[number];
 export const PAIR_ACTIONS = [
@@ -36,7 +35,6 @@ export const PAIR_ACTIONS = [
   'S8',
   'S9',
   'S10',
-  'S11',
 ] as const;
 export type PairAction = (typeof PAIR_ACTIONS)[number];
 
@@ -53,7 +51,6 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     Denied: {k: 'never', note: 'g'},
     UserCancels: {k: 'ignore', note: 'h'},
     KeyRefused: {k: 'never', note: 'i'},
-    BannerArrives: {k: 'never', note: 'b'},
   },
   Unpaired: {
     UserTapsPair: {k: 'do', action: 'S1', next: 'Connecting'},
@@ -66,7 +63,6 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     Denied: {k: 'never', note: 'g'},
     UserCancels: {k: 'ignore', note: 'h'},
     KeyRefused: {k: 'never', note: 'i'},
-    BannerArrives: {k: 'never', note: 'b'},
   },
   Connecting: {
     UserTapsPair: {k: 'ignore', note: 'c'},
@@ -79,7 +75,6 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     Denied: {k: 'do', action: 'S8', next: 'Unpaired'},
     UserCancels: {k: 'do', action: 'S9', next: 'Unpaired'},
     KeyRefused: {k: 'never', note: 'i'},
-    BannerArrives: {k: 'never', note: 'b'},
   },
   ShowingCode: {
     UserTapsPair: {k: 'ignore', note: 'c'},
@@ -92,7 +87,6 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     Denied: {k: 'do', action: 'S8', next: 'Unpaired'},
     UserCancels: {k: 'do', action: 'S9', next: 'Unpaired'},
     KeyRefused: {k: 'never', note: 'i'},
-    BannerArrives: {k: 'do', action: 'S11', next: 'ShowingCode'},
   },
   Storing: {
     UserTapsPair: {k: 'ignore', note: 'c'},
@@ -105,7 +99,6 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     Denied: {k: 'ignore', note: 'j'},
     UserCancels: {k: 'ignore', note: 'k'},
     KeyRefused: {k: 'never', note: 'i'},
-    BannerArrives: {k: 'ignore', note: 'o'},
   },
   Paired: {
     UserTapsPair: {k: 'do', action: 'S1', next: 'Connecting'},
@@ -118,6 +111,5 @@ export const PAIR_TABLE: Table<PairState, PairEvent, PairAction> = {
     Denied: {k: 'never', note: 'm'},
     UserCancels: {k: 'ignore', note: 'h'},
     KeyRefused: {k: 'do', action: 'S10', next: 'Unpaired'},
-    BannerArrives: {k: 'never', note: 'b'},
   },
 };

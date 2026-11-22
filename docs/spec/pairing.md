@@ -176,7 +176,6 @@ P6 で K を作らず、P9 で B を消さない（Active でも B が有効）�
 | Denied | `pairDenied`（理由つき）が届いた |
 | UserCancels | 利用者が「やめる」を押した、またはプラグインの画面を離れた |
 | KeyRefused | 質問のときの K の接続を、ブリッジが拒否した（失効・再発行・世代の不一致） |
-| BannerArrives | ブリッジが、頼んだ文言を手書きにして送ってきた（`pairBanner`。画面の飾り。なくても動く） |
 
 ## 端末: 状態遷移表
 | 状態＼イベント | UserTapsPair | Connected | KeyGranted | StoreSucceeds | StoreFails |
@@ -188,14 +187,14 @@ P6 で K を作らず、P9 で B を消さない（Active でも B が有効）�
 | **Storing** | ×c | —b | ×f | S4→Paired | S5→Unpaired |
 | **Paired** | S1→Connecting | —b | —b | —b | —b |
 
-| 状態＼イベント | WindowEnds | Disconnected | Denied | UserCancels | KeyRefused | BannerArrives |
-|---|---|---|---|---|---|---|
-| **NoSetup** | —g | —g | —g | ×h | —i | —b |
-| **Unpaired** | —g | —g | —g | ×h | —i | —b |
-| **Connecting** | S6→Unpaired | S7→Unpaired | S8→Unpaired | S9→Unpaired | —i | —b |
-| **ShowingCode** | S6→Unpaired | S7→Unpaired | S8→Unpaired | S9→Unpaired | —i | S11 |
-| **Storing** | ×j | ×j | ×j | ×k | —i | ×o |
-| **Paired** | —g | ×l | —m | ×h | S10→Unpaired | —b |
+| 状態＼イベント | WindowEnds | Disconnected | Denied | UserCancels | KeyRefused |
+|---|---|---|---|---|---|
+| **NoSetup** | —g | —g | —g | ×h | —i |
+| **Unpaired** | —g | —g | —g | ×h | —i |
+| **Connecting** | S6→Unpaired | S7→Unpaired | S8→Unpaired | S9→Unpaired | —i |
+| **ShowingCode** | S6→Unpaired | S7→Unpaired | S8→Unpaired | S9→Unpaired | —i |
+| **Storing** | ×j | ×j | ×j | ×k | —i |
+| **Paired** | —g | ×l | —m | ×h | S10→Unpaired |
 
 ## 端末: 処理（Action）
 | 処理 | 内容 | テスト |
@@ -210,7 +209,6 @@ P6 で K を作らず、P9 で B を消さない（Active でも B が有効）�
 | S8 | `pairDenied` の理由（`code_in_use`、`pair_busy`、`grant_pending`、`window_closed`、`expired`、`superseded`、`unknown_device`）を、利用者向けの文言で出す | ✅ |
 | S9 | 接続を閉じ、タイマーを止め、画面を戻す | ✅ |
 | S10 | 保存された K を、メモリ上で使えないとして扱い（消せないかもしれない。`gen` が違えば、次回から無視される）、B のペアリングを案内する。「ペアリングし直してください」を出す | ✅ |
-| S11 | 手書きの飾りを受け取った: 検証に通れば（線の数・点の数・座標の範囲）画面に出す。通らなければ捨てて記録する（飾りがなくても、画面は文字で出る）。**保存先には何も書かない** | ✅ |
 
 ## 端末: 注
 - a: NoSetup では「ペアリング」ボタン自体を出さず、案内（「ブリッジで『端末を追加』をして、専用の `.snplg` を入れてください」）を出す。押せない。
@@ -227,14 +225,12 @@ P6 で K を作らず、P9 で B を消さない（Active でも B が有効）�
 - k: 保存の最中に画面を離れても、保存は中断しない（途中で止めると K が半端になる）。完了後に Paired になる。
 - l: 質問の接続の断は、AskFlow が扱う（ask-flow.md）。ペアリングの状態は変えない。
 - m: K での接続のとき `pairDenied` は来ない（拒否は KeyRefused）。
-- o: 鍵を受け取った後に届いた飾りの文字。もう画面に出さないので捨てる。
 - **端末が B を持つのは、K を受け取るまで**。B は `.snplg` の中に残り続けるが、ブリッジが破棄済みなので、使えない（Paired のとき、B は使わない）。
 
 ## ペアリングのフレーム（`docs/spec/interfaces.md` の I22〜I27）
 | フレーム | 向き | 中身 | 検証 |
 |---|---|---|---|
-| `pairRequest` | 端末→ブリッジ（B の通信路） | `id`、`gen`、`code`（8 桁の数字）、`banner`（任意。手書きにしてほしい文言。1〜120 字）、`layout`（`banner` があるとき。文字の大きさと幅） | 型・長さ。`id`/`gen` が接続の記録と一致。コードは数字 8 桁のみ。`banner` は長さ、`layout` は既存の検査（`ValidLayout`）。不正な `banner` は、ペアリングを失敗にせず無視する |
-| `pairBanner` | ブリッジ→端末（B の通信路。`pairRequest` が受け付けられた後だけ） | `strokes`（頼んだ文言を、ブリッジの手書きの字で書いた線。最大 3000 本） | 端末が検証: 線の数・点の数・座標（`line` フレームと同じ上限）。不正なら、線なしの飾りとして扱い、画面は文字で出す |
+| `pairRequest` | 端末→ブリッジ（B の通信路） | `id`、`gen`、`code`（8 桁の数字） | 型・長さ。`id`/`gen` が接続の記録と一致。コードは数字 8 桁のみ。`banner` は長さ、`layout` は既存の検査（`ValidLayout`）。不正な `banner` は、ペアリングを失敗にせず無視する |
 | `pairGrant` | ブリッジ→端末（B の通信路） | `key`（K。32 バイトを base64url）、`endpoints`（`wss://` の URL、最大 4 件。保存できる長さに収まるもの） | 端末が検証: K の長さ・文字種、URL の形・個数・長さ（保存できない長さなら、受け取らない） |
 | `pairAck` | 端末→ブリッジ（B の通信路） | `id`、`gen` | 記録が G で、`gen` が一致 |
 | `pairDenied` | ブリッジ→端末（B の通信路） | `reason`（上の 7 種のどれか） | 端末が検証: 既知の理由。未知の理由は「拒否されました」とだけ出す |

@@ -294,11 +294,6 @@ describe('the real parts of a pairing', () => {
       d.onView({state: 'Unpaired', note: 'idle'});
       expect(views).toHaveLength(1);
       expect(typeof d.connect).toBe('function');
-      expect(d.banner()).toEqual({
-        text: expect.stringMatching(/^.{4,40}$/), // short: the handwriting must fit the width, in any language
-        width: 800,
-        charSize: 40,
-      });
       expect(
         await d.save({id: ID, gen: 1, key: 'x', name: 'n', urls: [URL]}),
       ).toBe(false); // the file module is absent here

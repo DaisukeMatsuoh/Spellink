@@ -137,7 +137,6 @@ suite('pairing a device, for real', () => {
       return () => clearInterval(t);
     },
     now: () => Date.now(),
-    banner: () => ({text: 'ああ ああ', width: 600, charSize: 40}),
     onView: v => views.push(v),
     log: () => {},
   });
@@ -246,15 +245,6 @@ suite('pairing a device, for real', () => {
     expect(shown).toMatchObject({code: '48151623', note: 'showing'});
     expect(shown.qr).toBe(`spellink://pair?v=1&i=${setup.id}&c=48151623`);
     expect(cli('list')).toMatch(/Nomad.*waiting/);
-    // the bridge wrote the phrase in its own handwriting (the test font has hiragana)
-    const banner = await until(
-      'the handwritten banner',
-      () => views.find(v => v.banner)?.banner,
-    );
-    expect(banner.strokes.length).toBeGreaterThan(0);
-    expect(banner.width).toBeGreaterThan(40);
-    expect(banner.height).toBeGreaterThan(20);
-
     // 4. a wrong code is refused and tells nobody who is waiting
     const wrong = cli('pair', '00000000');
     expect(wrong).toMatch(/not accepted/);

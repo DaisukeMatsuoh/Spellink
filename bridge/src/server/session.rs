@@ -7,7 +7,7 @@ use super::{Deps, LogFn};
 use crate::devices::registry::{Conn, DENY_UNKNOWN_DEVICE};
 use crate::history::Turn;
 use crate::layout::{Composer, Layout, capacity};
-use crate::protocol::{self, ClientMessage, ErrorFrame, HistoryCleared, PairBanner, PairDenied, PairGrant, SettingsReply, Status, Welcome};
+use crate::protocol::{self, ClientMessage, ErrorFrame, HistoryCleared, PairDenied, PairGrant, SettingsReply, Status, Welcome};
 use crate::provider::{self, AskError, Request, Sink};
 use crate::securechan::{self, Channel};
 use futures_util::StreamExt;
@@ -27,8 +27,6 @@ pub const MAX_FRAME_BYTES: usize = 256 << 10;
 pub const MAX_QUESTION_CHARS: usize = 4000;
 pub const MAX_NOTE_KEY_CHARS: usize = 1024;
 pub const MAX_PAGES: i64 = 10;
-pub const MAX_BANNER_CHARS: usize = 120;
-pub const MAX_BANNER_STROKES: usize = 3000;
 /// How long a pairing channel may stay silent before its pairRequest.
 pub const DEFAULT_PAIR_REQUEST_WAIT: Duration = Duration::from_secs(10);
 /// Bounds a pairing channel's whole life (the window and the grant's wait are shorter).
@@ -664,7 +662,6 @@ impl Session {
                         self.log(&format!("pairRequest from {} refused: {e}", self.peer));
                         return;
                     }
-                    self.send_banner(&m);
                 }
                 "pairAck" => {
                     if m.id != self.device_id {
@@ -682,26 +679,6 @@ impl Session {
                 }
             }
         }
-    }
-
-    /// Writes the phrase the device asked for in the bridge's handwriting and sends the strokes. It
-    /// is decoration, so anything wrong with the request (no phrase, a layout that is not sane, no
-    /// font, a phrase that draws nothing) means no banner, never a failed pairing.
-    fn send_banner(&self, m: &ClientMessage) {
-        let text = m.banner.trim();
-        let (Some(font), Some(layout)) = (self.deps.font.clone(), m.layout.clone().filter(valid_layout)) else { return };
-        if text.is_empty() || text.chars().count() > MAX_BANNER_CHARS {
-            return;
-        }
-        let layout = Layout { max_pages: 1, ..layout };
-        let mut composer = Composer::new(font, layout, seed_from(&m.id));
-        let mut lines = composer.push(text);
-        lines.extend(composer.finish());
-        let strokes: Vec<_> = lines.into_iter().filter(|l| l.page == 0).flat_map(|l| l.strokes).collect();
-        if strokes.is_empty() || strokes.len() > MAX_BANNER_STROKES {
-            return;
-        }
-        self.send(&PairBanner { kind: "pairBanner", strokes });
     }
 }
 

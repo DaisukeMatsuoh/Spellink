@@ -7,7 +7,6 @@ import {groupCode, pairMessage} from '../pairText';
 import {closeView} from '../sdk';
 import {Button, styles} from './common';
 import {QrView} from './QrView';
-import {StrokeView} from './StrokeView';
 
 /** Pairing this device with a bridge (docs/spec/pairing.md, B). */
 export function PairScreen() {
@@ -89,11 +88,7 @@ export function PairScreen() {
         ) : null}
         {view?.code ? (
           <View>
-            {view.banner ? (
-              <StrokeView strokes={view.banner.strokes} />
-            ) : (
-              <Text style={styles.text}>{t('pairScanQr')}</Text>
-            )}
+            <Text style={styles.text}>{t('pairScanQr')}</Text>
             {view.qr ? <QrView text={view.qr} size={560} /> : null}
             <Text style={bigDigits}>{groupCode(view.code)}</Text>
             <Text style={styles.small}>{t('pairOrType')}</Text>

@@ -3,7 +3,6 @@
 //! together. The shapes are pinned by plugin/__tests__/contract.test.ts against a recording of
 //! the frames the bridge really sends (bridge/internal/server/testdata/frames.golden.json).
 
-use crate::handwriting::Stroke;
 use crate::layout::{Layout, Line as InkLine};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -29,8 +28,7 @@ fn is_zero(n: &i64) -> bool {
 ///   - "setSettings": settings — change user settings stored on the bridge
 ///   - "clearHistory": forget the conversations of every note
 ///   - "forgetNote": note — forget the conversation of that note only
-///   - "pairRequest": id (the device's id), gen, code (eight digits shown on the device), and
-///     optionally banner (a phrase to be written back in handwriting) with layout (its size) — only
+///   - "pairRequest": id (the device's id), gen, code (eight digits shown on the device) — only
 ///     on the pairing channel (a session opened with B); the owner confirms the code at the bridge
 ///   - "pairAck": id, gen — the device has stored K (pairing channel)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -61,8 +59,6 @@ pub struct ClientMessage {
     pub generation: i64,
     #[serde(default, skip_serializing_if = "is_empty")]
     pub code: String,
-    #[serde(default, skip_serializing_if = "is_empty")]
-    pub banner: String,
 }
 
 impl ClientMessage {
@@ -224,15 +220,6 @@ pub struct PairDenied {
     #[serde(rename = "type")]
     pub kind: &'static str, // "pairDenied"
     pub reason: String,
-}
-
-/// A phrase the device asked to see in the bridge's handwriting, shown next to the QR code. It is
-/// decoration: a device that cannot use it shows the phrase as plain text.
-#[derive(Debug, Serialize)]
-pub struct PairBanner {
-    #[serde(rename = "type")]
-    pub kind: &'static str, // "pairBanner"
-    pub strokes: Vec<Stroke>,
 }
 
 pub fn to_frame<T: Serialize>(v: &T) -> Option<Vec<u8>> {

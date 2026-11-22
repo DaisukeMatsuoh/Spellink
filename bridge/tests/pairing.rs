@@ -8,10 +8,6 @@ use spellink_bridge::devices;
 use std::sync::Arc;
 use std::time::Duration;
 
-fn banner_layout() -> Value {
-    json!({"x": 0, "y": 0, "width": 600, "pageHeight": 400, "bottomMargin": 0, "charSize": 40})
-}
-
 #[tokio::test]
 async fn the_pairing_ceremony_end_to_end_over_the_wire() {
     let e = PairEnv::new().await;
@@ -302,72 +298,28 @@ async fn admin_pair_with_the_devices_id_only_considers_that_device() {
     assert_eq!(e.admin("POST", "/admin/pair", Some(json!({"id": "ffffffffffffffff", "code": "11111111"}))).await.0, 404, "an unknown device");
 }
 
-// ---- the handwritten banner ----
+// ---- what a request may carry ----
 
 #[tokio::test]
-async fn a_request_with_a_banner_gets_it_written_in_handwriting_before_any_grant() {
+async fn a_request_that_still_carries_a_banner_is_answered_like_any_other_and_the_first_frame_is_the_grant() {
+    // an earlier device asked for a phrase in handwriting; the bridge no longer writes one, and the
+    // extra fields change nothing (the first frame the device gets is the grant)
     let e = PairEnv::new().await;
     let (id, b) = e.add_device("Nomad");
     let mut d = e.dial(&id, &b).await;
-    d.send(json!({"type": "pairRequest", "id": id, "gen": 1, "code": "12345678", "banner": "ああ あ", "layout": banner_layout()})).await;
-    let m = d.recv().await.unwrap();
-    let strokes = m["strokes"].as_array().cloned().unwrap_or_default();
-    assert!(m["type"] == "pairBanner" && !strokes.is_empty(), "expected a banner with strokes, got {m}");
-    let (p, w) = (strokes[0]["p"].as_array().unwrap(), strokes[0]["w"].as_array().unwrap());
-    assert!(p.len() >= 2 && p.len() % 2 == 0 && w.len() == p.len() / 2, "a stroke must have matching points and pressures: {} coordinates, {} pressures", p.len(), w.len());
-    for v in p {
-        let x = v.as_f64().unwrap();
-        assert!((-50.0..=700.0).contains(&x), "a point outside the asked-for width: {x}");
-    }
-    e.wait_waiting(&id, 1).await;
-    e.admin("POST", "/admin/pair", Some(json!({"code": "12345678"}))).await;
-    assert_eq!(d.recv().await.unwrap()["type"], "pairGrant", "after the banner the grant comes");
-}
-
-#[tokio::test]
-async fn a_banner_is_only_decoration_so_bad_requests_get_none_and_still_pair() {
-    let cases: Vec<(&str, Value)> = vec![
-        ("no banner", json!({})),
-        ("only spaces", json!({"banner": "   ", "layout": banner_layout()})),
-        ("too long", json!({"banner": "あ".repeat(121), "layout": banner_layout()})),
-        ("no layout", json!({"banner": "ああ"})),
-        ("a layout that is not sane", json!({"banner": "ああ", "layout": {"x": 0, "y": 0, "width": -1, "pageHeight": 400, "bottomMargin": 0, "charSize": 40}})),
-        ("nothing it can draw", json!({"banner": "xyz", "layout": banner_layout()})), // the test font has no such letters
-    ];
-    for (name, extra) in cases {
-        let e = PairEnv::new().await;
-        let (id, b) = e.add_device("Nomad");
-        let mut d = e.dial(&id, &b).await;
-        let mut req = json!({"type": "pairRequest", "id": id, "gen": 1, "code": "12345678"});
-        for (k, v) in extra.as_object().unwrap() {
-            req[k] = v.clone();
-        }
-        d.send(req).await;
-        e.wait_waiting(&id, 1).await;
-        e.admin("POST", "/admin/pair", Some(json!({"code": "12345678"}))).await;
-        let g = d.recv().await.unwrap();
-        assert_eq!(g["type"], "pairGrant", "{name}: the first frame must be the grant (no banner), got {g}");
-    }
-}
-
-#[tokio::test]
-async fn a_bridge_without_a_font_still_pairs() {
-    let e = PairEnv::with(|d, _| d.font = None).await;
-    let (id, b) = e.add_device("Nomad");
-    let mut d = e.dial(&id, &b).await;
-    d.send(json!({"type": "pairRequest", "id": id, "gen": 1, "code": "12345678", "banner": "ああ", "layout": banner_layout()})).await;
+    d.send(json!({"type": "pairRequest", "id": id, "gen": 1, "code": "12345678", "banner": "ああ", "layout": {"x": 0, "y": 0, "width": 600, "pageHeight": 400, "bottomMargin": 0, "charSize": 40}})).await;
     e.wait_waiting(&id, 1).await;
     e.admin("POST", "/admin/pair", Some(json!({"code": "12345678"}))).await;
     assert_eq!(d.recv().await.unwrap()["type"], "pairGrant");
 }
 
 #[tokio::test]
-async fn a_denied_request_gets_no_banner() {
+async fn a_denied_request_is_answered_with_the_refusal_and_nothing_else() {
     let e = PairEnv::new().await;
     let (id, b) = e.add_device("Nomad");
     let mut d = e.dial(&id, &b).await;
-    d.send(json!({"type": "pairRequest", "id": id, "gen": 99, "code": "12345678", "banner": "ああ", "layout": banner_layout()})).await;
-    assert_eq!(d.recv().await.unwrap()["type"], "pairDenied", "a refused request is answered with the refusal and nothing else");
+    d.send(json!({"type": "pairRequest", "id": id, "gen": 99, "code": "12345678"})).await;
+    assert_eq!(d.recv().await.unwrap()["type"], "pairDenied");
 }
 
 #[tokio::test]

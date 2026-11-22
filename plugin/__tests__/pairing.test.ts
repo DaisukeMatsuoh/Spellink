@@ -52,7 +52,6 @@ class World {
   }[] = [];
   logs: string[] = [];
   digitsUsed = '12345678';
-  bannerAsked: {text: string; width: number; charSize: number} | null = null;
 
   deps: PairDeps = {
     connect: (urls, b, ms) =>
@@ -76,7 +75,6 @@ class World {
       return () => (t.live = false);
     },
     now: () => this.now,
-    banner: () => this.bannerAsked,
     onView: v => this.views.push(v),
     log: k => this.logs.push(k),
   };
@@ -460,40 +458,8 @@ describe('the table of the device', () => {
   );
 });
 
-describe("the bridge's handwriting beside the QR code", () => {
-  const stroke = {p: [0, 0, 30, 40, 60, 0], w: [100, 100, 100]};
-  const ask = {text: 'Scan this QR code.', width: 1000, charSize: 40};
-
-  it('is asked for in the request and shown when it arrives', async () => {
-    const {w, c} = controller();
-    w.bannerAsked = ask;
-    c.tap();
-    const ch = new FakeChannel();
-    w.connects[0].ok(ch);
-    await flush();
-    expect(ch.sent[0]).toEqual({
-      type: 'pairRequest',
-      id: ID,
-      gen: 2,
-      code: '12345678',
-      banner: 'Scan this QR code.',
-      layout: {
-        x: 0,
-        y: 0,
-        width: 1000,
-        pageHeight: 320,
-        bottomMargin: 0,
-        charSize: 40,
-      },
-    });
-    expect(w.last.banner).toBeUndefined(); // not yet
-    ch.onFrame({type: 'pairBanner', strokes: [stroke]});
-    expect(c.state).toBe('ShowingCode');
-    expect(w.last.banner).toEqual({strokes: [stroke], width: 66, height: 46});
-    expect(w.last.code).toBe('12345678');
-  });
-
-  it('is not asked for when there is no phrase', async () => {
+describe('the first frame of a pairing', () => {
+  it('names the device and the code, and asks for nothing else', async () => {
     const {ch} = await showing();
     expect(ch.sent[0]).toEqual({
       type: 'pairRequest',
@@ -501,33 +467,5 @@ describe("the bridge's handwriting beside the QR code", () => {
       gen: 2,
       code: '12345678',
     });
-  });
-
-  it('an empty banner (one that could not be used) changes nothing', async () => {
-    const {w, c, ch} = await showing();
-    const before = w.views.length;
-    ch.onFrame({type: 'pairBanner', strokes: []});
-    expect(w.views.length).toBe(before);
-    expect(w.logs).toContain('pair.banner.empty');
-    expect(c.state).toBe('ShowingCode');
-  });
-
-  it('is dropped when it arrives late, and forgotten when the attempt ends', async () => {
-    const {w, c, ch} = await showing();
-    ch.onFrame({type: 'pairGrant', key: secretOf(7), endpoints: [URL]});
-    ch.onFrame({type: 'pairBanner', strokes: [stroke]}); // while the key is being stored
-    await flush();
-    expect(c.state).toBe('Paired');
-    expect(w.views.some(v => v.banner)).toBe(false);
-
-    const second = await showing();
-    second.ch.onFrame({type: 'pairBanner', strokes: [stroke]});
-    expect(second.w.last.banner).toBeDefined();
-    second.c.cancel();
-    expect(second.w.last.banner).toBeUndefined();
-    second.c.tap();
-    second.w.connects[1].ok(new FakeChannel());
-    await flush();
-    expect(second.w.last.banner).toBeUndefined(); // the new attempt starts clean
   });
 });

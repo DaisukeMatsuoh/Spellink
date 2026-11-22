@@ -94,9 +94,15 @@ export const STRINGS = {
       'On the computer, run "spellink-bridge device pair" and type the 8 digits below. (With a camera: "spellink-bridge device pair --web" reads the QR code.)',
     pairOrType:
       'No camera? The 8 digits are enough: type them into "spellink-bridge device pair".',
-    pairBanner: 'Type this on the computer',
     keyRefused:
       '{name} no longer accepts this device. On the computer run "spellink-bridge device reissue <name>", then install the new file and pair again.',
+    diagTitle: 'Diagnostics',
+    diagHelp:
+      'If something does not work: press Check, wait for it to finish, then Send. The log goes only to your own bridge (your computer).',
+    diagCheck: 'Check',
+    diagSend: 'Send',
+    diagDone: "Done. Press Send to keep this in the bridge's log.",
+    back: 'Back',
   },
   ja: {
     askButton: 'AIに聞く',
@@ -190,9 +196,15 @@ export const STRINGS = {
       'パソコンで「spellink-bridge device pair」を実行して、下の8桁の数字を入力してください。(カメラがあれば「spellink-bridge device pair --web」でQRコードも読めます。)',
     pairOrType:
       'カメラが使えないときは、8桁の数字だけで大丈夫です。「spellink-bridge device pair」に入力してください。',
-    pairBanner: 'この数字をパソコンに入力',
     keyRefused:
       '{name} が、この端末を受け付けなくなりました。パソコンで「spellink-bridge device reissue <名前>」を実行し、新しいファイルを入れて、ペアリングし直してください。',
+    diagTitle: '診断',
+    diagHelp:
+      'うまく動かないときは、「確認」を押して、終わるまで待ち、「送る」を押してください。記録は、あなた自身のブリッジ(あなたのパソコン)にだけ送られます。',
+    diagCheck: '確認',
+    diagSend: '送る',
+    diagDone: '終わりました。「送る」を押すと、ブリッジの記録に残ります。',
+    back: '戻る',
   },
   es: {
     askButton: 'Preguntar a la IA',
@@ -287,9 +299,15 @@ export const STRINGS = {
       'En el ordenador, ejecuta "spellink-bridge device pair" e introduce los 8 dígitos de abajo. (Con cámara: "spellink-bridge device pair --web" lee el código QR.)',
     pairOrType:
       '¿Sin cámara? Bastan los 8 dígitos: introdúcelos en "spellink-bridge device pair".',
-    pairBanner: 'Escríbelo en el ordenador',
     keyRefused:
       '{name} ya no acepta este dispositivo. En el ordenador, ejecuta "spellink-bridge device reissue <nombre>", instala el archivo nuevo y vuelve a emparejar.',
+    diagTitle: 'Diagnóstico',
+    diagHelp:
+      'Si algo no funciona: pulsa Comprobar, espera a que termine y pulsa Enviar. El registro va solo a tu propio puente (tu ordenador).',
+    diagCheck: 'Comprobar',
+    diagSend: 'Enviar',
+    diagDone: 'Listo. Pulsa Enviar para guardarlo en el registro del puente.',
+    back: 'Atrás',
   },
   fr: {
     askButton: 'Demander à l’IA',
@@ -383,8 +401,15 @@ export const STRINGS = {
       'Sur l’ordinateur, lancez « spellink-bridge device pair » et saisissez les 8 chiffres ci-dessous. (Avec une caméra : « spellink-bridge device pair --web » lit le code QR.)',
     pairOrType:
       'Pas de caméra ? Les 8 chiffres suffisent : saisissez-les dans « spellink-bridge device pair ».',
-    pairBanner: 'À saisir sur l’ordinateur',
     keyRefused:
       '{name} n’accepte plus cet appareil. Sur l’ordinateur, lancez « spellink-bridge device reissue <nom> », installez le nouveau fichier et appairez de nouveau.',
+    diagTitle: 'Diagnostic',
+    diagHelp:
+      'En cas de problème : appuyez sur Vérifier, attendez la fin, puis sur Envoyer. Le journal va uniquement à votre propre pont (votre ordinateur).',
+    diagCheck: 'Vérifier',
+    diagSend: 'Envoyer',
+    diagDone:
+      'Terminé. Appuyez sur Envoyer pour le garder dans le journal du pont.',
+    back: 'Retour',
   },
 } as const;

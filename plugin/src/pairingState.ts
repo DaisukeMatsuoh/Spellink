@@ -7,10 +7,7 @@ import {randomBytes} from './noise';
 import type {PairDeps} from './pairing';
 import {planBridges, type Plan} from './pairPlan';
 import {readStore, saveToStore} from './pairStore';
-import {t} from './i18n';
 import {trace} from './trace';
-
-/** The handwritten phrase beside the QR code: the width it may use and the size of its letters (pixels). */
 
 export interface PairingState {
   plan: Plan;

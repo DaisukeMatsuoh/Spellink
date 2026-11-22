@@ -6,6 +6,7 @@ on:
     paths: ['plugin/**', 'bridge/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/testdata/**']
   pull_request:
     paths: ['plugin/**', 'bridge/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/testdata/**']
+  workflow_dispatch:
 
 permissions:
   contents: read

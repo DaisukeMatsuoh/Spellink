@@ -22,12 +22,21 @@ jobs:
         with:
           node-version: 22
       - run: node --test scripts/usage-dashboard.test.mjs
-      - run: node scripts/usage-dashboard.mjs
-      - name: commit the new numbers
+      # the numbers are kept on their own branch, so that the protected default branch is never
+      # pushed to by a workflow; what was collected before is brought back first
+      - name: bring back the numbers collected so far
         run: |
-          if [ -z "$(git status --porcelain docs/usage)" ]; then exit 0; fi
+          if git ls-remote --exit-code --heads origin usage-data >/dev/null 2>&1; then
+            git fetch --depth=1 origin usage-data
+            git checkout FETCH_HEAD -- docs/usage/data || true
+          fi
+      - run: node scripts/usage-dashboard.mjs
+      - name: publish them on the usage-data branch
+        run: |
+          if git ls-remote --exit-code --heads origin usage-data >/dev/null 2>&1 && git diff --quiet FETCH_HEAD -- docs/usage 2>/dev/null; then exit 0; fi
           git config user.name "spellink-usage"
           git config user.email "usage@users.noreply.github.com"
-          git add docs/usage
-          git commit -m "chore(usage): weekly relay numbers"
-          git push
+          git switch -C usage-data
+          git add -f docs/usage
+          git commit -m "chore(usage): weekly relay numbers" || exit 0
+          git push --force origin usage-data

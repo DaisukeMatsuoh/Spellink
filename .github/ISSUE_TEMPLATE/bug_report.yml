@@ -1,0 +1,39 @@
+name: Something does not work / うまく動かない
+description: Spellink does not behave as the guide says. 手順どおりに動かない。
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste a token, a pairing code or the contents of `config.json`.** If a log line has one, cut it out.
+        トークン、ペアリングの数字、`config.json` の中身は、貼らないでください。
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect? / 何が起きましたか。どうなるはずでしたか。
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes:
+      label: Bridge version (`spellink-bridge version`) and plugin version
+    validations: {required: true}
+  - type: dropdown
+    id: os
+    attributes:
+      label: The computer that runs the bridge / ブリッジを動かすパソコン
+      options: [Linux, macOS, Windows, other]
+    validations: {required: true}
+  - type: input
+    id: device
+    attributes:
+      label: Supernote model and system version / 端末の機種とバージョン
+  - type: dropdown
+    id: route
+    attributes:
+      label: How the device reaches the bridge / 端末がブリッジにつながる道
+      options: [Spellink relay, direct at home, my own tunnel, not sure]
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of `spellink-bridge check` (and the plugin's Diagnostics > Check, if you can) / `check` の出力
+      render: text

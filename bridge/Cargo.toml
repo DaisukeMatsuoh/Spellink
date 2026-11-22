@@ -7,7 +7,7 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23"
 axum = { version = "0.8", default-features = false, features = ["ws", "http1", "tokio", "json", "query"] }
 flate2 = "1"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

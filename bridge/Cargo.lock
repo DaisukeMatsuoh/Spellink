@@ -1619,7 +1619,7 @@ version = "0.0.1"
 dependencies = [
  "aws-lc-rs",
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "flate2",
  "futures-util",
  "hex",

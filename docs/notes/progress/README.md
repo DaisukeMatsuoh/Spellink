@@ -23,7 +23,7 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 - **コード**: `stg` ブランチ、**未 push**（push はユーザーの指示まで。コミットは可）。直近: `c383821` レビューの修正、`0842f1d` 診断、`f243244` ADR 0021 ほか、`f6cd426` 計測、`66a5ad4` 直結の週の枠、続けて文書の更新。テスト（2026-11-22 時点）: Rust は lib 275 と統合テスト全部緑、clippy `-D warnings` 緑、端末は **31 スイート・865 件**緑、ダッシュボードの Node テスト 5 件緑。**件数だけでなくスイート数を確認する。** `dropping_the_answer_kills_the_cli`（claudecode）は、負荷が高いと一度だけ落ちたことがある（単独では通る。もとからのタイミング依存）。CI（`.github/workflows/`）は一度も動かしていない（push が要る。`macos-15-intel` のラベルは未確認）。
 - **構成**: プラグイン（RN）⇄ wss（自前のトンネル／運営の中継／家の直結）⇄ ブリッジ（Rust。ADR 0018）⇄ `claude -p`。ブリッジ・中継・名前サービスは 1 つのバイナリ。端末とブリッジの間は Noise（ADR 0007）。運営の入口は ADR 0019（Cloudflare Tunnel をやめ、自前の TLS と DNS、scratch）。
 - **ペアリング（ADR 0016・0020）**: QR と 8 桁。`device add` が、端末ごとの期限つきの設置用 `.snplg` を作る。**プラグインのパッケージはバイナリに埋め込み**（`build.rs`、ビルド時の環境変数 `SPELLINK_BASE_PACKAGE`。作り方は `bridge/scripts/build-with-plugin.sh`）。**プラグインは、開発者のブリッジの住所もトークンも持たない**（ビルド時に埋める仕組みは廃止）。利用者向けの手順は `docs/guides/install-guide.md`。
-- **運営の形（ADR 0020、決定 2026-11-22）**: 中継は運営する。費用は最初は寄付（Buy Me a Coffee・暗号通貨。**アカウント名と送金先は、ユーザーが用意する**。私は作らない）。対応 OS は Windows・macOS・Linux。VPS は**日本が Kagoya（借りた）、米国が OVHcloud（これから借りる）**。中継は `jp.relay.spellink.uk`・`us.relay.spellink.uk`（ADR 0019 の追記）。**ブリッジが近い中継を選ぶ実装は、まだない。**
+- **運営の形（ADR 0020、決定 2026-11-22）**: 中継は運営する。費用は最初は寄付（Buy Me a Coffee・暗号通貨。**アカウント名と送金先は、ユーザーが用意する**。私は作らない）。対応 OS は Windows・macOS・Linux。VPS は**日本が Kagoya（借りた）、米国が OVHcloud（これから借りる）**。中継は `jp.relay.spellink.uk`・`us.relay.spellink.uk`（ADR 0019 の追記）。ブリッジは `relayUrls` の**すべての中継に登録**し、端末が競争で近いほうを使う（ADR 0019 の追記。実装済み 2026-11-22）。
 - **直結の週の枠（ADR 0017 の追記。決定 45 と 5）**: 名前サービスが、新しい ID の最初の注文を、直近 7 日に 45 件までにする。中継・名前サービスの ID は `--infra-ids`（5 件の予約）。断られたら、空く時刻まで中継で動く。`lan.spellink.uk` の PSL への登録は、利用者の実績ができてから。ドメインは `spellink.uk` の 1 つ（別ドメインにはしない）。仕様は `docs/spec/lan-cert.md` の L9。
 - **計測（ADR 0021）**: 中継が時間と件数だけをヒストグラムで数え、`GET /v1/stats` で公開。`scripts/usage-dashboard.mjs` と `.github/workflows/usage.yml`（週 1 回）が `docs/usage/usage-dashboard.md` を作る（中継の一覧 `docs/usage/relays.json` は空）。**国の引きは未実装。**
 - **レビュー（2026-11-22）**: セキュリティとコードのレビューを実施、直せるものは直した（`docs/notes/review-2026-11-22.md`）。重大な指摘はなかった。残り: 週の枠の乱用への備え（上）、名前サービスの保存のロック、TLS の入口の本文の期限と接続元ごとの上限（可用性。広く公開する前に）。
@@ -51,7 +51,7 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 **[U]** = ユーザー、**[A]** = エージェント。担当の分け方は `handoff.md`（古い部分がある。この文書が優先）。
 1. **[U] 実機でペアリングを試す（2026-11-23 の予定）。** 新しいバイナリを `bridge/scripts/build-with-plugin.sh` で作って入れ、`device reissue nomad-test`・`device package nomad-test`、手順は `docs/guides/install-guide.md`。診断の「3. Network」「12. SDK names」「12b. Network channels」の結果を共有。結果を見て、表の気になったセルを直す。
 2. **[U] VPS（日本 Kagoya、米国 OVHcloud）を用意し、`relay-operations.md` の手順で DNS を置く**（ns1 の A、`lan` の NS、各中継と名前サービスの CNAME）。**[A]** staging で注文を通し、本番へ。立ち会う。`INFRA_IDS` に中継の ID を入れる。
-3. **[A] ブリッジが、複数の中継の候補から、往復時間の近いほうを選ぶ**（ADR 0019 の追記。いまは `relayUrl` に 1 つ）。`config.json`・ペアリングの URL・状態の表示を含む。VPS ができる前でも、偽の中継 2 つでテストできる。
+3. **[U→A] VPS の作業**: `docs/guides/vps-checklist.md`（Kagoya で今できること／OVHcloud を借りたあとにやること）。
 4. **[A] 計測の続き（ADR 0021）**: 国の引き（GeoIP の国データベースを設定で渡す。件数 20 未満は出さない）。中継の負荷試験の道具。中継が動いたら `docs/usage/relays.json` に URL を足す。
 5. **[U] 寄付の入口**: Buy Me a Coffee のアカウント名、暗号通貨の送金先を教える → **[A]** `.github/FUNDING.yml`、README、ブリッジの案内に置く（Supernote のプラグインストアの規約で、寄付のリンクが許されるかも確認）。
 6. **[U] 公開の前に埋める文書**: `docs/legal/` のプライバシーポリシー・利用規約の `[ ]`。名前サービスが ID と LAN の IP を見ること、証明書の公開記録に名前が載ること、**中継の集計（時間と件数のみ）を取ること**を入れる。`README.md`・`CONTRIBUTING.md`・`SECURITY.md`・`THIRD_PARTY_NOTICES.md`（Rust の依存も）。専門家の確認を勧める。

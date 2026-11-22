@@ -45,8 +45,8 @@ pub fn device_urls(cfg: &Config, id: &str, secret: &str) -> Vec<String> {
         urls.extend(named(&format!("wss://{}:8766{}", lan.host, protocol::WS_PATH)));
     }
     urls.extend(cfg.extra_urls.iter().filter_map(|u| named(u)));
-    if !cfg.relay_url.is_empty() && !secret.is_empty() {
-        urls.push(crate::connector::client_url(&cfg.relay_url, secret));
+    if !secret.is_empty() {
+        urls.extend(cfg.relays().iter().map(|r| crate::connector::client_url(r, secret)));
     }
     urls
 }
@@ -131,7 +131,7 @@ pub fn status_func(cfg: Arc<Config>, ai_name: String) -> Arc<dyn Fn() -> StatusI
         let mut info = StatusInfo {
             version: VERSION.into(),
             name: bridge_name(&cfg),
-            relay: !cfg.relay_url.is_empty(),
+            relay: !cfg.relays().is_empty(),
             addresses: device_urls(&cfg, "<id>", ""),
             provider: ProviderInfo { name: ai_name.clone(), ..ProviderInfo::default() },
         };
@@ -171,9 +171,7 @@ pub fn candidate_urls(port: i64) -> Vec<String> {
 pub fn pair_urls(cfg: &Config) -> Vec<String> {
     let mut urls = candidate_urls(cfg.port);
     urls.extend(cfg.extra_urls.iter().cloned());
-    if !cfg.relay_url.is_empty() {
-        urls.push(crate::connector::client_url(&cfg.relay_url, &cfg.token));
-    }
+    urls.extend(cfg.relays().iter().map(|r| crate::connector::client_url(r, &cfg.token)));
     if let Some(lan) = cfg.lan.as_ref().filter(|l| l.enabled && !l.host.is_empty()) {
         urls.insert(0, format!("wss://{}:8766{}", lan.host, protocol::WS_PATH));
     }
@@ -308,7 +306,10 @@ pub async fn serve() -> Result<(), String> {
     }
     let router = http::router(deps.clone(), Some(admin), Some(pages));
 
-    if !cfg.relay_url.is_empty() {
+    for bad in cfg.bad_relays() {
+        log(&format!("relayUrl/relayUrls: {bad:?} is not used (it must be only wss://host[:port])"));
+    }
+    if !cfg.relays().is_empty() {
         let serve_fn: ServeFn = {
             let deps = deps.clone();
             Arc::new(move |t: Transport, peer: String| {
@@ -316,7 +317,9 @@ pub async fn serve() -> Result<(), String> {
                 Box::pin(async move { Session::serve(deps, t, &peer, true, "").await })
             })
         };
-        tokio::spawn(connector::connect(cancel.clone(), cfg.relay_url.clone(), cfg.token.clone(), serve_fn, log.clone()));
+        for relay in cfg.relays() {
+            tokio::spawn(connector::connect(cancel.clone(), relay, cfg.token.clone(), serve_fn.clone(), log.clone()));
+        }
     }
     if let (Some(identity), Some(l)) = (lan_identity, cfg.lan.clone()) {
         start_lan(&l, identity, store.dir(), &log, router.clone(), &cancel).await;
@@ -445,7 +448,7 @@ fn sync_rooms(rooms: &RoomSet, reg: &Registry, deps: &Arc<OnceLock<Arc<Deps>>>) 
 /// the devices.
 fn start_devices(cancel: &CancellationToken, store: &ConfigStore, cfg: &Config, log: &LogFn, sessions: &Arc<Sessions>, deps: &Arc<OnceLock<Arc<Deps>>>) -> Result<(Registry, Option<Arc<RoomSet>>), String> {
     let file = store.devices_file();
-    let rooms = (!cfg.relay_url.is_empty()).then(|| Arc::new(RoomSet::new(cancel.clone(), &cfg.relay_url, log.clone())));
+    let rooms = (!cfg.relays().is_empty()).then(|| Arc::new(RoomSet::new(cancel.clone(), &cfg.relays(), log.clone())));
     let reg_cell: Arc<OnceLock<Registry>> = Arc::new(OnceLock::new());
     let changed: Arc<dyn Fn() + Send + Sync> = {
         let (rooms, reg_cell, deps) = (rooms.clone(), reg_cell.clone(), deps.clone());
@@ -563,6 +566,20 @@ mod tests {
         assert_eq!(urls[0], "wss://h.example.com:8766/v1");
         assert!(urls.iter().any(|u| u == "wss://t.example/v1") && urls.last().unwrap().contains("/v1/relay/client?room="));
         assert!(urls.iter().any(|u| u.starts_with("ws://") && u.contains(":8765/v1")), "the LAN addresses and the .local name");
+    }
+
+    #[test]
+    fn a_device_is_told_every_relay_once_and_each_names_the_same_room() {
+        let c = Config { relay_url: "wss://jp.relay.example/".into(), relay_urls: vec!["wss://us.relay.example".into(), "wss://jp.relay.example".into(), "http://not-a-relay.example".into(), "".into()], ..cfg() };
+        let urls = device_urls(&c, "dev", "sekret");
+        let relays: Vec<&String> = urls.iter().filter(|u| u.contains("/v1/relay/client?room=")).collect();
+        assert_eq!(relays.len(), 2, "{urls:?}");
+        assert!(relays[0].starts_with("wss://jp.relay.example/v1/") && relays[1].starts_with("wss://us.relay.example/v1/"));
+        let room = |u: &str| u.split("room=").nth(1).unwrap().to_string();
+        assert_eq!(room(relays[0]), room(relays[1]));
+        assert!(!urls.iter().any(|u| u.contains("sekret")), "a URL names the room, never the secret");
+        assert!(status_func(Arc::new(c.clone()), "x".into())().relay);
+        assert_eq!(c.bad_relays(), vec!["http://not-a-relay.example".to_string()]);
     }
 
     #[test]

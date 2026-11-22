@@ -321,7 +321,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }
         };
-        tokio::select! { _ = fut => panic!("the CLI sleeps for 30 s: the answer cannot have ended"), _ = started => {} }
+        tokio::select! { r = fut => panic!("the CLI sleeps for 30 s: the answer cannot have ended: {:?}", r.map(|_| ())), _ = started => {} }
         let pid: i32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert!(!std::path::Path::new(&format!("/proc/{pid}")).exists() || std::fs::read_to_string(format!("/proc/{pid}/stat")).map(|s| s.contains(") Z")).unwrap_or(true), "the CLI must not outlive the dropped answer");

@@ -37,19 +37,47 @@ impl Server {
     }
 
     fn start_in(dir: tempfile::TempDir) -> Server {
-        let (dns, api) = (free_port(), free_port());
-        let child = Command::new(BIN)
-            .args(["names", "--zone", "lan.test", "--ns", "ns1.test", "--data", dir.path().to_str().unwrap(), "--dns", &format!("127.0.0.1:{dns}"), "--listen", &format!("127.0.0.1:{api}")])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        let s = Server { child, dns: format!("127.0.0.1:{dns}").parse().unwrap(), api: format!("http://127.0.0.1:{api}"), _dir: dir };
-        for _ in 0..100 {
-            if std::net::TcpStream::connect(("127.0.0.1", api)).is_ok() {
-                return s;
+        Server::start_with(dir, &[])
+    }
+
+    /// Starts the service with `extra` flags. The ports are found by binding and releasing, which
+    /// another test of this file may do at the same moment: a server that did not get its ports
+    /// exits at once, so it is started again on new ones.
+    fn start_with(dir: tempfile::TempDir, extra: &[&str]) -> Server {
+        for _ in 0..10 {
+            let dns = free_port();
+            let api = loop {
+                let p = free_port();
+                if p != dns {
+                    break p; // the same port twice would bind for DNS and then fail for the API
+                }
+            };
+            let mut child = Command::new(BIN)
+                .args(["names", "--zone", "lan.test", "--ns", "ns1.test", "--data", dir.path().to_str().unwrap(), "--dns", &format!("127.0.0.1:{dns}"), "--listen", &format!("127.0.0.1:{api}")])
+                .args(extra)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let mut up = false;
+            for _ in 0..100 {
+                if child.try_wait().unwrap().is_some() {
+                    break; // it exited: its ports were taken
+                }
+                if std::net::TcpStream::connect(("127.0.0.1", api)).is_ok() {
+                    up = true;
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
             }
-            std::thread::sleep(Duration::from_millis(50));
+            // the connection above could have been to someone else's server on a shared port: a server
+            // that did not get its ports exits within moments, so look again before trusting it
+            std::thread::sleep(Duration::from_millis(250));
+            if up && child.try_wait().unwrap().is_none() {
+                return Server { child, dns: format!("127.0.0.1:{dns}").parse().unwrap(), api: format!("http://127.0.0.1:{api}"), _dir: dir };
+            }
+            let _ = child.kill();
+            let _ = child.wait();
         }
         panic!("the name service did not start");
     }
@@ -210,21 +238,8 @@ fn the_relay_refuses_its_own_tls_together_with_trust_proxy_and_a_data_directory_
 async fn a_full_week_refuses_a_new_bridge_with_the_time_a_place_is_free_and_not_the_one_that_ordered() {
     use spellink_bridge::acme::{PublishError, Publisher};
     // the service is started with a week's allowance of one (--new-per-week is a flag of `names`)
-    let dir = tempfile::tempdir().unwrap();
-    let (dns, api) = (free_port(), free_port());
-    let mut child = Command::new(BIN)
-        .args(["names", "--zone", "lan.test", "--ns", "ns1.test", "--data", dir.path().to_str().unwrap(), "--dns", &format!("127.0.0.1:{dns}"), "--listen", &format!("127.0.0.1:{api}"), "--new-per-week", "1"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    for _ in 0..100 {
-        if std::net::TcpStream::connect(("127.0.0.1", api)).is_ok() {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    let base = format!("http://127.0.0.1:{api}");
+    let server = Server::start_with(tempfile::tempdir().unwrap(), &["--new-per-week", "1"]);
+    let base = server.api.clone();
     let mk = || {
         let d = tempfile::tempdir().unwrap();
         (Arc::new(Identity::load_or_create(d.path()).unwrap()), d)
@@ -244,8 +259,6 @@ async fn a_full_week_refuses_a_new_bridge_with_the_time_a_place_is_free_and_not_
     // the one that ordered is not refused when it orders again (a renewal), and may clear
     c1.set(&"c".repeat(43)).await.unwrap();
     c2.clear(&"b".repeat(43)).await.unwrap();
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 #[test]

@@ -4,7 +4,7 @@
 
 **状態（2026-11-22）: 実装と自動テストは済み。VPS・本物の Let's Encrypt は、未確認（docker でのイメージのビルドと、CA 証明書つきでの Let's Encrypt の staging への接続は確認済み）。** 下の手順は、初回の運用で確かめながら、直す。
 
-**構成（決定 2026-11-22）:** 日本は **Kagoya**（借りた）、米国は **OVHcloud**（これから借りる）。中継は地域ごとに別の名前（`jp.relay.spellink.uk`・`us.relay.spellink.uk`）。**名前サービスは 1 台だけ**（`ns1.spellink.uk`。どちらかの VPS）。名前の分け方と、ブリッジが近い中継を選ぶ仕組みは ADR 0019 の追記。**ブリッジが中継を選ぶ実装は、まだない**（いまのブリッジは `relayUrl` に書いた 1 つの中継を使う）。それまでは、利用者の設定に、近いほうの URL を書く。
+**構成（決定 2026-11-22）:** 日本は **Kagoya**（借りた）、米国は **OVHcloud**（これから借りる）。中継は地域ごとに別の名前（`jp.relay.spellink.uk`・`us.relay.spellink.uk`）。**名前サービスは 1 台だけ**（`ns1.spellink.uk`。どちらかの VPS）。名前の分け方と、ブリッジが近い中継を選ぶ仕組みは ADR 0019 の追記。ブリッジは、`config.json` の `relayUrls`（と `relayUrl`）に書いた**すべての中継に登録**し、端末が全部を同時に試して、先に応答したものを使う（近いほうが勝つ。落ちた中継は自然に負ける）。
 
 ## 1. 中継と名前サービスが見るもの・見ないもの
 - 見る: 部屋の ID（鍵のハッシュ）、接続元の IP（TLS の本物の接続）、時刻、通信量。名前サービスは、ブリッジの ID と LAN の IP。
@@ -37,7 +37,7 @@
    - `curl -s https://jp.relay.spellink.uk/health`（`{"ok":true,"bridges":0}`）
    - `curl -s https://jp.relay.spellink.uk/v1/stats`（集計。`days` が空の配列でよい。ADR 0021）
    - 最初は Let's Encrypt の **staging** で試す: `compose.yaml` の `command` に `--ca staging` を足す（ブラウザは信頼しない証明書だが、手順の確認になる。本番の上限を使わない）。
-7. ブリッジの `config.json`: `"relayUrl": "wss://jp.relay.spellink.uk"`（または `us.`）。直結を使うブリッジは `"lan": {"enabled": true}`（名前サービスが動いてから）。
+7. ブリッジの `config.json`: `"relayUrls": ["wss://jp.relay.spellink.uk", "wss://us.relay.spellink.uk"]`（1 つだけなら `"relayUrl"` でもよい）。直結を使うブリッジは `"lan": {"enabled": true}`（名前サービスが動いてから）。
 
 初回に証明書が出るまで、数十秒かかる。出なければ、`docker compose logs` の `tls … preparing …` の行に理由が出る（待ち・再試行の時刻つき）。
 

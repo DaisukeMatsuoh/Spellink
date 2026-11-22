@@ -32,7 +32,12 @@ fn serving(deps: Arc<spellink_bridge::server::Deps>) -> ServeFn {
 
 /// Asks one question over Noise (or with the legacy plaintext hello) and lists the frame types.
 async fn converse_through(url: &str, encrypted: bool) -> Vec<String> {
-    let q = ask("q", "", "x");
+    converse_as(url, encrypted, "q").await
+}
+
+/// The same, with the question's own id (two questions of one bridge need two ids).
+async fn converse_as(url: &str, encrypted: bool, id: &str) -> Vec<String> {
+    let q = ask(id, "", "x");
     let mut out = vec![];
     if encrypted {
         let Ok(mut d) = Device::try_open(url, "secret").await else { return out };
@@ -117,4 +122,36 @@ async fn a_bridge_that_loses_the_relay_reconnects_when_it_returns() {
     assert_eq!(got.join(","), "welcome,status,status,line,done", "the bridge registered once the relay was there");
     cancel.cancel();
     let _ = json!(null);
+}
+
+#[tokio::test]
+async fn a_bridge_registered_with_two_relays_answers_through_either_and_a_dead_one_changes_nothing() {
+    // two regions: the same bridge, the same room, a relay each; a third address nobody listens on
+    let (jp, us) = (start_relay().await, start_relay().await);
+    let dead = {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        format!("ws://{}", l.local_addr().unwrap())
+    };
+    let deps = Arc::new(default_deps(ai(|_, _, s, _| async move {
+        text(&s, "あ");
+        Ok("あ".to_string())
+    })));
+    let cancel = CancellationToken::new();
+    for base in [&jp, &us, &dead] {
+        tokio::spawn(connector::connect(cancel.clone(), base.clone(), "secret".into(), serving(deps.clone()), quiet()));
+    }
+    for (n, base) in [&jp, &us].into_iter().enumerate() {
+        let url = connector::client_url(base, "secret");
+        let id = format!("q{n}");
+        let mut got = vec![];
+        for _ in 0..100 {
+            got = converse_as(&url, true, &id).await;
+            if !got.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(got.join(","), "welcome,status,status,line,done", "through {base}");
+    }
+    cancel.cancel();
 }

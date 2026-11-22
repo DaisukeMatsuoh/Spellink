@@ -120,21 +120,23 @@ pub type Runner = Arc<dyn Fn(CancellationToken, String, String, ServeFn, LogFn) 
 /// are added, paired and revoked (ADR 0016: a device's B and K each have a room).
 pub struct RoomSet {
     cancel: CancellationToken,
-    base: String,
+    /// Every relay the bridge is registered with: the same rooms, in each (the plugin tries them
+    /// all at once and the first that answers is used; if one relay is down the others serve).
+    bases: Vec<String>,
     log: LogFn,
     run: Runner,
     rooms: Mutex<HashMap<String, CancellationToken>>,
 }
 
 impl RoomSet {
-    /// A set that registers with `relay_base` until `cancel`.
-    pub fn new(cancel: CancellationToken, relay_base: &str, log: LogFn) -> RoomSet {
+    /// A set that registers with each of `relay_bases` until `cancel`.
+    pub fn new(cancel: CancellationToken, relay_bases: &[String], log: LogFn) -> RoomSet {
         let run: Runner = Arc::new(|c, base, room, serve, log| Box::pin(connect_room(c, base, room, serve, log)));
-        RoomSet::with_runner(cancel, relay_base, log, run)
+        RoomSet::with_runner(cancel, relay_bases, log, run)
     }
 
-    pub fn with_runner(cancel: CancellationToken, relay_base: &str, log: LogFn, run: Runner) -> RoomSet {
-        RoomSet { cancel, base: relay_base.to_string(), log, run, rooms: Mutex::new(HashMap::new()) }
+    pub fn with_runner(cancel: CancellationToken, relay_bases: &[String], log: LogFn, run: Runner) -> RoomSet {
+        RoomSet { cancel, bases: relay_bases.to_vec(), log, run, rooms: Mutex::new(HashMap::new()) }
     }
 
     /// Makes the registered rooms exactly the keys of `want`: new rooms are registered, rooms that
@@ -154,7 +156,9 @@ impl RoomSet {
             }
             let token = self.cancel.child_token();
             rooms.insert(room.clone(), token.clone());
-            tokio::spawn((self.run)(token, self.base.clone(), room, serve, self.log.clone()));
+            for base in &self.bases {
+                tokio::spawn((self.run)(token.clone(), base.clone(), room.clone(), serve.clone(), self.log.clone()));
+            }
         }
     }
 
@@ -211,7 +215,7 @@ mod tests {
     #[tokio::test]
     async fn the_room_set_follows_the_wanted_rooms() {
         let (l, cancel) = (Arc::new(RunLog::default()), CancellationToken::new());
-        let rs = RoomSet::with_runner(cancel.clone(), "wss://relay.example", Arc::new(|_| {}), runner(l.clone()));
+        let rs = RoomSet::with_runner(cancel.clone(), &["wss://relay.example".to_string()], Arc::new(|_| {}), runner(l.clone()));
         rs.sync(want(&["a", "b"]));
         eventually("two rooms", || l.started.lock().unwrap().len() == 2).await;
         assert_eq!(rs.len(), 2);
@@ -225,9 +229,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn every_relay_gets_every_room_and_a_room_that_leaves_leaves_all_of_them() {
+        let (started, stopped) = (Arc::new(Mutex::new(Vec::<(String, String)>::new())), Arc::new(Mutex::new(0usize)));
+        let (s2, p2) = (started.clone(), stopped.clone());
+        let run: Runner = Arc::new(move |c, base, room, _serve, _log| {
+            let (s2, p2) = (s2.clone(), p2.clone());
+            Box::pin(async move {
+                s2.lock().unwrap().push((base, room));
+                c.cancelled().await;
+                *p2.lock().unwrap() += 1;
+            })
+        });
+        let bases = ["wss://jp.relay.example".to_string(), "wss://us.relay.example".to_string()];
+        let rs = RoomSet::with_runner(CancellationToken::new(), &bases, Arc::new(|_| {}), run);
+        rs.sync(want(&["a"]));
+        eventually("a in both relays", || started.lock().unwrap().len() == 2).await;
+        let mut got = started.lock().unwrap().clone();
+        got.sort();
+        assert_eq!(got, vec![("wss://jp.relay.example".to_string(), "a".to_string()), ("wss://us.relay.example".to_string(), "a".to_string())]);
+        assert_eq!(rs.len(), 1, "one room, registered in two relays");
+        rs.sync(HashMap::new());
+        eventually("both stopped", || *stopped.lock().unwrap() == 2).await;
+    }
+
+    #[tokio::test]
     async fn the_room_set_stops_everything_with_its_token() {
         let (l, cancel) = (Arc::new(RunLog::default()), CancellationToken::new());
-        let rs = RoomSet::with_runner(cancel.clone(), "wss://relay.example", Arc::new(|_| {}), runner(l.clone()));
+        let rs = RoomSet::with_runner(cancel.clone(), &["wss://relay.example".to_string()], Arc::new(|_| {}), runner(l.clone()));
         rs.sync(want(&["a"]));
         eventually("started", || l.started.lock().unwrap().len() == 1).await;
         cancel.cancel();

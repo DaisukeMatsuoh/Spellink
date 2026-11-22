@@ -51,6 +51,11 @@ pub struct Config {
     /// can reach it from outside the LAN (ADR 0010). Empty disables the relay.
     #[serde(default, skip_serializing_if = "is_empty_str")]
     pub relay_url: String,
+    /// More relays, for several regions (e.g. "wss://jp.relay…" and "wss://us.relay…"). The bridge
+    /// registers with every relay it is given (this and `relayUrl` together); a device tries all of
+    /// them at once, so the nearest answers first and one that is down does not matter.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relay_urls: Vec<String>,
     /// The plugin's debug view setting, changed from the plugin.
     #[serde(default, skip_serializing_if = "is_false")]
     pub show_progress: bool,
@@ -173,7 +178,34 @@ const DEFAULT_HALF_SPACING: i64 = 110;
 /// When reports.jsonl is moved aside to reports.jsonl.1 (one old copy is kept).
 const MAX_REPORT_BYTES: u64 = 5 << 20;
 
+/// A relay address is only a scheme (`wss`, or `ws` for a relay on a trusted machine), a host and a
+/// port: the bridge appends the paths itself. Anything else is not used.
+pub fn relay_base(s: &str) -> Option<String> {
+    let u = url::Url::parse(s.trim()).ok()?;
+    let ok = matches!(u.scheme(), "wss" | "ws") && u.host_str().is_some() && u.username().is_empty() && u.password().is_none() && u.query().is_none() && u.fragment().is_none() && (u.path() == "" || u.path() == "/");
+    ok.then(|| u.as_str().trim_end_matches('/').to_string())
+}
+
 impl Config {
+    /// Every relay to register with: `relayUrl`, then `relayUrls`, each only once. Entries that are
+    /// not a relay address are left out (see [`Config::bad_relays`]).
+    pub fn relays(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for r in std::iter::once(&self.relay_url).chain(self.relay_urls.iter()).filter(|r| !r.trim().is_empty()) {
+            if let Some(b) = relay_base(r) {
+                if !out.contains(&b) {
+                    out.push(b);
+                }
+            }
+        }
+        out
+    }
+
+    /// The entries of `relayUrl` / `relayUrls` that are not usable, for the log.
+    pub fn bad_relays(&self) -> Vec<String> {
+        std::iter::once(&self.relay_url).chain(self.relay_urls.iter()).filter(|r| !r.trim().is_empty() && relay_base(r).is_none()).cloned().collect()
+    }
+
     /// How long the owner has to confirm a code.
     pub fn pairing_window(&self) -> Duration {
         let s = self.pairing.as_ref().map_or(0, |p| p.window_sec);
@@ -487,6 +519,28 @@ mod tests {
         assert_eq!(mode(&s.config_file()), 0o600);
         let again = s.load().unwrap();
         assert_eq!((again.token, again.tilt_degrees), (c.token, c.tilt_degrees), "the token and the slope are stable across runs");
+    }
+
+    #[test]
+    fn a_relay_is_only_a_scheme_a_host_and_a_port() {
+        for ok in ["wss://relay.example", "wss://relay.example/", "wss://relay.example:8443", " wss://us.relay.example ", "ws://127.0.0.1:8780"] {
+            assert!(relay_base(ok).is_some(), "{ok}");
+        }
+        assert_eq!(relay_base("wss://relay.example/").as_deref(), Some("wss://relay.example"));
+        for bad in ["", "relay.example", "https://relay.example", "wss://", "wss://relay.example/v1", "wss://relay.example?x=1", "wss://u:p@relay.example", "wss://relay.example#f"] {
+            assert!(relay_base(bad).is_none(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn relays_come_from_relay_url_then_relay_urls_without_repeats_and_json_reads_both() {
+        let c: Config = serde_json::from_str(r#"{"relayUrl":"wss://jp.r.example","relayUrls":["wss://us.r.example/","wss://jp.r.example","nonsense"]}"#).unwrap();
+        assert_eq!(c.relays(), vec!["wss://jp.r.example".to_string(), "wss://us.r.example".to_string()]);
+        assert_eq!(c.bad_relays(), vec!["nonsense".to_string()]);
+        assert!(Config::default().relays().is_empty());
+        // a config written back keeps the list, and without a list writes none
+        assert!(serde_json::to_string(&c).unwrap().contains("relayUrls"));
+        assert!(!serde_json::to_string(&Config::default()).unwrap().contains("relayUrls"));
     }
 
     #[test]

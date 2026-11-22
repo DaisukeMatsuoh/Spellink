@@ -39,7 +39,7 @@ Supernote で手書きを囲むと、あなたのパソコンの AI（Claude）�
 ## 3. 端末がつながる道
 端末は、**公的な証明書つきの `wss://`** にしかつながれません。次のどちらかを、設定ファイルに書きます。
 
-- **Spellink の中継（標準）**: `"relayUrl": "wss://jp.relay.spellink.uk"`（日本の近く）または `"wss://us.relay.spellink.uk"`（米国の近く）を足します。近いほうが速くなります。ドメインもトンネルも要りません。**運営の準備中です。開始したら、ここに書きます。**
+- **Spellink の中継（標準）**: `"relayUrls": ["wss://jp.relay.spellink.uk", "wss://us.relay.spellink.uk"]` を足します（日本と米国の両方。端末が、近いほうを自動で使います）。ドメインもトンネルも要りません。**運営の準備中です。開始したら、ここに書きます。**
 - **自分の道（トンネル）**: 自分のドメインと Cloudflare のトンネルで、`wss://…` の住所を作ります（`docs/guides/cloudflare-tunnel-setup.md`）。`"extraUrls": ["wss://あなたの住所/v1"]` を足します。
 
 設定を変えたら、ブリッジを再起動します（`systemctl --user restart spellink-bridge`、macOS・Windows は `service uninstall` のあと `service install`）。

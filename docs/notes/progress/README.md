@@ -32,7 +32,7 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 - **未確認（実環境）**: VPS、本物の Let's Encrypt（まず staging）、NS の委任、端末が家の中で `<id>.lan.spellink.uk:8766` につながること、端末での新しいペアリング、CI とリリース、中継の負荷（机上の見積りのみ）。確認済みなのは、docker でのイメージのビルドと実行（強化した設定）、CA 証明書つきで Let's Encrypt の staging に注文できること。
 - **開発機の状態**: ブリッジ（`~/.local/bin/spellink-bridge`）は**レビューの修正より前の版**。入れ替えは `bridge/scripts/build-with-plugin.sh` でビルド → `install`。`config.json` の `pairing.pluginPackage` は、埋め込みがあれば不要。端末は、いまも Cloudflare のトンネル（`wss://bridge.spellink.uk/v1`）で届いている。**運営の中継が動くまで切らない**（切るときは、ユーザーが `sudo systemctl stop cloudflared`、DNS の `bridge.spellink.uk` を消す）。`~/Spellink-nomad-test.snplg` は古い版から作ったので、`device reissue` と `device package` で作り直す。
 - **実機で確認済み**（〜11-07）: ラッソ → 認識 → 回答、複数ページ、会話の記憶（ADR 0012）、wss＋Noise、設定画面、ネイティブのエラーダイアログ。2026-11-19〜20: 書き換えた `.snplg` の入れ替え、ディレクトリ名の保存が再起動をまたぐ、QR が PC のカメラで読める。2026-11-22: 端末が Rust 版のブリッジとトンネルで通信できる（ユーザー報告）。
-- **実機で未確認**: ペアリングの全体（`device-test-guide.md`・`install-guide.md`）、手書きの案内文の描画、`/app`・`/pair` の操作、切断後の再開（ADR 0013）、再接続、`busyNotice`、`avoidOverwriting`、空き領域の確認の実測。
+- **実機で未確認**: ペアリングの全体（`device-test-guide.md`・`install-guide.md`）、`/app`・`/pair` の操作、切断後の再開（ADR 0013）、再接続、`busyNotice`、`avoidOverwriting`、空き領域の確認の実測。
 - **決めたこと**: 署名はしない（公式サイトに SHA-256。2026-11-20）。Anthropic の規約は「利用者自身のパソコンで、改変しない Claude Code を、自分のログインで、本人だけが使う」形（初回に同意を取る）。端末の言語は本体の 4 言語から。表は読める名前の形（質問の流れ・波線・ページ追加は ALL_CAPS のまま。そろえるかは未決）。
 - ADR の一覧と根拠: `docs/decisions/README.md`（0001〜0021）。
 
@@ -48,6 +48,7 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 7. NOTE が固まる・ページが空に見える現象が、まだ起きるか。起きたら診断の「Send log to bridge」。
 
 ## 次にやること（優先順）
+0. **[U→A] 公開の手順**: `docs/guides/github-operations.md`（push → Actions の最初の実行 → 設定 → イメージのタグ）。Dependabot は有効にしてよい（`.github/dependabot.yml` を用意した）。診断は、利用者向け（確認・送る）と、五回タップで開く開発者向けに分けた。実機の調査が済んだら、開発者向けの画面の実験は消す。
 **[U]** = ユーザー、**[A]** = エージェント。担当の分け方は `handoff.md`（古い部分がある。この文書が優先）。
 1. **[U] 実機でペアリングを試す（2026-11-23 の予定）。** 新しいバイナリを `bridge/scripts/build-with-plugin.sh` で作って入れ、`device reissue nomad-test`・`device package nomad-test`、手順は `docs/guides/install-guide.md`。診断の「3. Network」「12. SDK names」「12b. Network channels」の結果を共有。結果を見て、表の気になったセルを直す。
 2. **[U] VPS（日本 Kagoya、米国 OVHcloud）を用意し、`relay-operations.md` の手順で DNS を置く**（ns1 の A、`lan` の NS、各中継と名前サービスの CNAME）。**[A]** staging で注文を通し、本番へ。立ち会う。`INFRA_IDS` に中継の ID を入れる。

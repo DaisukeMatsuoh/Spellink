@@ -64,6 +64,9 @@ What a user needs to do and know: [docs/guides/bridge-and-relay-for-users.md](do
 
 ## Contributing
 
+Spellink is run by one person in their spare time, so replies can take a while (best effort). It is an early alpha: things will change and may break.
+Spellink は個人が余暇に運営しています。返事は遅れることがあります(ベストエフォート)。初期のアルファ版で、変更や不具合があります。
+
 [CONTRIBUTING.md](CONTRIBUTING.md). The project works from specification tables
 ([docs/spec/README.md](docs/spec/README.md)) and a development policy ([ADR 0014](docs/decisions/0014-engineering-policy.md)).
 

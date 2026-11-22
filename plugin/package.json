@@ -19,8 +19,8 @@
     "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.4.0",
     "qrcode-generator": "2.0.4",
-    "react": "19.0.0",
-    "react-native": "0.79.2",
+    "react": "19.0.9",
+    "react-native": "0.79.7",
     "sn-plugin-lib": "^0.2.3"
   },
   "devDependencies": {
@@ -30,10 +30,10 @@
     "@react-native-community/cli": "18.0.0",
     "@react-native-community/cli-platform-android": "18.0.0",
     "@react-native-community/cli-platform-ios": "18.0.0",
-    "@react-native/babel-preset": "0.79.2",
-    "@react-native/eslint-config": "0.79.2",
-    "@react-native/metro-config": "0.79.2",
-    "@react-native/typescript-config": "0.79.2",
+    "@react-native/babel-preset": "0.79.7",
+    "@react-native/eslint-config": "0.79.7",
+    "@react-native/metro-config": "0.79.7",
+    "@react-native/typescript-config": "0.79.7",
     "@types/jest": "^29.5.13",
     "@types/react": "^19.0.0",
     "@types/react-test-renderer": "^19.0.0",
@@ -42,9 +42,9 @@
     "jest": "^29.6.3",
     "jsqr": "1.4.0",
     "prettier": "2.8.8",
-    "react-test-renderer": "19.0.0",
+    "react-test-renderer": "19.0.9",
     "typescript": "5.0.4",
-    "ws": "^8.22.1"
+    "ws": "^8.23.0"
   },
   "engines": {
     "node": ">=18"

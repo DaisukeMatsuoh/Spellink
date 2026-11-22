@@ -205,3 +205,56 @@ fn the_relay_refuses_its_own_tls_together_with_trust_proxy_and_a_data_directory_
     let (ok, err) = run(&["names", "--data", "/tmp/x"]);
     assert!(!ok && err.contains("--ns"), "{err}");
 }
+
+#[tokio::test]
+async fn a_full_week_refuses_a_new_bridge_with_the_time_a_place_is_free_and_not_the_one_that_ordered() {
+    use spellink_bridge::acme::{PublishError, Publisher};
+    // the service is started with a week's allowance of one (--new-per-week is a flag of `names`)
+    let dir = tempfile::tempdir().unwrap();
+    let (dns, api) = (free_port(), free_port());
+    let mut child = Command::new(BIN)
+        .args(["names", "--zone", "lan.test", "--ns", "ns1.test", "--data", dir.path().to_str().unwrap(), "--dns", &format!("127.0.0.1:{dns}"), "--listen", &format!("127.0.0.1:{api}"), "--new-per-week", "1"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    for _ in 0..100 {
+        if std::net::TcpStream::connect(("127.0.0.1", api)).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let base = format!("http://127.0.0.1:{api}");
+    let mk = || {
+        let d = tempfile::tempdir().unwrap();
+        (Arc::new(Identity::load_or_create(d.path()).unwrap()), d)
+    };
+    let ((first, _d1), (second, _d2)) = (mk(), mk());
+    let (c1, c2) = (NamesClient::new(&base, first, clock()).unwrap(), NamesClient::new(&base, second, clock()).unwrap());
+    c1.register("10.1.1.1").await.unwrap();
+    c2.register("10.1.1.2").await.unwrap();
+    c1.set(&"a".repeat(43)).await.unwrap();
+    match c2.set(&"b".repeat(43)).await {
+        Err(PublishError::Quota(Some(at))) => {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+            assert!((now + 6 * 86_400..=now + 8 * 86_400).contains(&at), "a week from the first order: {at} vs {now}");
+        }
+        other => panic!("expected the weekly allowance to refuse: {other:?}"),
+    }
+    // the one that ordered is not refused when it orders again (a renewal), and may clear
+    c1.set(&"c".repeat(43)).await.unwrap();
+    c2.clear(&"b".repeat(43)).await.unwrap();
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn the_name_service_refuses_a_bad_infra_id_or_allowance() {
+    for bad in [["--infra-ids", "not-an-id"], ["--new-per-week", "many"]] {
+        let dir = tempfile::tempdir().unwrap();
+        let out = Command::new(BIN).args(["names", "--ns", "ns1.test", "--data", dir.path().to_str().unwrap(), "--dns", "127.0.0.1:0", "--listen", "127.0.0.1:0"]).args(bad).output().unwrap();
+        assert!(!out.status.success(), "{bad:?}");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.contains(bad[0]), "{err}");
+    }
+}

@@ -10,7 +10,7 @@ const USAGE: &str = "usage:
   spellink-bridge service install|uninstall|status [--dry-run]   start the bridge by itself with the computer
   spellink-bridge relay [--listen ADDR] [--trust-proxy | --tls-domain NAME --data DIR [--names URL --zone ZONE --ca staging --email ADDR]]
                                         run a relay that lets plugins reach bridges behind NAT
-  spellink-bridge names --ns NAME --data DIR [--zone Z --dns ADDR --listen ADDR --tls-domain NAME --ca staging]
+  spellink-bridge names --ns NAME --data DIR [--zone Z --dns ADDR --listen ADDR --tls-domain NAME --ca staging --infra-ids ID,ID --new-per-week N]
                                         run the name service (DNS for the LAN zone and its API)
   spellink-bridge version
   (more commands are being ported from the Go bridge: docs/notes/progress/rust-port.md)";

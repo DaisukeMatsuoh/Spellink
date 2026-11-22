@@ -40,7 +40,7 @@ impl NamesClient {
     }
 
     /// POSTs a JSON body; Ok(()) on 200, otherwise the status and the name the service gave.
-    async fn post(&self, path: &'static str, body: Vec<u8>) -> Result<(), (u16, String)> {
+    async fn post(&self, path: &'static str, body: Vec<u8>) -> Result<(), (u16, String, Option<i64>)> {
         let (agent, url) = (self.agent.clone(), format!("{}{path}", self.base));
         // ureq blocks: it runs where blocking is allowed
         let result = tokio::task::spawn_blocking(move || {
@@ -51,13 +51,16 @@ impl NamesClient {
             Ok::<_, (u16, String)>((status, text))
         })
         .await
-        .map_err(|e| (0, e.to_string()))?;
-        let (status, text) = result?;
+        .map_err(|e| (0, e.to_string(), None))?;
+        let (status, text) = result.map_err(|(s, n)| (s, n, None))?;
         if status == 200 {
             return Ok(());
         }
-        let name = serde_json::from_str::<serde_json::Value>(&text).ok().and_then(|v| v.get("error").and_then(|e| e.as_str()).map(String::from)).unwrap_or_default();
-        Err((status, name))
+        let parsed = serde_json::from_str::<serde_json::Value>(&text).ok();
+        let name = parsed.as_ref().and_then(|v| v.get("error").and_then(|e| e.as_str()).map(String::from)).unwrap_or_default();
+        // when a place is free again (only a plausible time is used; anything else is ignored)
+        let retry = parsed.as_ref().and_then(|v| v.get("retryAfter").and_then(|t| t.as_i64())).filter(|t| (0..=i64::MAX / 2).contains(t));
+        Err((status, name, retry))
     }
 
     fn describe(status: u16, name: &str) -> String {
@@ -73,7 +76,7 @@ impl Registrar for NamesClient {
         Box::pin(async move {
             let req = self.identity.register(ip, (self.clock)());
             let body = serde_json::to_vec(&req).map_err(|e| e.to_string())?;
-            self.post("/v1/register", body).await.map_err(|(s, n)| NamesClient::describe(s, &n))
+            self.post("/v1/register", body).await.map_err(|(s, n, _)| NamesClient::describe(s, &n))
         })
     }
 }
@@ -91,7 +94,11 @@ impl NamesClient {
     async fn acme(&self, op: &'static str, value: &str) -> Result<(), PublishError> {
         let req = self.identity.acme(op, value, (self.clock)());
         let body = serde_json::to_vec(&req).map_err(|e| PublishError::Failed(e.to_string()))?;
-        self.post("/v1/acme", body).await.map_err(|(s, n)| if s == 404 { PublishError::Lost } else { PublishError::Failed(NamesClient::describe(s, &n)) })
+        self.post("/v1/acme", body).await.map_err(|(s, n, retry)| match (s, n.as_str()) {
+            (404, _) => PublishError::Lost,
+            (429, "lan_quota") => PublishError::Quota(retry),
+            _ => PublishError::Failed(NamesClient::describe(s, &n)),
+        })
     }
 }
 
@@ -127,6 +134,7 @@ impl LocalNames {
         match self.names.acme(&self.identity.acme(op, value, now), now) {
             Ok(()) => Ok(()),
             Err(ApiError::NotFound) => Err(PublishError::Lost),
+            Err(ApiError::Quota(at)) => Err(PublishError::Quota(Some(at))),
             Err(e) => Err(PublishError::Failed(e.name().to_string())),
         }
     }

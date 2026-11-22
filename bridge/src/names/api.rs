@@ -39,7 +39,11 @@ fn reply(r: Result<(), ApiError>, log: &(dyn Fn(&str) + Send + Sync)) -> Respons
             if let ApiError::Internal(why) = &e {
                 log(&format!("names: {why}"));
             }
-            let body = serde_json::json!({"error": e.name()}).to_string();
+            let body = match &e {
+                ApiError::Quota(at) => serde_json::json!({"error": e.name(), "retryAfter": at}),
+                _ => serde_json::json!({"error": e.name()}),
+            }
+            .to_string();
             (StatusCode::from_u16(e.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), [("content-type", "application/json")], body).into_response()
         }
     }

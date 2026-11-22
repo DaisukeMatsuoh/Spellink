@@ -531,7 +531,7 @@ impl CertActor {
                 }
             }
             Err(OrderError::RateLimited(until)) => {
-                self.error = "Let's Encrypt asked to wait (too many certificates for now)".into();
+                self.error = "too many new certificates this week (Let's Encrypt's limit, or the name service's allowance); the relay works meanwhile and the direct route is tried again".into();
                 self.rate_limited_until = until;
                 self.step(CertEvent::RateLimited);
             }

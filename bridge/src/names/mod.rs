@@ -51,7 +51,17 @@ pub async fn run_cli(flags: &HashMap<String, String>) -> Result<(), String> {
     let log: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|s| println!("{s}"));
     let clock = crate::lan::system_clock();
 
-    let (names, problems) = store::Names::load(data.join("names.json"), store::Limits::default(), clock())?;
+    // the operator's own relays: never counted against the weekly allowance, never refused
+    let infra: Vec<String> = flags.get("infra-ids").map(|v| v.split(',').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect()).unwrap_or_default();
+    if let Some(bad) = infra.iter().find(|i| !crate::namesproto::valid_id(i)) {
+        return Err(format!("--infra-ids: {bad:?} is not an ID (32 hex characters; each relay prints its own at its first start)"));
+    }
+    let new_per_window = match flags.get("new-per-week") {
+        None => store::DEFAULT_NEW_PER_WINDOW,
+        Some(v) => v.parse::<usize>().map_err(|_| format!("--new-per-week: {v:?} is not a number"))?,
+    };
+    let limits = store::Limits { infra, new_per_window, ..store::Limits::default() };
+    let (names, problems) = store::Names::load(data.join("names.json"), limits, clock())?;
     for p in problems {
         log(&p);
     }

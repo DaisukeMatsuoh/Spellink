@@ -29,6 +29,9 @@ pub enum OrderError {
 #[derive(Debug, PartialEq, Eq)]
 pub enum PublishError {
     Lost,
+    /// The name service's weekly allowance of new orders is used up; a place is free at this time
+    /// (unix seconds), when it said so.
+    Quota(Option<i64>),
     Failed(String),
 }
 
@@ -194,6 +197,7 @@ impl Acme {
             let value = challenge.key_authorization().dns_value();
             publisher.set(&value).await.map_err(|e| match e {
                 PublishError::Lost => OrderError::RegistrationLost,
+                PublishError::Quota(at) => OrderError::RateLimited(at),
                 PublishError::Failed(m) => OrderError::Failed(format!("publishing the challenge: {m}")),
             })?;
             published.push(value);

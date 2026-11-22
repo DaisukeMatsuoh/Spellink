@@ -202,7 +202,7 @@ async fn a_rate_limit_waits_for_the_time_the_ca_named_and_the_relay_is_not_block
     *w.order_script.queue.lock().unwrap() = VecDeque::from([Err(OrderError::RateLimited(Some(T0 + 7200)))]);
     let (lan, cancel) = w.start();
     let s = until(&lan, "OrderWait", |s| s.cert == CertState::OrderWait).await;
-    assert!(s.error.contains("Let's Encrypt asked to wait"), "{:?}", s.error);
+    assert!(s.error.contains("too many new certificates this week"), "{:?}", s.error);
     assert!(!lan.resolver.has());
     w.advance(7199);
     settle().await;

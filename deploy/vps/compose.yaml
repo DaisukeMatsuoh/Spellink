@@ -10,7 +10,8 @@
 name: spellink
 
 x-hardened: &hardened
-  image: spellink-edge        # docker build -f bridge/Dockerfile.edge -t spellink-edge bridge
+  # EDGE_IMAGE: e.g. ghcr.io/<owner>/spellink-edge:latest (built by CI); by default the image you built here
+  image: ${EDGE_IMAGE:-spellink-edge}   # docker build -f bridge/Dockerfile.edge -t spellink-edge bridge
   restart: unless-stopped
   read_only: true             # the only place it writes is its own volume
   user: "65534:65534"

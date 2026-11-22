@@ -40,3 +40,6 @@ docs/References/SPI_Monitor.zip
 
 # The operator's server settings (deploy/vps/.env.example is the template)
 deploy/vps/.env
+
+# Test coverage reports (generated)
+coverage/

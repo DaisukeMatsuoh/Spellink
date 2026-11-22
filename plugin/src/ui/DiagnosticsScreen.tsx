@@ -4,6 +4,7 @@ import * as diag from '../diagnostics';
 import {t} from '../i18n';
 import {closeView} from '../sdk';
 import * as probe from '../pairingProbe';
+import * as net from '../netProbe';
 import {QrView} from './QrView';
 import {Button, styles} from './common';
 
@@ -92,6 +93,11 @@ export function DiagnosticsScreen() {
           disabled={busy}
           label="12. SDK names"
           onPress={run('sdk names', probe.probeApis)}
+        />
+        <Button
+          disabled={busy}
+          label="12b. Network channels"
+          onPress={run('channels', net.probeChannels)}
         />
         <Button
           disabled={busy}

@@ -5,6 +5,7 @@ import {answerLayout, AskFlow} from './askFlow';
 import {connectFirst, type ConnectAttempt} from './bridgeClient';
 import {loadBridges} from './bridgeConfig';
 import {randomSource} from './noise';
+import {spread, spreadText, timeRequests} from './netProbe';
 import {dumpTrace} from './trace';
 import type {InkStroke} from './protocol';
 import {
@@ -88,6 +89,8 @@ async function withPermissions(log: Log): Promise<boolean> {
   return missing.length === 0;
 }
 
+const HEALTH_REPEATS = 6;
+
 export async function network(log: Log): Promise<void> {
   await withPermissions(log);
   const loaded = await loadBridges();
@@ -108,7 +111,18 @@ export async function network(log: Log): Promise<void> {
       );
     } catch (e) {
       log(`http ${health}: ERROR ${(e as Error).message} ${Date.now() - t}ms`);
+      continue;
     }
+    // Round trips to the same address, one after another: the first pays for the connection.
+    const timed = await timeRequests(async () => {
+      const r = await fetch(health);
+      await r.text();
+    }, HEALTH_REPEATS);
+    log(
+      `  rtt ${health}: first ${timed.first ?? 'failed'}ms, then ${spreadText(
+        spread(timed.rest),
+      )}${timed.failures.length ? ` (${timed.failures.length} failed)` : ''}`,
+    );
   }
   const attempts: ConnectAttempt[] = [];
   try {

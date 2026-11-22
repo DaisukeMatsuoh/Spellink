@@ -30,7 +30,7 @@ flowchart LR
       B --> C
     end
   end
-  subgraph Ops["運営の VPS (Kagoya・固定 IP)"]
+  subgraph Ops["運営の VPS (日本: Kagoya、米国: OVHcloud。固定 IP)"]
     R["中継 (relay)<br/>443"]
     N["名前サービス (names)<br/>DNS 53 / API 8443"]
   end
@@ -59,7 +59,7 @@ flowchart LR
 | 経路 | TLS を張る区間（誰が証明書を持つか） | 端から端までの暗号 |
 |---|---|---|
 | **① 自前のトンネル**（開発者本人が使用中。利用者が自分で用意） | 端末 ⇄ **利用者の Cloudflare Tunnel の入口**（Cloudflare の証明書）。その先は利用者のパソコンの内側で平文の http | Noise |
-| **② 中継**（運営） | 端末 ⇄ **中継**、ブリッジ ⇄ **中継**。証明書は `relay.spellink.uk`（Let's Encrypt。**中継が自分で取る**） | Noise（中継は暗号文を流すだけ） |
+| **② 中継**（運営） | 端末 ⇄ **中継**、ブリッジ ⇄ **中継**。証明書は `jp.relay.spellink.uk`・`us.relay.spellink.uk`（Let's Encrypt。**中継が自分で取る**。地域ごとに別の名前。ADR 0019 の追記） | Noise（中継は暗号文を流すだけ） |
 | **③ 家の直結**（運営は名前を貸すだけ） | 端末 ⇄ **ブリッジ**。証明書は `<id>.lan.spellink.uk`（Let's Encrypt。**ブリッジが自分で取り、秘密鍵はブリッジの外に出ない**） | Noise |
 
 ## 4. ペアリングと接続の流れ（ADR 0016）
@@ -81,7 +81,7 @@ flowchart LR
 | Let's Encrypt | 見えない | 見えない | ブリッジの注文元の IP | ブリッジの名前（`<id>.lan.spellink.uk`）。証明書は公開の記録（CT）に載る | – |
 | 利用者のトンネル（①） | 見えない（暗号文） | 見えない | ○ | ホスト名 | ○ |
 
-**注意:** 証明書透明性（CT）のログには、`<id>.lan.spellink.uk` と `relay.spellink.uk` が公開される。ID は公開鍵のハッシュで、個人を示さないが、「その ID のブリッジが存在する」ことは誰でも見える。
+**注意:** 証明書透明性（CT）のログには、`<id>.lan.spellink.uk` と `jp.relay.spellink.uk`・`us.relay.spellink.uk` が公開される。ID は公開鍵のハッシュで、個人を示さないが、「その ID のブリッジが存在する」ことは誰でも見える。
 
 ## 6. 運営と利用者の役割
 
@@ -173,8 +173,8 @@ sequenceDiagram
 | `ns1.spellink.uk  A  <VPS の IP>`（プロキシなし） | 名前サービスの場所 |
 | `lan.spellink.uk  NS  ns1.spellink.uk` | `lan` 以下の問い合わせを名前サービスに任せる |
 | `_acme-challenge.names.spellink.uk  CNAME  _acme-challenge.<名前サービスの ID>.lan.spellink.uk` | 名前サービス自身の証明書の確認を、自分の DNS に任せる |
-| `_acme-challenge.relay.spellink.uk  CNAME  _acme-challenge.<中継の ID>.lan.spellink.uk` | 中継の証明書の確認を、名前サービスの DNS に任せる |
-| `relay.spellink.uk`、`names.spellink.uk`  A  `<VPS の IP>` | 中継と名前サービスの入口 |
+| `_acme-challenge.jp.relay.spellink.uk  CNAME  _acme-challenge.<jp の中継の ID>.lan.spellink.uk`（`us.relay` も同じ） | 中継の証明書の確認を、名前サービスの DNS に任せる |
+| `jp.relay.spellink.uk`・`us.relay.spellink.uk`  A  `<各 VPS の IP>`、`names.spellink.uk`  A  `<名前サービスの VPS の IP>` | 中継と名前サービスの入口 |
 
 CNAME の宛先の ID は、各コンテナの最初の起動で表示される（`relay-operations.md` §3）。名前サービスが触れるのは、委任された `lan.spellink.uk` 以下だけ。
 
@@ -182,7 +182,7 @@ CNAME の宛先の ID は、各コンテナの最初の起動で表示される�
 | 経路 | 名前 | 証明書を出す CA | 秘密鍵の持ち主 |
 |---|---|---|---|
 | ① 自前のトンネル | 利用者のドメイン | Cloudflare（入口で TLS を終端） | Cloudflare |
-| ② 中継 | `relay.spellink.uk` | **Let's Encrypt** | 中継（volume の中。外に出ない） |
+| ② 中継 | `jp.relay.spellink.uk`・`us.relay.spellink.uk` | **Let's Encrypt** | 中継（volume の中。外に出ない） |
 | ③ 家の直結 | `<ID>.lan.spellink.uk`（利用者ごとに別の名前・別の証明書） | **Let's Encrypt** | **各利用者のブリッジ（外に出ない）** |
 | 名前サービスの API | `names.spellink.uk` | **Let's Encrypt** | 名前サービス |
 

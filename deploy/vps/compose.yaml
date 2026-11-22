@@ -3,6 +3,10 @@
 # What is open to the internet: 443/tcp (the relay), 8443/tcp (the name service's API), and
 # 53/udp+tcp (DNS for the LAN zone). Close everything else in the host's firewall.
 # Change the names below (spellink.uk) when running it for another domain.
+#
+# Two regions (ADR 0019, 2026-11-22): the name service runs on ONE server; each server runs a relay
+# under its own name. On the second server start only the relay:
+#   RELAY_NAME=us.relay.spellink.uk NAMES_URL=https://names.spellink.uk:8443 docker compose -f deploy/vps/compose.yaml up -d relay
 name: spellink
 
 x-hardened: &hardened
@@ -22,6 +26,7 @@ services:
     command: >
       names --zone lan.spellink.uk --ns ns1.spellink.uk --data /data
       --dns :5353 --listen :8443 --tls-domain names.spellink.uk
+      --infra-ids ${INFRA_IDS:-}
     ports:
       - "53:5353/udp"
       - "53:5353/tcp"
@@ -31,12 +36,11 @@ services:
   relay:
     <<: *hardened
     command: >
-      relay --listen :8443 --tls-domain relay.spellink.uk --data /data
-      --names https://names.spellink.uk:8443 --zone lan.spellink.uk
+      relay --listen :8443 --tls-domain ${RELAY_NAME:-relay.spellink.uk} --data /data
+      --names ${NAMES_URL:-https://names.spellink.uk:8443} --zone lan.spellink.uk
     ports:
       - "443:8443/tcp"
     volumes: ["relay-data:/data"]
-    depends_on: [names]
 
 volumes:
   names-data:

@@ -1,0 +1,33 @@
+name: usage
+
+# Once a week: ask each relay for its published counts (GET /v1/stats; ADR 0021), add them to the
+# data in docs/usage/data, and rebuild docs/usage/usage-dashboard.md. The relays are listed in
+# docs/usage/relays.json; with none listed this does nothing. No credential of a relay is needed:
+# what is published is only durations and counts.
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: node --test scripts/usage-dashboard.test.mjs
+      - run: node scripts/usage-dashboard.mjs
+      - name: commit the new numbers
+        run: |
+          if [ -z "$(git status --porcelain docs/usage)" ]; then exit 0; fi
+          git config user.name "spellink-usage"
+          git config user.email "usage@users.noreply.github.com"
+          git add docs/usage
+          git commit -m "chore(usage): weekly relay numbers"
+          git push

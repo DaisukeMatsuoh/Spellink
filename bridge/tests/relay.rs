@@ -33,9 +33,13 @@ async fn dial(addr: SocketAddr, path: &str, query: &str) -> Ws {
 }
 
 async fn next(ws: &mut Ws) -> Option<Message> {
-    match tokio::time::timeout(Duration::from_secs(10), ws.next()).await.expect("timed out") {
-        Some(Ok(m)) => Some(m),
-        _ => None,
+    loop {
+        match tokio::time::timeout(Duration::from_secs(10), ws.next()).await.expect("timed out") {
+            // the relay pings each side to time it (ADR 0021); a test cares about the frames
+            Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
+            Some(Ok(m)) => return Some(m),
+            _ => return None,
+        }
     }
 }
 
@@ -266,4 +270,63 @@ async fn the_log_names_no_client_and_no_whole_room() {
     let lines = s.log.lock().unwrap().join("\n");
     assert!(lines.contains("bridge up"), "{lines}");
     assert!(!lines.contains(&room) && !lines.contains("127.0.0.1"), "the log must not name a room or an address:\n{lines}");
+}
+
+// ---- what the relay counts (ADR 0021) ----
+
+async fn stats_of(addr: SocketAddr) -> serde_json::Value {
+    let mut st = tokio::net::TcpStream::connect(addr).await.unwrap();
+    st.write_all(b"GET /v1/stats HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").await.unwrap();
+    let mut body = String::new();
+    st.read_to_string(&mut body).await.unwrap();
+    assert!(body.starts_with("HTTP/1.1 200"), "{body}");
+    serde_json::from_str(body.split("\r\n\r\n").nth(1).unwrap()).unwrap()
+}
+
+fn total(day: &serde_json::Value, key: &str) -> u64 {
+    day[key].as_array().unwrap().iter().map(|v| v.as_u64().unwrap()).sum()
+}
+
+#[tokio::test]
+async fn the_relay_counts_a_session_its_frames_its_pings_and_its_refusals() {
+    let s = start(Config { ping_every: Duration::from_millis(30), ..Config::default() }).await;
+    // a plugin that finds no bridge is a refusal, counted by its reason
+    let mut early = dial(s.addr, CLIENT_PATH, &format!("room={}", room_id("nobody"))).await;
+    assert_eq!(close_code(next(&mut early).await), Some(STATUS_BRIDGE_OFFLINE));
+
+    let room = room_id("secret");
+    let mut ctrl = dial(s.addr, BRIDGE_PATH, &format!("room={room}")).await;
+    let mut plugin = dial(s.addr, CLIENT_PATH, &format!("room={room}")).await;
+    let m = next(&mut ctrl).await.expect("session frame");
+    let v: serde_json::Value = serde_json::from_str(m.to_text().unwrap()).unwrap();
+    let mut bridge = dial(s.addr, ACCEPT_PATH, &format!("room={room}&session={}", v["id"].as_str().unwrap())).await;
+    plugin.send(Message::Binary(vec![7u8; 3000].into())).await.unwrap();
+    assert!(matches!(next(&mut bridge).await, Some(Message::Binary(_))));
+    // both ends keep reading so that they answer the relay's pings; the control socket too
+    let (mut p, mut b, mut c) = (plugin, bridge, ctrl);
+    let keep = tokio::spawn(async move {
+        tokio::join!(async { while p.next().await.is_some() {} }, async { while b.next().await.is_some() {} }, async { while c.next().await.is_some() {} });
+    });
+    let day = loop {
+        let v = stats_of(s.addr).await;
+        let d = v["days"][0].clone();
+        if total(&d, "ping_client_ms") >= 1 && total(&d, "ping_bridge_ms") >= 1 {
+            break d;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    assert_eq!(day["sessions"], 1);
+    assert_eq!(day["peak_concurrent"], 1);
+    assert_eq!(day["refused"]["offline"], 1);
+    assert!(total(&day, "forward_ms") >= 1 && total(&day, "setup_ms") == 1);
+    keep.abort();
+}
+
+#[tokio::test]
+async fn the_relays_own_pings_do_not_keep_a_silent_session_alive() {
+    // pings every 40 ms for an idle limit of 250 ms: the session must still end
+    let (mut plugin, _bridge, _ctrl) = through(Config { idle_timeout: Duration::from_millis(250), ping_every: Duration::from_millis(40), ..Config::default() }).await;
+    let t = Instant::now();
+    assert!(matches!(next(&mut plugin).await, Some(Message::Close(_)) | None));
+    assert!(t.elapsed() < Duration::from_secs(3));
 }

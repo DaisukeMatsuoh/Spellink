@@ -22,8 +22,10 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, oneshot};
+
+use crate::stats::Stats;
 
 pub const BRIDGE_PATH: &str = "/v1/relay/bridge";
 pub const CLIENT_PATH: &str = "/v1/relay/client";
@@ -44,6 +46,46 @@ const MAX_SESSIONS_PER_ROOM: usize = 4;
 /// new id, and ids are free to invent.
 const MAX_ROOMS: usize = 10_000;
 const ACCEPT_TIMEOUT: Duration = Duration::from_secs(10);
+/// How often the relay pings each side to measure the round trip (ADR 0021). One ping at a time per
+/// side: a pong is matched to the ping it answers by its payload, a late or foreign pong is ignored.
+const DEFAULT_PING_EVERY: Duration = Duration::from_secs(20);
+
+/// The current UTC day number (days since 1970-01-01).
+fn today() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() / 86_400).unwrap_or(0)
+}
+
+/// Measures how long a side takes to answer the relay's WebSocket pings. At most one ping is out;
+/// its payload is a counter, and only the pong that carries it is timed.
+struct Pinger {
+    sent: Option<(u64, Instant)>,
+    next: u64,
+}
+
+impl Pinger {
+    fn new() -> Pinger {
+        Pinger { sent: None, next: 1 }
+    }
+    /// The ping to send now, or None while the last one is still unanswered.
+    fn ping(&mut self, now: Instant) -> Option<Message> {
+        if self.sent.is_some() {
+            return None;
+        }
+        let n = self.next;
+        self.next += 1;
+        self.sent = Some((n, now));
+        Some(Message::Ping(n.to_be_bytes().to_vec().into()))
+    }
+    /// The milliseconds a pong took, if it answers the ping that is out.
+    fn pong(&mut self, payload: &[u8], now: Instant) -> Option<u64> {
+        let (n, at) = self.sent?;
+        if payload != n.to_be_bytes() {
+            return None;
+        }
+        self.sent = None;
+        Some(now.saturating_duration_since(at).as_millis().min(u64::MAX as u128) as u64)
+    }
+}
 const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 pub const DEFAULT_ROOM_BYTES_PER_SEC: i64 = 4 << 20;
 pub const DEFAULT_ROOM_BURST: i64 = 16 << 20;
@@ -177,6 +219,8 @@ pub struct Config {
     /// Ends a session in which no frame has passed for this long. An answer being written sends
     /// a frame every few seconds, so a live session is never idle.
     pub idle_timeout: Duration,
+    /// How often each side is pinged to time its answer (ADR 0021).
+    pub ping_every: Duration,
     /// One room's share of bandwidth, counting both directions (defaults 4 MiB/s and 16 MiB: an
     /// answer is hundreds of KB). Beyond it the room is slowed, not cut.
     pub room_bytes_per_sec: i64,
@@ -195,6 +239,7 @@ impl Default for Config {
             max_rooms: MAX_ROOMS,
             trust_proxy: false,
             idle_timeout: DEFAULT_IDLE_TIMEOUT,
+            ping_every: DEFAULT_PING_EVERY,
             room_bytes_per_sec: DEFAULT_ROOM_BYTES_PER_SEC,
             room_burst: DEFAULT_ROOM_BURST,
             clients_per_min: 60,
@@ -214,6 +259,7 @@ struct Inner {
     accepts: Limiter,
     rooms: Mutex<HashMap<String, Room>>,
     next_epoch: AtomicU64,
+    stats: Arc<Stats>,
 }
 
 /// The relay. It keeps everything in memory; restarting it just makes bridges reconnect.
@@ -229,6 +275,11 @@ enum Kind {
 
 impl Relay {
     pub fn new(cfg: Config, log: LogFn) -> Relay {
+        Relay::with_stats(cfg, log, Arc::new(Stats::new()))
+    }
+
+    /// A relay that counts into `stats` (the command shares it with a task that keeps it on disk).
+    pub fn with_stats(cfg: Config, log: LogFn, stats: Arc<Stats>) -> Relay {
         let minute = Duration::from_secs(60);
         Relay(Arc::new(Inner {
             clients: Limiter::new(cfg.clients_per_min, minute),
@@ -238,11 +289,13 @@ impl Relay {
             log,
             rooms: Mutex::new(HashMap::new()),
             next_epoch: AtomicU64::new(1),
+            stats,
         }))
     }
 
     pub fn router(&self) -> Router {
         let health = self.clone();
+        let stats = self.0.stats.clone();
         let mk = |me: &Relay, kind: Kind| {
             let me = me.clone();
             get(move |ci: ConnectInfo<SocketAddr>, req: Request| {
@@ -258,6 +311,7 @@ impl Relay {
                     ([(header::CONTENT_TYPE, "application/json")], format!("{{\"ok\":true,\"bridges\":{n}}}\n"))
                 }),
             )
+            .route("/v1/stats", get(move || async move { ([(header::CONTENT_TYPE, "application/json"), (header::CACHE_CONTROL, "no-store")], stats.json()) }))
             .route(BRIDGE_PATH, mk(self, Kind::Bridge))
             .route(CLIENT_PATH, mk(self, Kind::Client))
             .route(ACCEPT_PATH, mk(self, Kind::Accept))
@@ -277,6 +331,7 @@ impl Relay {
         if l.allow(&source_of(headers, peer, self.0.cfg.trust_proxy), Instant::now()) {
             return Ok(());
         }
+        self.0.stats.refused(today(), "rate");
         Err((StatusCode::TOO_MANY_REQUESTS, [(header::RETRY_AFTER, "60")], "too many connections from this address\n").into_response())
     }
 
@@ -288,6 +343,7 @@ impl Relay {
         let param = |name: &str| -> String { query.split('&').filter_map(|kv| kv.split_once('=')).find(|(k, _)| *k == name).map(|(_, v)| v.to_string()).unwrap_or_default() };
         let room = param("room");
         if !valid_room(&room) {
+            self.0.stats.refused(today(), "bad_room");
             return (StatusCode::BAD_REQUEST, "bad room\n").into_response();
         }
         let session = param("session");
@@ -330,16 +386,27 @@ impl Relay {
             }
         };
         if full {
+            self.0.stats.refused(today(), "full");
             self.log("relay full: refused a new room");
             close_with(&mut sock, STATUS_RELAY_FULL, "relay is full").await;
             return;
         }
         self.log(&format!("bridge up: room {}…", &id[..8]));
         // Reading keeps pings/pongs flowing and tells us when the bridge goes away.
+        let mut pinger = Pinger::new();
+        let mut tick = tokio::time::interval_at((Instant::now() + self.0.cfg.ping_every).into(), self.0.cfg.ping_every);
         loop {
             tokio::select! {
+                _ = tick.tick() => {
+                    if let Some(p) = pinger.ping(Instant::now()) {
+                        if sock.send(p).await.is_err() { break; }
+                    }
+                }
                 m = sock.recv() => match m {
                     Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                    Some(Ok(Message::Pong(p))) => {
+                        if let Some(ms) = pinger.pong(&p, Instant::now()) { self.0.stats.ping_bridge(today(), ms); }
+                    }
                     Some(Ok(_)) => {}
                 },
                 c = rx.recv() => match c {
@@ -368,6 +435,7 @@ impl Relay {
 
     /// Asks the room's bridge to open a session and waits until it is piped through.
     async fn client(&self, mut sock: WebSocket, id: String) {
+        let began = Instant::now();
         let sid = random_session_id();
         let (accepted_tx, accepted_rx) = oneshot::channel::<WebSocket>();
         enum Admit {
@@ -388,8 +456,14 @@ impl Relay {
             }
         };
         let (ctrl, bucket) = match admit {
-            Admit::Offline => return close_with(&mut sock, STATUS_BRIDGE_OFFLINE, "bridge offline").await,
-            Admit::Busy => return close_with(&mut sock, STATUS_ROOM_BUSY, "too many sessions").await,
+            Admit::Offline => {
+                self.0.stats.refused(today(), "offline");
+                return close_with(&mut sock, STATUS_BRIDGE_OFFLINE, "bridge offline").await;
+            }
+            Admit::Busy => {
+                self.0.stats.refused(today(), "busy");
+                return close_with(&mut sock, STATUS_ROOM_BUSY, "too many sessions").await;
+            }
             Admit::Ok(c, b) => (c, b),
         };
         let leave = |me: &Relay| {
@@ -408,6 +482,7 @@ impl Relay {
         let sent = tokio::time::timeout(ACCEPT_TIMEOUT, ctrl.send(Ctrl::Session { frame, written: written_tx })).await.is_ok_and(|r| r.is_ok());
         let written = sent && tokio::time::timeout(ACCEPT_TIMEOUT, written_rx).await.is_ok_and(|r| r.unwrap_or(false));
         if !written {
+            self.0.stats.refused(today(), "offline");
             leave(self);
             close_with(&mut sock, STATUS_BRIDGE_OFFLINE, "bridge offline").await;
             return;
@@ -429,8 +504,16 @@ impl Relay {
             }
         };
         match bridge_side {
-            Some(b) => pipe(sock, b, self.0.cfg.idle_timeout, Some(bucket)).await,
-            None => close_with(&mut sock, STATUS_BRIDGE_OFFLINE, "bridge did not answer").await,
+            Some(b) => {
+                self.0.stats.session_start(today(), began.elapsed().as_millis().min(u64::MAX as u128) as u64);
+                let piped = Instant::now();
+                let bytes = pipe(sock, b, self.0.cfg.idle_timeout, self.0.cfg.ping_every, Some(bucket), &self.0.stats).await;
+                self.0.stats.session_end(today(), piped.elapsed().as_secs(), bytes);
+            }
+            None => {
+                self.0.stats.refused(today(), "unanswered");
+                close_with(&mut sock, STATUS_BRIDGE_OFFLINE, "bridge did not answer").await;
+            }
         }
         leave(self);
     }
@@ -464,31 +547,55 @@ async fn close_with(sock: &mut WebSocket, code: u16, reason: &'static str) {
     let _ = sock.send(Message::Close(Some(CloseFrame { code, reason: reason.into() }))).await;
 }
 
-/// Copies frames both ways until either side closes, the session has been silent for `idle`, or an
-/// error ends it. The room's bucket slows a room that moves more than its share.
-async fn pipe(a: WebSocket, b: WebSocket, idle: Duration, bucket: Option<Arc<ShareBucket>>) {
+/// Copies frames both ways until either side closes, no frame has passed for `idle`, or an error
+/// ends it; returns the bytes copied. Pings and pongs do not count as a frame having passed (or the
+/// relay's own pings would keep a dead session open for ever). The room's bucket slows a room that
+/// moves more than its share. `a` is the plugin, `b` the bridge: each is pinged to time its pong.
+async fn pipe(a: WebSocket, b: WebSocket, idle: Duration, ping_every: Duration, bucket: Option<Arc<ShareBucket>>, stats: &Stats) -> u64 {
     let (mut a_tx, mut a_rx) = a.split();
     let (mut b_tx, mut b_rx) = b.split();
+    let (mut a_ping, mut b_ping) = (Pinger::new(), Pinger::new());
+    let mut tick = tokio::time::interval_at((Instant::now() + ping_every).into(), ping_every);
+    let mut last = Instant::now();
+    let mut total = 0u64;
     loop {
         let (msg, to_b) = tokio::select! {
             m = a_rx.next() => (m, true),
             m = b_rx.next() => (m, false),
-            _ = tokio::time::sleep(idle) => break,
+            _ = tick.tick() => {
+                let now = Instant::now();
+                let ok_a = match a_ping.ping(now) { Some(p) => a_tx.send(p).await.is_ok(), None => true };
+                let ok_b = match b_ping.ping(now) { Some(p) => b_tx.send(p).await.is_ok(), None => true };
+                if !(ok_a && ok_b) { break; }
+                continue;
+            }
+            _ = tokio::time::sleep_until((last + idle).into()) => break,
         };
         let m = match msg {
             Some(Ok(m @ (Message::Text(_) | Message::Binary(_)))) => m,
-            Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue, // each hop answers its own pings
+            Some(Ok(Message::Ping(_))) => continue, // each hop answers its own pings
+            Some(Ok(Message::Pong(p))) => {
+                let (pinger, side) = if to_b { (&mut a_ping, true) } else { (&mut b_ping, false) };
+                if let Some(ms) = pinger.pong(&p, Instant::now()) {
+                    if side { stats.ping_client(today(), ms) } else { stats.ping_bridge(today(), ms) }
+                }
+                continue;
+            }
             Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
         };
+        last = Instant::now();
         let n = match &m {
             Message::Text(t) => t.len(),
             Message::Binary(b) => b.len(),
             _ => 0,
         } as u64;
+        total = total.saturating_add(n);
+        let sent_at = Instant::now();
         let sent = if to_b { b_tx.send(m).await } else { a_tx.send(m).await };
         if sent.is_err() {
             break;
         }
+        stats.forward(today(), sent_at.elapsed().as_millis().min(u64::MAX as u128) as u64);
         if let Some(bk) = &bucket {
             let wait = bk.take(n, Instant::now());
             if !wait.is_zero() {
@@ -499,6 +606,7 @@ async fn pipe(a: WebSocket, b: WebSocket, idle: Duration, bucket: Option<Arc<Sha
     let normal = || Message::Close(Some(CloseFrame { code: STATUS_NORMAL, reason: "".into() }));
     let _ = a_tx.send(normal()).await;
     let _ = b_tx.send(normal()).await;
+    total
 }
 
 // ---- the command ----
@@ -513,7 +621,17 @@ pub async fn run_cli(flags: &HashMap<String, String>) -> Result<(), String> {
         return Err("--tls-domain and --trust-proxy do not go together: with its own TLS the relay sees the real address".into());
     }
     let log: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|s| println!("{s}"));
-    let relay = Relay::new(cfg, log.clone());
+    let stats_path = flags.get("data").filter(|d| !d.is_empty()).map(|d| std::path::Path::new(d).join("stats.json"));
+    let stats = Arc::new(match &stats_path {
+        None => Stats::new(),
+        Some(path) => Stats::load(path).unwrap_or_else(|e| {
+            // a damaged file is set aside, not overwritten, and the counting starts again
+            println!("stats: {e}; starting empty");
+            let _ = std::fs::rename(path, path.with_extension("json.bad"));
+            Stats::new()
+        }),
+    });
+    let relay = Relay::with_stats(cfg, log.clone(), stats.clone());
     let listener = tokio::net::TcpListener::bind(&listen).await.map_err(|e| format!("{listen}: {e}"))?;
     let cancel = tokio_util::sync::CancellationToken::new();
     crate::edge::cancel_on_signal(cancel.clone());
@@ -522,5 +640,23 @@ pub async fn run_cli(flags: &HashMap<String, String>) -> Result<(), String> {
         Some(domain) => Some(crate::names::service_tls(flags, &domain, "relay")?),
     };
     println!("spellink relay {} listening on {listen}{}", env!("CARGO_PKG_VERSION"), if tls.is_some() { " (TLS)" } else { "" });
-    crate::edge::serve(listener, relay.router(), tls, cancel, log).await
+    if let Some(path) = stats_path.clone() {
+        let (st, stop) = (stats.clone(), cancel.clone());
+        tokio::spawn(async move {
+            let mut every = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                tokio::select! { _ = every.tick() => {}, _ = stop.cancelled() => break }
+                if let Err(e) = st.save(&path) {
+                    println!("stats: not saved: {e}");
+                }
+            }
+        });
+    }
+    let served = crate::edge::serve(listener, relay.router(), tls, cancel, log).await;
+    if let Some(path) = &stats_path {
+        if let Err(e) = stats.save(path) {
+            println!("stats: not saved: {e}");
+        }
+    }
+    served
 }

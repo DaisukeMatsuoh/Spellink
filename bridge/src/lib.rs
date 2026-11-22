@@ -27,6 +27,7 @@ pub mod relay;
 pub mod securechan;
 pub mod server;
 pub mod service;
+pub mod stats;
 pub mod timestamp;
 pub mod tlsserve;
 pub mod ui;

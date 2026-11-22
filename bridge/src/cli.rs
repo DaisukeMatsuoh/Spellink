@@ -70,6 +70,7 @@ pub async fn device(args: &[String]) -> Result<(), String> {
         },
         &mut stdout,
         &cwd,
+        crate::devicecli::Lang::from_env(),
     )
     .await
 }

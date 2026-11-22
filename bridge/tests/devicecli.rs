@@ -44,7 +44,7 @@ impl Env {
         let mut lines: Vec<String> = stdin.map(|s| s.split_inclusive('\n').map(String::from).collect()).unwrap_or_default();
         lines.reverse();
         let mut out = Vec::new();
-        let r = devicecli::run(&self.c, &args, &mut || lines.pop(), &mut out, self.dir.path()).await;
+        let r = devicecli::run(&self.c, &args, &mut || lines.pop(), &mut out, self.dir.path(), devicecli::Lang::En).await;
         (String::from_utf8(out).unwrap(), r)
     }
 
@@ -71,7 +71,7 @@ async fn add_writes_a_private_setup_file_and_says_what_to_do_next() {
         assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
     }
     assert!(data.starts_with("PACKAGE:Nomad:"), "content {data:?}");
-    for want in [path.to_str().unwrap(), "Copy the file", "MyStyle", "choose pairing", "device pair", "device list", "Keep it private"] {
+    for want in [path.to_str().unwrap(), "Step 1 of 4", "Step 2", "Step 3", "Step 4", "Copy the file", "MyStyle", "choose pairing", "device pair", "device list", "Keep it private"] {
         assert!(out.contains(want), "output lacks {want:?}:\n{out}");
     }
     let other = tempfile::tempdir().unwrap();
@@ -186,13 +186,13 @@ async fn usage() {
 async fn the_bridge_being_down_or_refusing_the_token_is_explained() {
     let down = Client { base: "http://127.0.0.1:1".into(), token: TOKEN.into(), open: None };
     let mut out = Vec::new();
-    let r = devicecli::run(&down, &["list".to_string()], &mut || None, &mut out, std::path::Path::new(".")).await;
+    let r = devicecli::run(&down, &["list".to_string()], &mut || None, &mut out, std::path::Path::new("."), devicecli::Lang::En).await;
     assert!(r.unwrap_err().contains("is it running"), "down");
     let mut e = env().await;
     e.c.token = "wrong".into();
     assert!(e.run(&["list"]).await.1.unwrap_err().contains("admin token"), "wrong token");
     let bad = Client { base: "http://[::1".into(), token: TOKEN.into(), open: None };
-    assert!(devicecli::run(&bad, &["list".to_string()], &mut || None, &mut Vec::new(), std::path::Path::new(".")).await.is_err(), "an unusable address");
+    assert!(devicecli::run(&bad, &["list".to_string()], &mut || None, &mut Vec::new(), std::path::Path::new("."), devicecli::Lang::En).await.is_err(), "an unusable address");
 }
 
 /// A server that answers every request with the same bytes.
@@ -219,7 +219,7 @@ async fn an_answer_it_cannot_read_is_reported_not_trusted() {
     let dir = tempfile::tempdir().unwrap();
     for args in [vec!["list"], vec!["add", "x"], vec!["pair", "12345678"], vec!["revoke", "x"]] {
         let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        assert!(devicecli::run(&c, &args, &mut || None, &mut Vec::new(), dir.path()).await.is_err(), "{args:?}: an unreadable answer was accepted");
+        assert!(devicecli::run(&c, &args, &mut || None, &mut Vec::new(), dir.path(), devicecli::Lang::En).await.is_err(), "{args:?}: an unreadable answer was accepted");
     }
 }
 
@@ -227,7 +227,7 @@ async fn an_answer_it_cannot_read_is_reported_not_trusted() {
 async fn an_answer_that_is_cut_off_is_an_error() {
     let cut = fake_server(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nshort").await;
     let c = Client { base: cut, token: TOKEN.into(), open: None };
-    assert!(devicecli::run(&c, &["list".to_string()], &mut || None, &mut Vec::new(), std::path::Path::new(".")).await.is_err(), "a truncated answer must not be taken as complete");
+    assert!(devicecli::run(&c, &["list".to_string()], &mut || None, &mut Vec::new(), std::path::Path::new("."), devicecli::Lang::En).await.is_err(), "a truncated answer must not be taken as complete");
 }
 
 #[tokio::test]
@@ -259,7 +259,7 @@ async fn pair_web_prints_the_address_when_the_browser_cannot_be_opened() {
 #[tokio::test]
 async fn pair_web_says_so_when_the_bridge_is_not_running() {
     let c = Client { base: "http://127.0.0.1:1".into(), token: TOKEN.into(), open: Some(Arc::new(|_| panic!("a browser was opened for a bridge that is not there"))) };
-    let r = devicecli::run(&c, &["pair".into(), "--web".into()], &mut || None, &mut Vec::new(), std::path::Path::new(".")).await;
+    let r = devicecli::run(&c, &["pair".into(), "--web".into()], &mut || None, &mut Vec::new(), std::path::Path::new("."), devicecli::Lang::En).await;
     assert!(r.unwrap_err().contains("is it running"));
 }
 
@@ -283,4 +283,25 @@ async fn open_app_opens_the_app_page_with_the_token_after_the_hash() {
     assert!(String::from_utf8(out).unwrap().contains(&format!("{}/app#{TOKEN}", e.c.base)), "without a browser");
     let down = Client { base: "http://127.0.0.1:1".into(), token: TOKEN.into(), open: None };
     assert!(devicecli::open_app(&down, &mut Vec::new()).await.unwrap_err().contains("is it running"));
+}
+
+#[test]
+fn the_language_comes_from_the_locale_and_the_japanese_text_says_the_same_things() {
+    use devicecli::{Lang, add_text};
+    for (v, want) in
+        [("ja_JP.UTF-8", Lang::Ja), ("ja", Lang::Ja), ("ja_JP", Lang::Ja), (" JA_JP.utf8 ", Lang::Ja), ("en_US.UTF-8", Lang::En), ("C", Lang::En), ("", Lang::En), ("jam", Lang::En), ("zh_CN.UTF-8", Lang::En)]
+    {
+        assert_eq!(Lang::of(v), want, "{v:?}");
+    }
+    let (en, ja) = (add_text(Lang::En, "Nomad", "/tmp/x.snplg"), add_text(Lang::Ja, "Nomad", "/tmp/x.snplg"));
+    // both name the file, the four steps and the commands that matter
+    for t in [&en, &ja] {
+        for want in ["/tmp/x.snplg", "MyStyle", "spellink-bridge device pair", "spellink-bridge device list", "--web", "Nomad"] {
+            assert!(t.contains(want), "{want:?} missing:\n{t}");
+        }
+    }
+    for want in ["手順 1/4", "手順 2", "手順 3", "手順 4", "8 桁", "新しいノート", "人に渡さないでください"] {
+        assert!(ja.contains(want), "{want:?} missing:\n{ja}");
+    }
+    assert!(!ja.contains("Step"), "the Japanese text is Japanese");
 }

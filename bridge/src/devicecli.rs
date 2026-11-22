@@ -159,7 +159,7 @@ fn parse_response(raw: &[u8]) -> Result<(u16, Vec<u8>), String> {
 
 /// Executes one `device` command. `dir` is where setup files are written when none is named.
 /// `read_line` supplies a line of input when the code must be asked for.
-pub async fn run(c: &Client, args: &[String], read_line: &mut dyn FnMut() -> Option<String>, out: &mut dyn Write, dir: &Path) -> Result<(), String> {
+pub async fn run(c: &Client, args: &[String], read_line: &mut dyn FnMut() -> Option<String>, out: &mut dyn Write, dir: &Path, lang: Lang) -> Result<(), String> {
     let Some(cmd) = args.first() else { return Err(USAGE.into()) };
     let rest = &args[1..];
     let pick = |i: usize| rest.get(i).map(PathBuf::from).unwrap_or_else(|| dir.to_path_buf());
@@ -168,7 +168,7 @@ pub async fn run(c: &Client, args: &[String], read_line: &mut dyn FnMut() -> Opt
             if rest.is_empty() || rest.len() > 2 {
                 return Err("usage: spellink-bridge device add <name> [dir]".into());
             }
-            add(c, &rest[0], &pick(1), out).await
+            add(c, &rest[0], &pick(1), out, lang).await
         }
         "list" => list(c, out).await,
         "pair" => {
@@ -176,13 +176,19 @@ pub async fn run(c: &Client, args: &[String], read_line: &mut dyn FnMut() -> Opt
                 return open_page(
                     c,
                     "/pair",
-                    "Opened the pairing page in your browser. Show the QR code on the device to the camera.",
-                    "Open this address in a browser on this computer, then show the QR code on the device to the camera:",
+                    lang.pick(
+                        "Opened the pairing page in your browser. Show the QR code on the device to the camera.",
+                        "ブラウザで読み取りのページを開きました。端末の画面の QR コードを、このパソコンのカメラに向けてください。",
+                    ),
+                    lang.pick(
+                        "Open this address in a browser on this computer, then show the QR code on the device to the camera:",
+                        "このパソコンのブラウザで、次の住所を開き、端末の画面の QR コードをカメラに向けてください:",
+                    ),
                     out,
                 )
                 .await;
             }
-            pair(c, rest.first().map(String::as_str).unwrap_or(""), read_line, out).await
+            pair(c, rest.first().map(String::as_str).unwrap_or(""), read_line, out, lang).await
         }
         "package" => {
             if rest.is_empty() || rest.len() > 2 {
@@ -252,7 +258,7 @@ async fn write_package(c: &Client, d: &Device, dir: &Path) -> Result<PathBuf, St
     Ok(path)
 }
 
-async fn add(c: &Client, name: &str, dir: &Path, out: &mut dyn Write) -> Result<(), String> {
+async fn add(c: &Client, name: &str, dir: &Path, out: &mut dyn Write, lang: Lang) -> Result<(), String> {
     let (_, body) = c.call("POST", "/admin/devices", Some(json!({"name": name}))).await?;
     let created: Value = serde_json::from_slice(&body).unwrap_or_default();
     let (Some(id), cname) = (created["id"].as_str().filter(|s| !s.is_empty()), created["name"].as_str().unwrap_or(name)) else {
@@ -260,13 +266,75 @@ async fn add(c: &Client, name: &str, dir: &Path, out: &mut dyn Write) -> Result<
     };
     let d = Device { id: id.into(), name: cname.into(), status: String::new(), waiting: 0, expires: None, last_seen: None };
     let path = write_package(c, &d, dir).await.map_err(|e| format!("the device was added but its setup file could not be written: {e}\n(write it again with `spellink-bridge device package {name:?}`)"))?;
-    let w = |e: std::io::Error| e.to_string();
-    writeln!(out, "Added {name:?}. Setup file: {}", path.display()).map_err(w)?;
-    writeln!(out, "  1. Copy the file to the device's MyStyle folder, then install it on the device (Settings > Apps > Plugins).").map_err(w)?;
-    writeln!(out, "  2. On the device, open Spellink's settings and choose pairing: an 8-digit code and a QR code appear.").map_err(w)?;
-    writeln!(out, "  3. While the code is shown (90 seconds by default), run `spellink-bridge device pair` here and type it.").map_err(w)?;
-    writeln!(out, "  4. `spellink-bridge device list` shows the device as active.").map_err(w)?;
-    writeln!(out, "The file works only for this device, only until it is paired (24 hours by default). Keep it private until then.").map_err(w)
+    out.write_all(add_text(lang, name, &path.display().to_string()).as_bytes()).map_err(|e| e.to_string())
+}
+
+/// What `device add` says: where the file is, and the steps that remain, one by one, so that
+/// someone doing this for the first time can tell where they are.
+pub fn add_text(lang: Lang, name: &str, path: &str) -> String {
+    match lang {
+        Lang::En => format!(
+            "Step 1 of 4 is done: {name:?} is added and its setup file is written.
+  Setup file: {path}
+
+What is left:
+  Step 2. Put the setup file on the device. Copy the file to the device's MyStyle folder, then install it on the device
+          (Settings > Apps > Plugins). Make a NEW note to try it (older notes show no button).
+  Step 3. Start pairing on the device: open Spellink's settings and choose pairing. An 8-digit code and a QR code appear
+          (for 90 seconds by default).
+  Step 4. Type the code here: run `spellink-bridge device pair` and type the 8 digits.
+          (With a camera, `spellink-bridge device pair --web` can read the QR code instead.)
+Check: `spellink-bridge device list` shows this device as active when it is done.
+
+Keep it private: the file works only for this device, and only until it is paired (24 hours by default).
+"
+        ),
+        Lang::Ja => format!(
+            "手順 1/4 が終わりました:「{name}」を登録し、端末に入れる設置ファイルを作りました。
+  設置ファイル: {path}
+
+この先の手順:
+  手順 2  設置ファイルを端末に入れる
+          ファイルを端末の MyStyle フォルダにコピーし、端末で「設定 > アプリ > プラグイン」から入れます。
+          試すときは、新しいノートを作ってください(古いノートには、ボタンが出ません)。
+  手順 3  端末でペアリングを始める
+          端末で Spellink の設定を開き、「ペアリング」を選びます。8 桁の数字と QR コードが出ます(既定では 90 秒だけ)。
+  手順 4  8 桁の数字を、このパソコンで入れる
+          `spellink-bridge device pair` を実行して、端末の 8 桁を入力します。
+          (パソコンにカメラがあれば、`spellink-bridge device pair --web` で、QR コードを読ませることもできます。)
+確認: `spellink-bridge device list` で、この端末が active になれば、完了です。
+
+注意: このファイルは、この端末専用です。ペアリングが終わるまでの 24 時間(既定)だけ使えます。それまでは、人に渡さないでください。
+"
+        ),
+    }
+}
+
+/// The language of what the command prints: Japanese when the locale says so, otherwise English.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lang {
+    En,
+    Ja,
+}
+
+impl Lang {
+    /// From a locale value such as `ja_JP.UTF-8`; anything else is English.
+    pub fn of(locale: &str) -> Lang {
+        let l = locale.trim().to_ascii_lowercase();
+        if l == "ja" || l.starts_with("ja_") || l.starts_with("ja.") || l.starts_with("ja@") { Lang::Ja } else { Lang::En }
+    }
+
+    /// The first of LC_ALL, LC_MESSAGES and LANG that is set (the order the C library uses).
+    pub fn from_env() -> Lang {
+        ["LC_ALL", "LC_MESSAGES", "LANG"].iter().filter_map(|k| std::env::var(k).ok()).find(|v| !v.trim().is_empty()).map(|v| Lang::of(&v)).unwrap_or(Lang::En)
+    }
+
+    fn pick(self, en: &'static str, ja: &'static str) -> &'static str {
+        match self {
+            Lang::En => en,
+            Lang::Ja => ja,
+        }
+    }
 }
 
 /// A stored time as "2006-01-02 15:04" in UTC (the local zone is the bridge's job to know).
@@ -313,22 +381,33 @@ async fn list(c: &Client, out: &mut dyn Write) -> Result<(), String> {
     Ok(())
 }
 
-async fn pair(c: &Client, code: &str, read_line: &mut dyn FnMut() -> Option<String>, out: &mut dyn Write) -> Result<(), String> {
+async fn pair(c: &Client, code: &str, read_line: &mut dyn FnMut() -> Option<String>, out: &mut dyn Write, lang: Lang) -> Result<(), String> {
     let code = if code.is_empty() {
-        write!(out, "Code shown on the device: ").map_err(|e| e.to_string())?;
+        write!(out, "{}", lang.pick("Code shown on the device (8 digits): ", "端末の画面に出ている 8 桁の数字を入力して、Enter を押してください: ")).map_err(|e| e.to_string())?;
         out.flush().map_err(|e| e.to_string())?;
-        read_line().map(|l| l.trim().to_string()).ok_or("no code was given")?
+        read_line().map(|l| l.trim().to_string()).ok_or(lang.pick("no code was given", "数字が入力されませんでした"))?
     } else {
         code.to_string()
     };
     let body = match c.do_request("POST", "/admin/pair", Some(json!({"code": code}))).await {
         Ok((_, b)) => b,
-        Err(Failure::Refused(e)) if e.status == 403 => return Err("that code was not accepted; check the device's screen and try again".into()),
+        Err(Failure::Refused(e)) if e.status == 403 => {
+            return Err(lang
+                .pick(
+                    "that code was not accepted; check the digits on the device's screen and try again (if the time ran out, choose pairing on the device again)",
+                    "その数字は受け付けられませんでした。端末の画面の数字をもう一度確かめてください(時間が切れたときは、端末で「ペアリング」をもう一度押します)",
+                )
+                .into());
+        }
         Err(e) => return Err(e.into()),
     };
     let res: Value = serde_json::from_slice(&body).unwrap_or_default();
     let name = res["name"].as_str().filter(|n| !n.is_empty()).ok_or("the bridge's answer to \"pair\" could not be read")?;
-    writeln!(out, "Code accepted: {name:?} is being paired. The device finishes by itself.").map_err(|e| e.to_string())
+    match lang {
+        Lang::En => writeln!(out, "Code accepted: {name:?} is being paired. The device finishes by itself: when it says it is paired, you are done (`spellink-bridge device list` should show it as active)."),
+        Lang::Ja => writeln!(out, "数字を受け付けました。「{name}」をペアリングしています。端末が自動で仕上げます。端末に「ペアリングしました」と出れば完了です(`spellink-bridge device list` で active になっています)。"),
+    }
+    .map_err(|e| e.to_string())
 }
 
 /// Opens the bridge's app page (status and devices) in the browser: `spellink-bridge open`.

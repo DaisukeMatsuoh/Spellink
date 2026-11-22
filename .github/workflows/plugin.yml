@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths: ['plugin/**', 'bridge/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/testdata/**']
+  # every pull request runs this: required checks must always report (main is protected)
   pull_request:
-    paths: ['plugin/**', 'bridge/**', '.github/workflows/plugin.yml', 'docs/spec/**', 'bridge/testdata/**']
   workflow_dispatch:
 
 permissions:
@@ -18,13 +18,14 @@ concurrency:
 
 jobs:
   test:
+    name: plugin test
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: plugin
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -53,7 +54,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           node -e "process.exit(${total} < ${MIN_COVERAGE} ? 1 : 0)" || { echo "coverage ${total}% is below ${MIN_COVERAGE}%"; exit 1; }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: plugin-coverage
           path: plugin/coverage

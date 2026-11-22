@@ -1,4 +1,5 @@
 import {fakeNote} from '../__mocks__/sn-plugin-lib';
+import {t} from '../src/i18n';
 import {
   AskFlow,
   rememberSettings,
@@ -535,7 +536,7 @@ describe('the user leaves the note while the answer is being written', () => {
     expect(fakeNote.strayDeletes).toBe(0);
     expect(fakeNote.strayJumps).toBe(0);
     expect(last.failed).toBe(true);
-    expect(last.message).toContain('切り替わ');
+    expect(last.message).toContain(t('noteMoved'));
     expect(answerStrokes(0)).toHaveLength(1); // what was written before stays
   });
 

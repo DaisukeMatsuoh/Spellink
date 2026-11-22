@@ -1,5 +1,6 @@
 import {fakeNote} from '../__mocks__/sn-plugin-lib';
 import {getAskState, startAsk} from '../src/askController';
+import {t} from '../src/i18n';
 
 jest.mock('../src/bridgeConfig', () => ({
   loadBridges: async () => ({endpoints: [], source: 'none'}),
@@ -35,7 +36,7 @@ describe('asking about something that is not text', () => {
       expect(getAskState().failed).toBe(true);
       expect(getAskState().message).not.toMatch(/trim|null/);
       expect(fakeNote.dialogs).toHaveLength(1);
-      expect(fakeNote.dialogs[0]).toContain('読み取れ');
+      expect(fakeNote.dialogs[0]).toBe(t('noText'));
       expect(fakeNote.panelsOpened).toBe(0);
     },
   );
@@ -98,7 +99,7 @@ describe('pressing the button again while an answer is being written', () => {
     startAsk(); // pressed again
     await new Promise(r => setTimeout(r, 30));
     expect(fakeNote.dialogs).toHaveLength(1);
-    expect(fakeNote.dialogs[0]).toContain('回答を書いている');
+    expect(fakeNote.dialogs[0]).toBe(t('busy'));
   });
 
   it('stays silent when the notice is turned off in the settings', async () => {

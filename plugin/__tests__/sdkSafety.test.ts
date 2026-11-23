@@ -4,6 +4,7 @@ import {
   call,
   CallTimeoutError,
   closeView,
+  kindOf,
   deleteElementsAt,
   boxesOf,
   ensureOpen,
@@ -175,7 +176,7 @@ describe('what may run beside what (readers and writers)', () => {
     name: string,
     ms: number,
     log: string[],
-    share: 'exclusive' | 'shared',
+    share: 'mutate' | 'shared',
   ) =>
     native(
       name,
@@ -185,7 +186,7 @@ describe('what may run beside what (readers and writers)', () => {
         log.push(`${name}:end`);
         return name;
       },
-      share,
+      share === 'shared' ? 'shared' : undefined,
     );
 
   it('shared reads overlap each other', async () => {
@@ -197,11 +198,11 @@ describe('what may run beside what (readers and writers)', () => {
     expect(log.slice(0, 2)).toEqual(['r1:start', 'r2:start']); // both began before either ended
   });
 
-  it('an exclusive request waits for the reads already running, and nothing behind it starts first', async () => {
+  it('a mutating request waits for the reads already running, and nothing behind it starts first', async () => {
     const log: string[] = [];
     await Promise.all([
       job('r1', 30, log, 'shared'),
-      job('w', 5, log, 'exclusive'),
+      job('w', 5, log, 'mutate'),
       job('r2', 5, log, 'shared'), // asked after w: must not slip in front of it
     ]);
     expect(log).toEqual([
@@ -214,10 +215,10 @@ describe('what may run beside what (readers and writers)', () => {
     ]);
   });
 
-  it('a read never runs beside an exclusive request', async () => {
+  it('a read never runs beside a mutating request', async () => {
     const log: string[] = [];
     await Promise.all([
-      job('w', 20, log, 'exclusive'),
+      job('w', 20, log, 'mutate'),
       job('r', 5, log, 'shared'),
     ]);
     expect(log).toEqual(['w:start', 'w:end', 'r:start', 'r:end']);
@@ -514,14 +515,13 @@ describe('leaving the plugin screen', () => {
   it('goes out even when an earlier request to the note app never gets an answer (the line is stuck)', async () => {
     setTimeoutScaleForTests(0.004);
     const closing = jest.spyOn(PluginManager, 'closePluginView');
-    // the host never answers this one, and everything behind it in the line waits for it
-    const stuck = native(
-      'getCurrentFilePath',
-      () => new Promise<never>(() => {}),
-    );
-    const queued = native('hasPermission', async () => 1);
-    await expect(stuck).rejects.toBeInstanceOf(CallTimeoutError);
-    await expect(queued).rejects.toBeInstanceOf(CallTimeoutError);
+    // the host never answers a save, and everything for the note behind it in the line waits for it
+    const stuck = native('saveCurrentNote', () => new Promise<never>(() => {}));
+    const queued = native('getCurrentFilePath', async () => 'f');
+    await Promise.all([
+      expect(stuck).rejects.toBeInstanceOf(CallTimeoutError),
+      expect(queued).rejects.toBeInstanceOf(CallTimeoutError),
+    ]);
     expect(await closeView()).toBe(true);
     expect(closing).toHaveBeenCalledTimes(1);
     closing.mockRestore();
@@ -539,5 +539,153 @@ describe('leaving the plugin screen', () => {
     });
     expect(await closeView()).toBe(false);
     closing.mockRestore();
+  });
+});
+
+// docs/spec/host-requests.md: one test per cell that matters.
+describe('the line of requests to the note app (docs/spec/host-requests.md)', () => {
+  const never = () => new Promise<never>(() => {});
+  /** A request whose answer we choose to give later. */
+  const held = <T>(value: T) => {
+    let answer!: () => void;
+    const start = () => new Promise<T>(r => (answer = () => r(value)));
+    return {start, answer: () => answer()};
+  };
+  beforeEach(() => setTimeoutScaleForTests(0.004)); // quick calls: 60 ms
+
+  it('kinds come from the name; a name nobody knows is the careful one (mutate)', () => {
+    expect(kindOf('hasPermission')).toBe('manager');
+    expect(kindOf('getCurrentFilePath')).toBe('read');
+    expect(kindOf('saveCurrentNote')).toBe('mutate');
+    expect(kindOf('something.new')).toBe('mutate');
+  });
+
+  it('IDLE: each kind starts at once', async () => {
+    expect(await native('getCurrentFilePath', async () => 'r')).toBe('r');
+    expect(await native('saveCurrentNote', async () => 'm')).toBe('m');
+    expect(await native('points.size', async () => 's', 'shared')).toBe('s');
+    expect(await native('hasPermission', async () => 1)).toBe(1);
+  });
+
+  it('READ: a read that never answers gives its place back when its caller gives up — the next read runs (the failure seen on the device)', async () => {
+    const stuck = native('getCurrentFilePath', never);
+    await expect(stuck).rejects.toBeInstanceOf(CallTimeoutError);
+    expect(await native('getPenInfo', async () => 'pen')).toBe('pen');
+    expect(await native('saveCurrentNote', async () => 'saved')).toBe('saved');
+  });
+
+  it('READ: the late answer of a read that was given up does not give away the place of the one running now', async () => {
+    const first = held('late');
+    const lost = native('getCurrentFilePath', first.start);
+    await expect(lost).rejects.toBeInstanceOf(CallTimeoutError);
+    const second = held('2');
+    const running = native('getPenInfo', second.start); // runs now
+    const mutating: string[] = [];
+    const write = native('saveCurrentNote', async () => {
+      mutating.push('save');
+      return 'ok';
+    });
+    first.answer(); // the lost read answers late…
+    await pause(5);
+    expect(mutating).toEqual([]); // …and the save still waits for the read that runs
+    second.answer();
+    expect(await running).toBe('2');
+    expect(await write).toBe('ok');
+  });
+
+  it('READ and SHARED: a read waits for running reads of elements, and they wait for a read', async () => {
+    const log: string[] = [];
+    const run = (name: string, ms: number, kind?: 'shared') =>
+      native(
+        kind ? `points.${name}` : name,
+        async () => {
+          log.push(`${name}:start`);
+          await pause(ms);
+          log.push(`${name}:end`);
+        },
+        kind,
+      );
+    await Promise.all([
+      run('s1', 20, 'shared'),
+      run('getPenInfo', 5),
+      run('s2', 5, 'shared'),
+    ]);
+    expect(log).toEqual([
+      's1:start',
+      's1:end',
+      'getPenInfo:start',
+      'getPenInfo:end',
+      's2:start',
+      's2:end',
+    ]);
+  });
+
+  it('SHARED: a read of an element that never answers gives its place back too', async () => {
+    const stuck = native('points.size', never, 'shared');
+    await expect(stuck).rejects.toBeInstanceOf(CallTimeoutError);
+    expect(await native('saveCurrentNote', async () => 'saved')).toBe('saved');
+  });
+
+  it('MUT-LOST: a mutation that never answers keeps its place — nothing else for the note is sent; a late answer starts the line again', async () => {
+    const save = held('done');
+    const lost = native('saveCurrentNote', save.start);
+    await expect(lost).rejects.toBeInstanceOf(CallTimeoutError);
+    const sent: string[] = [];
+    const nextWrite = native('insertNotePage', async () => {
+      sent.push('insert');
+      return 1;
+    });
+    const nextRead = native('getCurrentFilePath', async () => {
+      sent.push('read');
+      return 'f';
+    });
+    await Promise.all([
+      expect(nextWrite).rejects.toBeInstanceOf(CallTimeoutError),
+      expect(nextRead).rejects.toBeInstanceOf(CallTimeoutError),
+    ]);
+    expect(sent).toEqual([]); // neither was ever sent
+    save.answer(); // the host finally answers
+    await pause(5);
+    expect(await native('getCurrentFilePath', async () => 'f2')).toBe('f2');
+  });
+
+  it('to-w: a request whose caller gave up while waiting is never sent, whatever its kind', async () => {
+    const save = held('x');
+    const running = native('saveCurrentNote', save.start);
+    const sent: string[] = [];
+    const waitingRead = native('getCurrentFilePath', async () => {
+      sent.push('read');
+      return 1;
+    });
+    await expect(waitingRead).rejects.toBeInstanceOf(CallTimeoutError);
+    save.answer();
+    await running;
+    await pause(5);
+    expect(sent).toEqual([]);
+  });
+
+  it('manager requests are outside the line: permissions are answered while a mutation or a read is stuck', async () => {
+    void native('saveCurrentNote', never).catch(() => {});
+    void native('getCurrentFilePath', never).catch(() => {});
+    expect(await native('hasPermission', async () => 1)).toBe(1);
+    expect(await native('showPluginView', async () => true)).toBe(true);
+  });
+
+  it('manager requests: at most four at once; one that never answers gives its place back when its caller gives up', async () => {
+    let running = 0;
+    let peak = 0;
+    const ask = () =>
+      native('hasPermission', async () => {
+        running++;
+        peak = Math.max(peak, running);
+        await pause(10);
+        running--;
+        return 1;
+      });
+    await Promise.all(Array.from({length: 9}, ask));
+    expect(peak).toBe(4);
+    const stuck = native('requestPermission', never);
+    await expect(stuck).rejects.toBeInstanceOf(CallTimeoutError);
+    expect(await native('hasPermission', async () => 1)).toBe(1);
   });
 });

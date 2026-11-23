@@ -123,108 +123,192 @@ const HEAVY_CALLS = new Set([
 ]);
 
 /**
- * How a request may share the note app with others. `exclusive`: it changes the note or depends
- * on its state (save, insert, delete, jump, create…), so nothing else runs beside it. `shared`:
- * it only reads data of an element we already hold (a stroke's points), so such reads may run
- * side by side — but never beside an exclusive request.
+ * What a request is, which decides how it waits and what happens to its place when the caller
+ * gives up (docs/spec/host-requests.md). `manager`: asks the plugin host, not the note (permissions,
+ * opening a screen): outside the line of note requests. `read`: reads the state of the note app:
+ * never beside a `mutate`, one at a time; its place is given back when the caller gives up (a read
+ * that runs late cannot harm the note). `mutate`: changes the note: one at a time, and its place
+ * is given back only when the host has answered (it may still be running; sending another on top
+ * of it could corrupt the note). `shared`: reads data of an element we already hold (a stroke's
+ * points): up to MAX_SHARED side by side, never beside a `mutate` or a `read`.
  */
-export type Share = 'exclusive' | 'shared';
+export type Kind = 'manager' | 'read' | 'mutate' | 'shared';
+
+const MANAGER_CALLS = new Set([
+  'hasPermission',
+  'requestPermission',
+  'getDeviceType',
+  'getPluginDirPath',
+  'showPluginView',
+]);
+const READ_CALLS = new Set([
+  'getCurrentFilePath',
+  'getPenInfo',
+  'canHandwrite',
+  'getCurrentPageNum',
+  'getNoteTotalPageNum',
+  'getPageSize',
+  'getLassoRect',
+  'getLassoElements',
+  'getElements',
+  'getNotePageTemplate',
+  'recognizeElements',
+]);
+
+/** The kind of a request: from its name, unless the caller says (`shared`). A name we do not know is a `mutate` (the safe one). */
+export function kindOf(api: string): Kind {
+  if (MANAGER_CALLS.has(api)) {
+    return 'manager';
+  }
+  return READ_CALLS.has(api) ? 'read' : 'mutate';
+}
 
 /** At most this many shared reads are in flight at once. */
 const MAX_SHARED = 8;
+/** At most this many manager requests are in flight at once. */
+const MAX_MANAGER = 4;
 
 interface Job {
   api: string;
-  share: Share;
+  kind: Kind;
   start: () => Promise<unknown>;
+  started: boolean;
+  /** Its place in the line has been given back (once). */
+  released: boolean;
   /** The caller stopped waiting: if it has not started yet, it is never sent. */
   abandoned: boolean;
   run: (p: Promise<unknown>) => void;
 }
 
-const waiting: Job[] = [];
+const waiting: Job[] = []; // the line of note requests (read, mutate, shared), in the order asked
+const managerWaiting: Job[] = [];
 let sharedRunning = 0;
-let exclusiveRunning = false;
+let readRunning = false;
+let mutateRunning = false; // from the start until the host answers (also after the caller gave up)
+let managerRunning = 0;
 
 /** Tests that abandon a call which never settles must not block the next test. */
 export function resetHostQueueForTests(): void {
   waiting.length = 0;
+  managerWaiting.length = 0;
   sharedRunning = 0;
-  exclusiveRunning = false;
+  readRunning = false;
+  mutateRunning = false;
+  managerRunning = 0;
 }
 
-/** Starts whatever may start now, in the order requests were made. */
+/** Gives back a started job's place, once. Then whatever waits may start. */
+function release(job: Job): void {
+  if (job.released) {
+    return;
+  }
+  job.released = true;
+  switch (job.kind) {
+    case 'manager':
+      managerRunning--;
+      break;
+    case 'read':
+      readRunning = false;
+      break;
+    case 'mutate':
+      mutateRunning = false;
+      break;
+    case 'shared':
+      sharedRunning--;
+      break;
+  }
+  pump();
+}
+
+function launch(job: Job): void {
+  job.started = true;
+  if (HEAVY_CALLS.has(job.api)) {
+    trace(`${job.api}.begin`);
+  }
+  let pending: Promise<unknown>;
+  try {
+    pending = Promise.resolve(job.start());
+  } catch (e) {
+    pending = Promise.reject(e);
+  }
+  // The host has settled: the place is always given back then (a late answer after the caller
+  // gave up included; for a `read` it was given back already).
+  const free = () => release(job);
+  pending.then(free, free);
+  job.run(pending);
+}
+
+/** Starts whatever may start now, in the order requests were made (docs/spec/host-requests.md). */
 function pump(): void {
+  while (managerWaiting.length > 0 && managerRunning < MAX_MANAGER) {
+    const job = managerWaiting.shift()!;
+    if (job.abandoned) {
+      continue; // its caller gave up while it waited: never send it
+    }
+    managerRunning++;
+    launch(job);
+  }
   while (waiting.length > 0) {
     const job = waiting[0];
     if (job.abandoned) {
-      waiting.shift(); // its caller gave up while it waited: never send it
+      waiting.shift();
       continue;
     }
-    if (job.share === 'exclusive') {
-      if (sharedRunning > 0 || exclusiveRunning) {
-        return; // wait for everything running to settle; nothing behind it may jump ahead
-      }
-      exclusiveRunning = true;
-    } else {
-      if (exclusiveRunning || sharedRunning >= MAX_SHARED) {
+    if (job.kind === 'shared') {
+      if (mutateRunning || readRunning || sharedRunning >= MAX_SHARED) {
         return;
       }
       sharedRunning++;
+    } else {
+      // read and mutate run alone; nothing behind them may jump ahead
+      if (mutateRunning || readRunning || sharedRunning > 0) {
+        return;
+      }
+      if (job.kind === 'read') {
+        readRunning = true;
+      } else {
+        mutateRunning = true;
+      }
     }
     waiting.shift();
-    if (HEAVY_CALLS.has(job.api)) {
-      trace(`${job.api}.begin`);
-    }
-    let pending: Promise<unknown>;
-    try {
-      pending = Promise.resolve(job.start());
-    } catch (e) {
-      pending = Promise.reject(e);
-    }
-    // The slot is given back when the host has settled — including a request whose caller gave up.
-    const free = () => {
-      if (job.share === 'exclusive') {
-        exclusiveRunning = false;
-      } else {
-        sharedRunning--;
-      }
-      pump();
-    };
-    pending.then(free, free);
-    job.run(pending);
+    launch(job);
   }
 }
 
 /**
- * Every request to the note app goes through here. Requests that change the note or depend on its
- * state run one at a time, in order; independent reads of elements we hold may run together
- * (bounded), but never beside one of the others. A request starts only once what must come
- * before it has *settled* — including one we gave up waiting for, which may still be running
- * inside the note app. Waiting in line counts towards the timeout, so while the host is stuck
- * requests fail with CallTimeoutError instead of piling up, and a request whose caller already
- * gave up is never sent late.
+ * Every request to the host goes through here. Note requests wait in one line (see `Kind`); a
+ * request starts only once what must come before it has finished. Waiting in line counts towards
+ * the timeout, so while the note app is stuck requests fail with CallTimeoutError instead of
+ * piling up, and a request whose caller already gave up is never sent late. `shared` is the only
+ * kind a caller names; every other kind comes from the request's name.
  */
 export function native<T>(
   api: string,
   start: () => Promise<T>,
-  share: Share = 'exclusive',
+  share?: 'shared',
 ): Promise<T> {
   let job!: Job;
   const run = new Promise<T>((resolve, reject) => {
     job = {
       api,
-      share,
+      kind: share ?? kindOf(api),
       start,
+      started: false,
+      released: false,
       abandoned: false,
       run: p => (p as Promise<T>).then(resolve, reject),
     };
   });
   run.catch(() => {}); // the caller has stopped listening after a timeout
-  waiting.push(job);
+  (job.kind === 'manager' ? managerWaiting : waiting).push(job);
   pump();
   return withTimeout(api, run, () => {
     job.abandoned = true;
+    // A started read, shared or manager request gives its place back now (it cannot harm the
+    // note if it runs late); a started mutate keeps it until the host answers.
+    if (job.started && job.kind !== 'mutate') {
+      release(job);
+    }
     pump(); // a request that was only waiting for this one can now be dropped or started
   });
 }
@@ -233,7 +317,7 @@ export function native<T>(
 export async function raw<T>(
   api: string,
   start: () => Promise<T>,
-  share: Share = 'exclusive',
+  share?: 'shared',
 ): Promise<T> {
   const started = Date.now();
   try {

@@ -20,11 +20,59 @@
 ## 2. 段階 A: Kagoya（日本）で、今できること
 
 ### A1. VPS を整える（Kagoya の管理画面と SSH）
-1. OS は Ubuntu の LTS を想定（Debian でもよい）。**CPU が x86_64 か `uname -m` で確認する**（開発機は aarch64 なので、イメージは VPS 上で作る。A4）。
-2. SSH は鍵認証だけにし、パスワードを切る。作業用の一般ユーザーを作る（root で動かさない）。
-3. **Kagoya の「パケットフィルター」（管理画面のファイアウォール）と、ホストのファイアウォールで、開けるのは次だけ**: `22/tcp`（自分の IP だけに絞れるなら絞る）、`53/tcp`、`53/udp`、`443/tcp`、`8443/tcp`。
-4. 自動更新（`unattended-upgrades`）を入れる。時刻同期（`chrony` か `systemd-timesyncd`）が動いていること（署名つきの要求は、時刻のずれ 5 分以内）。
-5. Docker Engine と compose プラグインを入れる（公式の手順。`docker compose version` で確認）。作業ユーザーを `docker` グループに入れる。
+OS は **Debian でも Ubuntu でもよい**（手順は同じ。違いは、Ubuntu だけ A2 の `systemd-resolved` の競合が起きること、`chrony.conf` の既定のプール名が `ubuntu` か `debian` かだけ）。以下は 1 項目ずつ、**意味 → 設定 → 確認**の順に書く。
+
+**1. OS と CPU**
+- 意味: イメージは VPS 上で作るので、CPU の種類が合っていること。
+- 設定: Debian か Ubuntu の LTS。`uname -m` が `x86_64` であること（開発機は aarch64 なので、イメージは VPS 上で作る。A4）。
+
+**2. SSH と作業用ユーザー**
+- 意味: パスワードでの総当たりを断ち、root を使わない（誤操作と乗っ取りの被害を小さくする）。
+- 設定: 作業用ユーザーを作り（`adduser <ユーザー>`、`usermod -aG sudo <ユーザー>`）、公開鍵を `~/.ssh/authorized_keys` に置く（権限は `~/.ssh` が 700、`authorized_keys` が 600）。**別の端末から鍵でログインできると確かめてから**、`/etc/ssh/sshd_config.d/10-spellink.conf` に書く:
+  ```
+  PasswordAuthentication no
+  PermitRootLogin no
+  KbdInteractiveAuthentication no
+  ```
+  `sudo sshd -t`（文法の確認）→ `sudo systemctl reload ssh`。**今のログインは閉じず**、新しい窓でログインできるか見る。
+- 確認: `sudo sshd -T | grep -Ei 'passwordauth|permitroot'` が `no` になっている。
+
+**3. ファイアウォール**
+- 意味: 使わないポートを外から見えなくする。**二重**（Kagoya の管理画面と、ホスト）にして、片方の設定ミスを、もう片方で受ける。
+- 設定: **Kagoya の「パケットフィルター」（管理画面のファイアウォール）と、ホストのファイアウォールで、開けるのは次だけ**: `22/tcp`（自分の IP だけに絞れるなら絞る）、`53/tcp`、`53/udp`、`443/tcp`、`8443/tcp`。ホストは `ufw` が簡単（`ufw default deny incoming`、`ufw allow 22/tcp` ほか、**最後に** `ufw enable`。先に 22 を許可しないと、自分が締め出される）。
+- 注意: **Docker が公開したポートは、`ufw` を素通りする**（Docker が `iptables` に直接書くため）。だから、公開するポートを `compose.yaml` の `ports` で絞り、**外側の管理画面のフィルターを本命にする**。
+- 確認: 別のネットワークから `nmap -Pn <JP の IP>`（開いているのが上の 5 つだけ）。
+
+**4. 自動更新（`unattended-upgrades`）と時刻同期**
+- **自動更新**
+  - 意味: セキュリティの修正を、人手なしで入れる（動かすのは `apt-daily.timer` と `apt-daily-upgrade.timer`。サービスを start するだけでは足りない。**自動で動かす設定を有効にする**）。
+  - 設定:
+    ```bash
+    sudo apt install unattended-upgrades
+    sudo dpkg-reconfigure -plow unattended-upgrades   # 「Yes」
+    ```
+    `/etc/apt/apt.conf.d/20auto-upgrades` が `APT::Periodic::Update-Package-Lists "1";` と `APT::Periodic::Unattended-Upgrade "1";` で作られる。**対象は既定でセキュリティ更新だけ**（`/etc/apt/apt.conf.d/50unattended-upgrades` の `Origins-Pattern`）。これで足りる。
+  - 任意（再起動）: カーネルの更新は、再起動しないと効かない。自動で再起動するなら `50unattended-upgrades` で `Unattended-Upgrade::Automatic-Reboot "true";` と `Unattended-Upgrade::Automatic-Reboot-Time "04:00";` のコメントを外す。名前サービスは再起動の間、数十秒止まる（コンテナは `restart: unless-stopped` で上がる）。避けるなら自動再起動は入れず、`/var/run/reboot-required` があるときに手で再起動する。
+  - 注意: Docker の公式リポジトリの Docker は既定の対象外（更新でデーモンが再起動し、コンテナが止まるので、手動のままにする）。
+  - 確認: `systemctl list-timers 'apt-daily*'`（2 つ動いている）、`sudo unattended-upgrade --dry-run --debug`（エラーなし）、数日後に `/var/log/unattended-upgrades/` にログ。
+- **時刻同期（`chrony`）**
+  - 意味: **署名つきの要求は、時刻のずれ 5 分以内**。ずれると、中継・名前サービスへの要求が拒まれ、証明書の取得にも響く。`chrony` は NTP のクライアント。
+  - 設定: `sudo apt install chrony`。日本のサーバーに替えるなら `/etc/chrony/chrony.conf` の、既定のプールの行を置き換える:
+    ```
+    # Use Debian vendor zone.
+    # pool 2.debian.pool.ntp.org iburst
+    pool ntp.nict.jp iburst
+    ```
+    `pool`（複数のアドレスを使い分け、1 台落ちても続く）。`iburst` は、起動直後に早く合わせる指定。`/etc/chrony/sources.d/` に別の指定がないか見る。`allow` は書かない（サーバーとして待ち受けないので、`123/udp` は閉じたままでよい）。
+  - 反映: `sudo systemctl restart chrony`。
+  - 確認: `chronyc sources -v`（`^*` が付く行がある）、`chronyc tracking`（System time が ms 単位）、`timedatectl`（`System clock synchronized: yes`）。**`systemd-timesyncd` と同時に動かさない**（`systemctl is-active systemd-timesyncd` が `inactive`。`systemd-timesyncd` で済ますなら chrony は入れない）。
+
+**5. Docker Engine と compose プラグイン**
+- 意味: ブリッジ・中継・名前サービスを、コンテナ（約 11 MB のイメージ）で動かす。
+- 設定: Docker 公式の手順（apt のリポジトリを足して `docker-ce`、`docker-compose-plugin` を入れる）。`sudo usermod -aG docker <ユーザー>` のあと、**入り直す**。
+- 注意: `docker` グループは、実質 root と同じ権限。作業ユーザー以外は入れない。
+- 確認: `docker compose version`、`docker run --rm hello-world`。
+- 任意: ログの肥大は、`compose.yaml` の `logging`（A8）で抑える。
 
 ### A2. 53 番ポートの競合を先に片づける（Ubuntu でよく起きる）
 Ubuntu は `systemd-resolved` が `127.0.0.53:53` で待っている。コンテナが `53` を開こうとして、`address already in use` になることがある。
@@ -107,7 +155,7 @@ INFRA_IDS=
 - OVH の管理画面で、ファイアウォールを確認する。**開けるのは `22/tcp` と `443/tcp` だけ**（米国の VPS は中継だけを動かす。名前サービスの `53`・`8443` は開けない）。
 
 ### B2. VPS を整える
-A1 と同じ（SSH の鍵、一般ユーザー、自動更新、時刻同期、Docker）。**A2（53 番の競合）は要らない。**
+A1 と同じ（SSH の鍵、一般ユーザー、ファイアウォール、自動更新、時刻同期、Docker）。ファイアウォールで開けるのは B1 の 2 つだけ。**A2（53 番の競合）は要らない。**
 
 ### B3. ソースを送って、イメージを作る
 A4 と同じ（`<US の IP>` に送る）。

@@ -1,7 +1,7 @@
 # Dependabot: version updates for each part of the project (security alerts and security updates
 # are switched on in the repository settings, not here). One pull request per group, weekly, so
 # that a quiet week is a quiet inbox. The plugin must stay on the React Native that Supernote's SDK
-# was built for: only patch releases of it come by themselves.
+# was built for: it is never updated by itself (see the ignore list).
 version: 2
 updates:
   - package-ecosystem: cargo
@@ -16,16 +16,16 @@ updates:
     directory: /plugin
     schedule: {interval: weekly, day: monday}
     open-pull-requests-limit: 5
+    # React Native and React run inside Supernote's app: the plugin must match the version the SDK
+    # was built for, so these are never updated by themselves (not even patches). The CLI is only a
+    # build tool and may take patches.
     ignore:
       - dependency-name: react
-        update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: react-native
-        update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: "@react-native/*"
-        update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: react-test-renderer
-        update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: "@types/react"
+      - dependency-name: "@react-native-community/*"
         update-types: [version-update:semver-major, version-update:semver-minor]
     groups:
       plugin-minor-and-patch:

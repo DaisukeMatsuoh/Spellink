@@ -21,14 +21,14 @@ jobs:
         working-directory: plugin
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: plugin/package-lock.json
       - run: npm ci
       - run: bash scripts/clean-package.sh "$PWD/build/Spellink-public.snplg"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: plugin-package
           path: plugin/build/Spellink-public.snplg
@@ -54,7 +54,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: plugin-package
           path: ${{ runner.temp }}/pkg
@@ -69,7 +69,7 @@ jobs:
           got=$("$exe" version)
           want="${GITHUB_REF_NAME#bridge-v}"
           [ "$got" = "$want" ] || { echo "version is '$got', the tag says '$want'"; exit 1; }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.target }}
           path: bridge/dist/*
@@ -80,7 +80,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: dist-*
           merge-multiple: true
@@ -105,7 +105,7 @@ jobs:
         working-directory: plugin
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

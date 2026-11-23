@@ -57,6 +57,15 @@ export async function environment(log: Log): Promise<void> {
   for (const p of PERMISSIONS) {
     await safe(p, () => PluginManager.hasPermission(p), log);
   }
+}
+
+/**
+ * What the note app says about the open note, the pen and handwriting. These ask the note app
+ * about the note itself, and some situations (no note in front, a screen opened over it) leave
+ * them unanswered; a request that gets no answer holds up everything behind it in the line. So
+ * they run last, after the checks that matter most (permissions, the network).
+ */
+export async function noteProbe(log: Log): Promise<void> {
   await safe('note', () => noteContext(), log);
   await safe(
     'pen',
@@ -82,7 +91,14 @@ export async function requestPermissions(log: Log): Promise<void> {
  * this, connections fail on the device before ever reaching the bridge.
  */
 async function withPermissions(log: Log): Promise<boolean> {
-  const missing = await ensurePermissions();
+  let missing: string[];
+  try {
+    missing = await ensurePermissions();
+  } catch (e) {
+    // the note app did not answer: say so and go on (the checks below do not need its answer)
+    log(`permissions: ERROR ${(e as Error).message}`);
+    return false;
+  }
   if (missing.length > 0) {
     log(`permissions missing: ${missing.join(', ')}`);
   }

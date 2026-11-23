@@ -43,3 +43,6 @@ deploy/vps/.env
 
 # Test coverage reports (generated)
 coverage/
+
+# Operator's private runbooks (commands with real hosts/paths; never committed)
+docs/private/

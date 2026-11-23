@@ -48,7 +48,7 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 7. NOTE が固まる・ページが空に見える現象が、まだ起きるか。起きたら診断の「Send log to bridge」。
 
 ## 次にやること（優先順）
-0. **[U→A] 公開の手順**: `docs/guides/github-operations.md`（push → Actions の最初の実行 → 設定 → イメージのタグ）。Dependabot は有効にしてよい（`.github/dependabot.yml` を用意した）。診断は、利用者向け（確認・送る）と、五回タップで開く開発者向けに分けた。実機の調査が済んだら、開発者向けの画面の実験は消す。
+0. **[U→A] 公開の手順**: `docs/guides/github-operations.md`。**2026-11-23 に済み**: 初回の push（`main`・`stg`）、CI 緑（bridge: fmt・clippy・テスト・audit・deny、plugin: 型・lint・851 件・パッケージ）、イメージ `ghcr.io/daisukematsuoh/spellink-edge:0.1.0`・`latest`（タグ `edge-v0.1.0`、認証なしで取れる）、セキュリティ設定（全部オン）。Actions の許可は「GitHub のもの＋`docker/*`・`Swatinem/rust-cache`・`dtolnay/rust-toolchain`」だけ。残り: `main` の保護（必須チェックに bridge・plugin の test）、Dependabot の PR 10 本の仕分け（React Native の大きな更新は SDK に合わせる）、`release.yml` は未実行。push は、これからも指示があるときだけ。Dependabot は有効にしてよい（`.github/dependabot.yml` を用意した）。診断は、利用者向け（確認・送る）と、五回タップで開く開発者向けに分けた。実機の調査が済んだら、開発者向けの画面の実験は消す。
 **[U]** = ユーザー、**[A]** = エージェント。担当の分け方は `handoff.md`（古い部分がある。この文書が優先）。
 1. **[U] 実機でペアリングを試す（2026-11-23 の予定）。** 新しいバイナリを `bridge/scripts/build-with-plugin.sh` で作って入れ、`device reissue nomad-test`・`device package nomad-test`、手順は `docs/guides/install-guide.md`。診断の「3. Network」「12. SDK names」「12b. Network channels」の結果を共有。結果を見て、表の気になったセルを直す。
 2. **[U] VPS（日本 Kagoya、米国 OVHcloud）を用意し、`relay-operations.md` の手順で DNS を置く**（ns1 の A、`lan` の NS、各中継と名前サービスの CNAME）。**[A]** staging で注文を通し、本番へ。立ち会う。`INFRA_IDS` に中継の ID を入れる。

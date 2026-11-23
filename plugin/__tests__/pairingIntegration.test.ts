@@ -295,6 +295,15 @@ suite('pairing a device, for real', () => {
     );
     expect(conn.name).toBe('Rock');
     expect(conn.mode).toBe('noise');
+    // the bridge says its own version in the welcome (the one in Cargo.toml)
+    expect(conn.bridgeVersion).toBe(
+      /^version = "(.*)"$/m.exec(
+        fs.readFileSync(
+          path.join(__dirname, '../../bridge/Cargo.toml'),
+          'utf8',
+        ),
+      )![1],
+    );
 
     // 10. the owner revokes the device: the live session ends and the key stops working
     const closed = new Promise<string>(resolve => (conn.onClose = resolve));

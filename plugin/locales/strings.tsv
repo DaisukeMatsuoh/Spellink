@@ -47,6 +47,9 @@ fallsRight	falls to the right {deg}°	右下がり {deg}°	baja hacia la derecha
 level	level	水平	horizontal	horizontale
 connectedTo	Connected to {name}	{name} に接続しました	Conectado a {name}	Connecté à {name}
 destination	Asking: {name}	接続先の AI: {name}	Preguntando a: {name}	Interroge : {name}
+versionLine	Spellink {plugin} · bridge {bridge}	Spellink {plugin} ・ ブリッジ {bridge}	Spellink {plugin} · puente {bridge}	Spellink {plugin} · pont {bridge}
+versionPluginOlder	This plugin is older than the bridge. Install the newest Spellink.snplg (pairing is kept).	このプラグインはブリッジより古い版です。最新の Spellink.snplg を入れてください(ペアリングは消えません)。	Este plugin es más antiguo que el puente. Instala el Spellink.snplg más reciente (el emparejamiento se conserva).	Ce plugin est plus ancien que le pont. Installez le dernier Spellink.snplg (l’appairage est conservé).
+versionBridgeOlder	The bridge is older than this plugin. Update the bridge on the computer (see the install guide).	ブリッジがこのプラグインより古い版です。パソコンのブリッジを更新してください(導入の手順を見てください)。	El puente es más antiguo que este plugin. Actualiza el puente en el ordenador (consulta la guía de instalación).	Le pont est plus ancien que ce plugin. Mettez à jour le pont sur l’ordinateur (voir le guide d’installation).
 saved	Saved.	保存しました。	Guardado.	Enregistré.
 pairButton	Pair with a bridge	ブリッジとペアリング	Emparejar con un puente	Appairer avec un pont
 pairTitle	Pair with a bridge	ブリッジとペアリング	Emparejar con un puente	Appairer avec un pont

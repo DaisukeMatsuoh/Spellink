@@ -177,7 +177,7 @@ export async function probeNameStore(log: Log): Promise<void> {
     }
     return raw
       .map(e =>
-        typeof e?.path === 'string' ? e.path.split('/').pop() ?? '' : '',
+        typeof e?.path === 'string' ? (e.path.split('/').pop() ?? '') : '',
       )
       .filter(n => n.startsWith(ENTRY_PREFIX));
   };

@@ -64,11 +64,7 @@ export function SettingsScreen() {
   );
   const toggle = useCallback(
     (
-      key:
-        | 'lineTilt'
-        | 'thinkingAnimation'
-        | 'busyNotice'
-        | 'avoidOverwriting',
+      key: 'lineTilt' | 'thinkingAnimation' | 'busyNotice' | 'avoidOverwriting',
     ) => {
       if (settings) {
         change({[key]: !settings[key]});

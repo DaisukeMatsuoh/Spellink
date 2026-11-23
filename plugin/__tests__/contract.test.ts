@@ -8,10 +8,7 @@ import {MAX_EXTRA_PAGES, parseFrame, parseSettings} from '../src/frames';
 // change on the bridge: `cd bridge && UPDATE_GOLDEN=1 cargo test --test contract`.
 const golden: Record<string, unknown>[] = JSON.parse(
   fs.readFileSync(
-    path.join(
-      __dirname,
-      '../../bridge/testdata/frames.golden.json',
-    ),
+    path.join(__dirname, '../../bridge/testdata/frames.golden.json'),
     'utf8',
   ),
 );

@@ -21,8 +21,7 @@ export type PairFrame =
   | {type: 'error'; code: string};
 
 export type ParsedPairFrame =
-  | {kind: 'frame'; frame: PairFrame}
-  | {kind: 'bad'; reason: string};
+  {kind: 'frame'; frame: PairFrame} | {kind: 'bad'; reason: string};
 
 /** A frame from the pairing channel, or why it cannot be trusted. */
 export function parsePairFrame(raw: unknown): ParsedPairFrame {

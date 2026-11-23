@@ -177,7 +177,7 @@ describe('the lasso flow and reading the page', () => {
                 sent = m.layout;
               }
             },
-          } as never),
+          }) as never,
       );
     const flow = new AskFlow(() => {});
     void flow.run();

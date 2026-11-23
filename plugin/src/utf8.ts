@@ -26,7 +26,7 @@ export function utf8Encode(s: string): Uint8Array {
 export function utf8Decode(b: Uint8Array): string {
   const parts: string[] = [];
   let codes: number[] = [];
-  for (let i = 0; i < b.length; ) {
+  for (let i = 0; i < b.length;) {
     const x = b[i];
     let c: number;
     if (x < 0x80) {

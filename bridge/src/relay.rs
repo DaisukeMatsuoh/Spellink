@@ -537,7 +537,7 @@ impl Relay {
 }
 
 fn random_session_id() -> String {
-    use rand::RngCore;
+    use rand::Rng;
     let mut b = [0u8; 16];
     rand::rng().fill_bytes(&mut b);
     hex::encode(b)

@@ -136,7 +136,7 @@ impl Identity {
     }
 
     fn nonce() -> String {
-        use rand::RngCore;
+        use rand::Rng;
         let mut n = [0u8; 16];
         rand::rng().fill_bytes(&mut n);
         b64(&n)

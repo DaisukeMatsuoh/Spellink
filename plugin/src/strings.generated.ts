@@ -61,6 +61,11 @@ export const STRINGS = {
     level: 'level',
     connectedTo: 'Connected to {name}',
     destination: 'Asking: {name}',
+    versionLine: 'Spellink {plugin} · bridge {bridge}',
+    versionPluginOlder:
+      'This plugin is older than the bridge. Install the newest Spellink.snplg (pairing is kept).',
+    versionBridgeOlder:
+      'The bridge is older than this plugin. Update the bridge on the computer (see the install guide).',
     saved: 'Saved.',
     pairButton: 'Pair with a bridge',
     pairTitle: 'Pair with a bridge',
@@ -159,6 +164,11 @@ export const STRINGS = {
     level: '水平',
     connectedTo: '{name} に接続しました',
     destination: '接続先の AI: {name}',
+    versionLine: 'Spellink {plugin} ・ ブリッジ {bridge}',
+    versionPluginOlder:
+      'このプラグインはブリッジより古い版です。最新の Spellink.snplg を入れてください(ペアリングは消えません)。',
+    versionBridgeOlder:
+      'ブリッジがこのプラグインより古い版です。パソコンのブリッジを更新してください(導入の手順を見てください)。',
     saved: '保存しました。',
     pairButton: 'ブリッジとペアリング',
     pairTitle: 'ブリッジとペアリング',
@@ -258,6 +268,11 @@ export const STRINGS = {
     level: 'horizontal',
     connectedTo: 'Conectado a {name}',
     destination: 'Preguntando a: {name}',
+    versionLine: 'Spellink {plugin} · puente {bridge}',
+    versionPluginOlder:
+      'Este plugin es más antiguo que el puente. Instala el Spellink.snplg más reciente (el emparejamiento se conserva).',
+    versionBridgeOlder:
+      'El puente es más antiguo que este plugin. Actualiza el puente en el ordenador (consulta la guía de instalación).',
     saved: 'Guardado.',
     pairButton: 'Emparejar con un puente',
     pairTitle: 'Emparejar con un puente',
@@ -358,6 +373,11 @@ export const STRINGS = {
     level: 'horizontale',
     connectedTo: 'Connecté à {name}',
     destination: 'Interroge : {name}',
+    versionLine: 'Spellink {plugin} · pont {bridge}',
+    versionPluginOlder:
+      'Ce plugin est plus ancien que le pont. Installez le dernier Spellink.snplg (l’appairage est conservé).',
+    versionBridgeOlder:
+      'Le pont est plus ancien que ce plugin. Mettez à jour le pont sur l’ordinateur (voir le guide d’installation).',
     saved: 'Enregistré.',
     pairButton: 'Appairer avec un pont',
     pairTitle: 'Appairer avec un pont',

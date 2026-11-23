@@ -1,3 +1,4 @@
+import {olderSide, PLUGIN_VERSION} from '../version';
 import React, {useCallback, useEffect, useState} from 'react';
 import {ScrollView, Text, View} from 'react-native';
 import {
@@ -27,6 +28,7 @@ export function SettingsScreen() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [conn, setConn] = useState<BridgeConnection | null>(null);
   const [destination, setDestination] = useState('');
+  const [bridgeVersion, setBridgeVersion] = useState('');
 
   useEffect(() => {
     let c: BridgeConnection | null = null;
@@ -48,6 +50,7 @@ export function SettingsScreen() {
       };
       setConn(c);
       setDestination(c.provider);
+      setBridgeVersion(c.bridgeVersion);
       setSettings(c.settings);
       setStatus(t('connectedTo', {name: c.name}));
     })();
@@ -73,6 +76,11 @@ export function SettingsScreen() {
     [change, settings],
   );
 
+  const older = olderSide(PLUGIN_VERSION, bridgeVersion);
+  const versionNote = older
+    ? t(older === 'plugin' ? 'versionPluginOlder' : 'versionBridgeOlder')
+    : '';
+
   return (
     <View style={styles.screen}>
       <Text style={styles.title}>{t('settingsTitle')}</Text>
@@ -84,6 +92,12 @@ export function SettingsScreen() {
       </View>
       <ScrollView style={styles.fill}>
         <Text style={styles.text}>{status}</Text>
+        {bridgeVersion ? (
+          <Text style={styles.small}>
+            {t('versionLine', {plugin: PLUGIN_VERSION, bridge: bridgeVersion})}
+          </Text>
+        ) : null}
+        {versionNote ? <Text style={styles.text}>{versionNote}</Text> : null}
         {destination ? (
           <Text style={styles.small}>
             {t('destination', {name: destination})}

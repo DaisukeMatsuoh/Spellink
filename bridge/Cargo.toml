@@ -1,6 +1,6 @@
 [package]
 name = "spellink-bridge"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 description = "The Spellink bridge and relay"
 license = "Apache-2.0"

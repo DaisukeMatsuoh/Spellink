@@ -1,3 +1,4 @@
+import {parseVersion} from './version';
 import type {BridgeEndpoint} from './bridgeConfig';
 import {MAX_EXTRA_PAGES, parseFrame, parseSettings} from './frames';
 import {t} from './i18n';
@@ -42,6 +43,8 @@ export class BridgeConnection {
     readonly settings: Settings,
     /** The AI the bridge asks, as the bridge names it ("" if it did not say). */
     readonly provider = '',
+    /** The bridge's own version ("" if it did not say, or said something we cannot use). */
+    readonly bridgeVersion = '',
   ) {
     ws.onmessage = e => {
       let m: {value: unknown} | null;
@@ -287,6 +290,9 @@ export function connectFirst(
               parseSettings(w.settings),
               typeof w.provider === 'string' && w.provider.length <= 128
                 ? w.provider
+                : '',
+              typeof w.version === 'string' && parseVersion(w.version)
+                ? w.version
                 : '',
             ),
           );

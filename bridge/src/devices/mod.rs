@@ -329,7 +329,7 @@ pub type Rand = Box<dyn FnMut(&mut [u8]) -> Result<(), String> + Send>;
 
 pub fn os_rand() -> Rand {
     Box::new(|b: &mut [u8]| {
-        use rand::RngCore;
+        use rand::Rng;
         rand::rng().fill_bytes(b); // the operating system's generator: it does not fail here
         Ok(())
     })

@@ -57,6 +57,7 @@ export function DiagnosticsScreen() {
           onPress={run('check', async () => {
             await diag.environment(log);
             await diag.network(log);
+            await diag.noteProbe(log);
             log(t('diagDone'));
           })}
         />

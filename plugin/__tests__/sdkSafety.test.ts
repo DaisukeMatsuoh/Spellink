@@ -1,7 +1,9 @@
+import {PluginManager} from 'sn-plugin-lib';
 import {fakeNote} from '../__mocks__/sn-plugin-lib';
 import {
   call,
   CallTimeoutError,
+  closeView,
   deleteElementsAt,
   boxesOf,
   ensureOpen,
@@ -505,5 +507,37 @@ describe('the page procedures follow their tables (docs/spec/page-turn.md)', () 
         handlers: {X0: () => {}},
       }),
     ).rejects.toThrow(/stuck at A after OK/);
+  });
+});
+
+describe('leaving the plugin screen', () => {
+  it('goes out even when an earlier request to the note app never gets an answer (the line is stuck)', async () => {
+    setTimeoutScaleForTests(0.004);
+    const closing = jest.spyOn(PluginManager, 'closePluginView');
+    // the host never answers this one, and everything behind it in the line waits for it
+    const stuck = native(
+      'getCurrentFilePath',
+      () => new Promise<never>(() => {}),
+    );
+    const queued = native('hasPermission', async () => 1);
+    await expect(stuck).rejects.toBeInstanceOf(CallTimeoutError);
+    await expect(queued).rejects.toBeInstanceOf(CallTimeoutError);
+    expect(await closeView()).toBe(true);
+    expect(closing).toHaveBeenCalledTimes(1);
+    closing.mockRestore();
+  });
+
+  it('says so when the host does not answer, a refusal, or an exception — and never throws', async () => {
+    setTimeoutScaleForTests(0.004);
+    const closing = jest.spyOn(PluginManager, 'closePluginView');
+    closing.mockImplementationOnce(() => new Promise<never>(() => {}));
+    expect(await closeView()).toBe(false);
+    closing.mockImplementationOnce(async () => false);
+    expect(await closeView()).toBe(false);
+    closing.mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+    expect(await closeView()).toBe(false);
+    closing.mockRestore();
   });
 });

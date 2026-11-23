@@ -341,17 +341,30 @@ export async function showView(): Promise<boolean> {
   }
 }
 
-/** Closes the plugin's own screen. */
-export async function closeView(): Promise<void> {
+/**
+ * Closes the plugin's own screen. It does NOT wait in the line of requests to the note app: it
+ * touches no note, and a person who cannot leave a screen is stuck (the only way out would be to
+ * restart the device). When an earlier request never gets an answer, everything behind it in the
+ * line waits for ever — this one must still go out. Returns whether the host said it closed.
+ */
+export async function closeView(): Promise<boolean> {
+  const started = Date.now();
   try {
-    const ok = await raw('closePluginView', () =>
-      PluginManager.closePluginView(),
+    const ok = await withTimeout(
+      'closePluginView',
+      Promise.resolve().then(() => PluginManager.closePluginView()),
+      () => {},
     );
     if (ok === false) {
       trace('closePluginView.refused');
     }
-  } catch {
-    // already recorded by raw()
+    return ok !== false;
+  } catch (e) {
+    trace('closePluginView', {
+      ms: Date.now() - started,
+      err: (e as Error).message,
+    });
+    return false;
   }
 }
 

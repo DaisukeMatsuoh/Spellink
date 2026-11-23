@@ -1,6 +1,6 @@
 // The version of this plugin, and what to say when it and the bridge it meets are not the same.
 // `__tests__/version.test.ts` keeps PLUGIN_VERSION equal to package.json and PluginConfig.json.
-export const PLUGIN_VERSION = '0.1.1';
+export const PLUGIN_VERSION = '0.1.2';
 
 /** Digits of "MAJOR.MINOR.PATCH" (extra text such as "-rc1" is ignored), or null if not that shape. */
 export function parseVersion(v: string): [number, number, number] | null {

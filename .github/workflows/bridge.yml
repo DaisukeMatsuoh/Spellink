@@ -5,8 +5,8 @@ on:
     branches: [main]
     paths: ['bridge/**', '.github/workflows/bridge.yml', 'docs/spec/**']
     tags: ['bridge-v*']
+  # every pull request runs this: required checks must always report (main is protected)
   pull_request:
-    paths: ['bridge/**', '.github/workflows/bridge.yml', 'docs/spec/**']
   workflow_dispatch:
 
 permissions:
@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   test:
+    name: bridge test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,6 +37,7 @@ jobs:
       - run: cargo test --locked
 
   supply-chain:
+    name: bridge supply-chain
     # the dependencies are few and pinned (Cargo.lock); this watches them for known holes and for licences
     runs-on: ubuntu-latest
     defaults:

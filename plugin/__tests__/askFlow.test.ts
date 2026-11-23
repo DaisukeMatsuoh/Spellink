@@ -182,7 +182,7 @@ describe('AskFlow', () => {
                 asks.push({note: m.note, question: m.question});
               }
             },
-          } as never),
+          }) as never,
       );
     const flow = new AskFlow(() => {});
     void flow.runWithQuestion('それを3倍して', layout, ctx);
@@ -453,7 +453,7 @@ describe('AskFlow', () => {
                 sent = m.layout;
               }
             },
-          } as never),
+          }) as never,
       );
       const selection: Box = {left: 84, top: 100, right: 400, bottom: 260};
       const flow = new AskFlow(() => {});

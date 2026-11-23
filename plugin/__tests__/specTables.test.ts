@@ -110,8 +110,8 @@ describe.each(cases)(
             c.k === 'do'
               ? [c.next]
               : c.k === 'guard'
-              ? [c.more.next, c.spent.next]
-              : [];
+                ? [c.more.next, c.spent.next]
+                : [];
           for (const n of nexts) {
             expect(states as readonly string[]).toContain(n);
           }

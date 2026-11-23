@@ -109,8 +109,8 @@ describe('the shape of the table', () => {
       return c.k === 'do'
         ? [c.next]
         : c.k === 'guard'
-        ? [c.more.next, c.spent.next]
-        : [];
+          ? [c.more.next, c.spent.next]
+          : [];
     });
 
   it('has no way out of an end state', () => {

@@ -140,8 +140,8 @@ export class InkDrops {
       this.drawnPieces === 0
         ? 'FAIL_CLEAN'
         : e instanceof NoteMovedError
-        ? 'MOVED'
-        : 'FAIL';
+          ? 'MOVED'
+          : 'FAIL';
     await this.event(event, e);
   }
 

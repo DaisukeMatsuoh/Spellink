@@ -11,7 +11,7 @@ jest.mock('../src/bridgeClient', () => ({
   },
 }));
 
-const textStroke = () => ({type: 0} as never);
+const textStroke = () => ({type: 0}) as never;
 const settle = async () => {
   for (let i = 0; i < 40 && !getAskState().finished; i++) {
     await new Promise(r => setTimeout(r, 10));

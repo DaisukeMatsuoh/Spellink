@@ -97,7 +97,10 @@ export interface ConnectAttempt {
  * the relay a refusal looks like an absent bridge, so only direct and tunnel addresses can tell.
  */
 export class NoBridgeError extends Error {
-  constructor(message: string, readonly refused: string[]) {
+  constructor(
+    message: string,
+    readonly refused: string[],
+  ) {
     super(message);
   }
 }

@@ -293,8 +293,8 @@ export class AskFlow {
       e instanceof NoteMovedError
         ? 'MOVED'
         : e instanceof CallTimeoutError
-        ? 'SILENT'
-        : 'REFUSED';
+          ? 'SILENT'
+          : 'REFUSED';
     this.machine.dispatch(event, e);
   }
 

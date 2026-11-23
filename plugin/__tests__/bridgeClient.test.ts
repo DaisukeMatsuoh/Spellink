@@ -132,8 +132,12 @@ describe('a bridge that turns this device away', () => {
     expect(noBridgeMessage(new NoBridgeError('x', []))).toMatch(
       /registered bridge was not found/,
     );
-    expect(noBridgeMessage(new Error('boom'))).toMatch(/registered bridge was not found/);
-    expect(noBridgeMessage('a string')).toMatch(/registered bridge was not found/);
+    expect(noBridgeMessage(new Error('boom'))).toMatch(
+      /registered bridge was not found/,
+    );
+    expect(noBridgeMessage('a string')).toMatch(
+      /registered bridge was not found/,
+    );
   });
 
   it('refusedBridges works on the attempts alone', () => {

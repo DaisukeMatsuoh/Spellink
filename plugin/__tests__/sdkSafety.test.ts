@@ -424,12 +424,10 @@ describe('the page procedures follow their tables (docs/spec/page-turn.md)', () 
     expect(events()).toContain('pageTurn.fallback');
     jest.restoreAllMocks();
     resetTraceForTests();
-    jest
-      .spyOn(file(), 'getNotePageTemplate')
-      .mockResolvedValue({
-        success: true,
-        result: {name: 'custom', md5: 'abc123'},
-      });
+    jest.spyOn(file(), 'getNotePageTemplate').mockResolvedValue({
+      success: true,
+      result: {name: 'custom', md5: 'abc123'},
+    });
     await insertPageAfter(FILE, 2, 0); // a custom template cannot be referenced by name
     expect(events()).toContain('pageTurn.fallback');
   });

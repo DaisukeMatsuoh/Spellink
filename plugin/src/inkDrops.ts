@@ -92,20 +92,20 @@ export class InkDrops {
       WAVE_TABLE,
       this.handlers(),
       (k, d) => trace(k, {d}),
-      ['LEFTOVER', 'STOPPED'],
-      'OFF',
+      ['LeftOver', 'Stopped'],
+      'Off',
       'wave',
     );
   }
 
   /** Starts the animation; `autoTick: false` lets a test drive the ticks itself. */
   start(autoTick = true): void {
-    this.machine.dispatch('START', autoTick);
+    this.machine.dispatch('Start', autoTick);
   }
 
   /** Stops and removes everything drawn; resolves once the page is clean (or the rest is remembered). */
   async stop(): Promise<void> {
-    this.chain = this.chain.then(() => this.event('STOP'));
+    this.chain = this.chain.then(() => this.event('Stop'));
     await this.chain;
   }
 
@@ -113,7 +113,7 @@ export class InkDrops {
 
   /** One periodic step; what it does depends on the state (table). */
   private async tick(): Promise<void> {
-    await this.event('TICK');
+    await this.event('Tick');
   }
 
   private async event(event: WaveEvent, arg?: unknown): Promise<void> {
@@ -138,10 +138,10 @@ export class InkDrops {
     });
     const event: WaveEvent =
       this.drawnPieces === 0
-        ? 'FAIL_CLEAN'
+        ? 'FailedClean'
         : e instanceof NoteMovedError
-          ? 'MOVED'
-          : 'FAIL';
+          ? 'NoteChanged'
+          : 'Failed';
     await this.event(event, e);
   }
 
@@ -164,21 +164,21 @@ export class InkDrops {
         this.stopTimer();
         this.job = async () => {
           await this.clear();
-          await this.event('CLEARED');
+          await this.event('Cleared');
         };
       },
       W4: () => {
         this.job = async () => {
           await this.clear();
-          await this.event('WRAPPED');
+          await this.event('Wrapped');
         };
       },
       W5: () => {}, // the user is on another page: draw nothing until they are back
       W6: () => {
         this.stopTimer();
         this.job = async () => {
-          await this.clear(); // once, right away; a failure here is the FAIL cell of CLEARING
-          await this.event('CLEARED');
+          await this.clear(); // once, right away; a failure here is the Failed cell of Clearing
+          await this.event('Cleared');
         };
       },
       W7: () => {
@@ -213,12 +213,12 @@ export class InkDrops {
   private async drawOne(): Promise<void> {
     // The user looking at another page: draw nothing until they are back.
     if (!(await isOnPage(this.filePath, this.page))) {
-      this.machine.dispatch('AWAY');
+      this.machine.dispatch('Away');
       return;
     }
     const end = this.x + this.width;
     if (this.cursor >= end) {
-      await this.event('WRAP');
+      await this.event('Wrap');
       return;
     }
     const next = Math.min(end, this.cursor + this.size * PIECE_CHARS);

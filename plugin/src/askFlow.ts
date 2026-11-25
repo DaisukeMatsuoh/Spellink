@@ -186,29 +186,29 @@ export class AskFlow {
   /** The user pressed the button while this question is running; true = tell them (A2). */
   press(): boolean {
     this.pressedWhileBusy = false;
-    this.machine.dispatch('PRESS');
+    this.machine.dispatch('Pressed');
     return this.pressedWhileBusy;
   }
 
   /** Stops the answer. Always ends the running question, whatever state it is in. */
   cancel(): void {
-    this.machine.dispatch('CANCEL');
+    this.machine.dispatch('CancelRequested');
   }
 
   /** What a panel shows; the last state also says whether the question is over. */
   async run(): Promise<void> {
     this.begin({message: t('permissions'), finished: false});
     try {
-      this.machine.dispatch('PRESS'); // IDLE → PERM
+      this.machine.dispatch('Pressed'); // Idle → CheckingPermission
       const missing = await ensurePermissions();
       this.checkpoint();
       if (missing.length > 0) {
-        this.machine.dispatch('DENIED', {
+        this.machine.dispatch('Denied', {
           message: t('permissionDenied', {list: missing.join(', ')}),
         });
         return;
       }
-      this.machine.dispatch('GRANTED'); // PERM → RECOG
+      this.machine.dispatch('Granted'); // CheckingPermission → Recognizing
       this.update({message: t('recognizing')});
       const ctx = await noteContext();
       this.checkpoint();
@@ -217,11 +217,11 @@ export class AskFlow {
       const question = (await recognizeLasso(ctx.size)).trim();
       this.checkpoint();
       if (!question) {
-        this.machine.dispatch('NOTEXT');
+        this.machine.dispatch('NoText');
         return;
       }
       this.update({question});
-      this.machine.dispatch('RECOGNIZED'); // RECOG → PREP
+      this.machine.dispatch('Recognized'); // Recognizing → Preparing
       await call('setLassoBoxState', () =>
         PluginCommAPI.setLassoBoxState(LASSO_REMOVE),
       );
@@ -245,7 +245,7 @@ export class AskFlow {
     }
   }
 
-  /** Same as `run` but with a known question and position (used by diagnostics). Starts at PREP. */
+  /** Same as `run` but with a known question and position (used by diagnostics). Starts at Preparing. */
   async runWithQuestion(
     question: string,
     layout: LayoutParams,
@@ -253,7 +253,7 @@ export class AskFlow {
     selection?: Box,
   ): Promise<void> {
     this.begin({message: '', question, finished: false});
-    this.machine.state = 'PREP';
+    this.machine.state = 'Preparing';
     try {
       await this.answer(question, layout, ctx, selection);
     } catch (e) {
@@ -291,10 +291,10 @@ export class AskFlow {
     }
     const event: AskEvent =
       e instanceof NoteMovedError
-        ? 'MOVED'
+        ? 'NoteChanged'
         : e instanceof CallTimeoutError
-          ? 'SILENT'
-          : 'REFUSED';
+          ? 'NoAnswer'
+          : 'Refused';
     this.machine.dispatch(event, e);
   }
 
@@ -372,7 +372,7 @@ export class AskFlow {
         this.doneFrame = arg as DoneFrame;
         this.stopQuiet();
         this.writes.then(
-          () => this.machine.dispatch('DRAINED'),
+          () => this.machine.dispatch('Drained'),
           e => this.fault(e),
         );
       },
@@ -416,7 +416,7 @@ export class AskFlow {
     }
   }
 
-  // ------------------------------------------------------------------ PREP: getting ready
+  // ------------------------------------------------------------------ Preparing: getting ready
 
   private async answer(
     question: string,
@@ -470,7 +470,7 @@ export class AskFlow {
       try {
         this.conn = await connectFirst(endpoints);
       } catch (e) {
-        this.machine.dispatch('NOBRIDGE', {message: noBridgeMessage(e)});
+        this.machine.dispatch('NoBridge', {message: noBridgeMessage(e)});
         return;
       }
       if (this.terminal()) {
@@ -527,14 +527,14 @@ export class AskFlow {
   }
 
   /**
-   * Reading the page is nice to have: a failure is an event the table handles (SOFTFAIL: go on
+   * Reading the page is nice to have: a failure is an event the table handles (SoftFailed: go on
    * without it). A note app that does not answer at all is not soft: it ends the answer.
    */
   private softFail<T>(e: unknown, fallback: T): T {
     if (e instanceof CallTimeoutError) {
       throw e;
     }
-    this.machine.dispatch('SOFTFAIL', e);
+    this.machine.dispatch('SoftFailed', e);
     return fallback;
   }
 
@@ -571,7 +571,7 @@ export class AskFlow {
     return {stop: () => (stopped ??= drops.stop())};
   }
 
-  // ------------------------------------------------------------------ STREAM: the answer
+  // ------------------------------------------------------------------ Streaming: the answer
 
   private newId(): string {
     return `${Date.now().toString(36)}-${Math.random()
@@ -607,16 +607,16 @@ export class AskFlow {
       this.attach(conn);
       if (this.earlyClose) {
         // It dropped between connecting and asking: connect again and ask (nothing was sent yet).
-        this.machine.dispatch('CLOSE', this.earlyClose);
+        this.machine.dispatch('Closed', this.earlyClose);
         return;
       }
       try {
         this.sendAsk(conn);
       } catch (e) {
-        this.machine.dispatch('CLOSE', (e as Error).message);
+        this.machine.dispatch('Closed', (e as Error).message);
         return;
       }
-      this.machine.dispatch('ASKED'); // PREP → STREAM
+      this.machine.dispatch('Asked'); // Preparing → Streaming
       this.armQuiet();
     }).finally(() => {
       this.stopQuiet();
@@ -628,10 +628,10 @@ export class AskFlow {
     c.onClose = reason => {
       // A close of a connection we already replaced is not news.
       if (c === this.conn) {
-        this.machine.dispatch('CLOSE', reason);
+        this.machine.dispatch('Closed', reason);
       }
     };
-    c.onBad = reason => this.machine.dispatch('BAD', reason);
+    c.onBad = reason => this.machine.dispatch('BadFrame', reason);
     c.onMessage = m => this.receive(m);
   }
 
@@ -647,7 +647,7 @@ export class AskFlow {
     if ('seq' in m && typeof m.seq === 'number') {
       if (m.seq < this.nextSeq) {
         this.machine.dispatch(
-          'DONE' === m.type.toUpperCase() ? 'DONE' : 'LATE',
+          'DONE' === m.type.toUpperCase() ? 'DoneFrame' : 'Late',
           m,
         );
         return;
@@ -656,28 +656,28 @@ export class AskFlow {
     }
     switch (m.type) {
       case 'status':
-        this.machine.dispatch('STATUS', m);
+        this.machine.dispatch('Status', m);
         break;
       case 'line':
-        this.machine.dispatch('LINE', m);
+        this.machine.dispatch('Line', m);
         break;
       case 'done':
-        this.machine.dispatch('DONE', m);
+        this.machine.dispatch('DoneFrame', m);
         break;
       case 'error':
-        this.machine.dispatch('ERR', new Error(m.message));
+        this.machine.dispatch('ErrorFrame', new Error(m.message));
         break;
     }
   }
 
   // No traffic at all from the bridge for quietMs means the connection is dead although the
-  // socket looks open (the bridge sends keep-alives while it works). Only watched while STREAM.
+  // socket looks open (the bridge sends keep-alives while it works). Only watched while Streaming.
   private armQuiet(): void {
     this.stopQuiet();
-    if (this.machine.state === 'STREAM') {
+    if (this.machine.state === 'Streaming') {
       this.quiet = setTimeout(() => {
         trace('ask.quiet', {d: {ms: quietMs}});
-        this.machine.dispatch('QUIET', 'no traffic');
+        this.machine.dispatch('Quiet', 'no traffic');
       }, quietMs);
     }
   }
@@ -690,7 +690,7 @@ export class AskFlow {
   }
 
   /**
-   * The connection dropped before the answer was complete (state RESUME). Up to MAX_RECONNECTS
+   * The connection dropped before the answer was complete (state Reconnecting). Up to MAX_RECONNECTS
    * attempts in a row, each waiting at most for the connection to be made; hearing from the bridge
    * again resets the count. The bridge keeps numbered frames, so we ask only for the ones after
    * the last we handled (ADR 0013) — or, if it never got the question, ask again.
@@ -709,7 +709,7 @@ export class AskFlow {
       dead.close();
     }
     try {
-      while (this.machine.state === 'RESUME') {
+      while (this.machine.state === 'Reconnecting') {
         this.streak++;
         this.update({
           message: t('reconnecting', {n: this.streak, max: MAX_RECONNECTS}),
@@ -739,12 +739,12 @@ export class AskFlow {
           } else {
             this.sendAsk(c);
           }
-          this.machine.dispatch('RESUMED'); // RESUME → STREAM
+          this.machine.dispatch('Resumed'); // Reconnecting → Streaming
           this.armQuiet();
           return;
         } catch {
           this.machine.dispatch(
-            'RESUME_NG',
+            'ResumeFailed',
             reason,
             this.streak < MAX_RECONNECTS ? 'more' : 'spent',
           );

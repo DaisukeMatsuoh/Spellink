@@ -40,16 +40,31 @@ describe('the table in the document is the table in the code', () => {
   it('is strict: a hole, an unknown name or an unreadable cell is an error naming the place', () => {
     const md = fs.readFileSync(SPEC, 'utf8');
     expect(() =>
-      parse(md.replace('| **IDLE** | A1→PERM |', '| **IDLE** | A99→PERM |')),
-    ).toThrow(/IDLE × PRESS.*unknown action A99/);
+      parse(
+        md.replace(
+          '| **Idle** | A1→CheckingPermission |',
+          '| **Idle** | A99→CheckingPermission |',
+        ),
+      ),
+    ).toThrow(/Idle × Pressed.*unknown action A99/);
     expect(() =>
-      parse(md.replace('| **IDLE** | A1→PERM |', '| **IDLE** | A1→NOWHERE |')),
+      parse(
+        md.replace(
+          '| **Idle** | A1→CheckingPermission |',
+          '| **Idle** | A1→NOWHERE |',
+        ),
+      ),
     ).toThrow(/unknown state NOWHERE/);
     expect(() =>
-      parse(md.replace('| **IDLE** | A1→PERM |', '| **IDLE** | maybe |')),
-    ).toThrow(/IDLE × PRESS.*notation/);
-    expect(() => parse(md.replace(/^\| \*\*OK\*\* .*$/m, ''))).toThrow(
-      /OK × .*no cell/,
+      parse(
+        md.replace(
+          '| **Idle** | A1→CheckingPermission |',
+          '| **Idle** | maybe |',
+        ),
+      ),
+    ).toThrow(/Idle × Pressed.*notation/);
+    expect(() => parse(md.replace(/^\| \*\*Completed\*\* .*$/m, ''))).toThrow(
+      /Completed × .*no cell/,
     );
   });
 });
@@ -119,9 +134,9 @@ describe('the shape of the table', () => {
     }
   });
 
-  it('reaches every state from IDLE', () => {
-    const seen = new Set<AskState>(['IDLE']);
-    const todo: AskState[] = ['IDLE'];
+  it('reaches every state from Idle', () => {
+    const seen = new Set<AskState>(['Idle']);
+    const todo: AskState[] = ['Idle'];
     while (todo.length) {
       for (const n of nexts(todo.pop()!)) {
         if (!seen.has(n)) {
@@ -151,16 +166,16 @@ describe('the shape of the table', () => {
 
   it('lets the user cancel, and the user press again, in every state in which a question runs', () => {
     for (const s of [
-      'PERM',
-      'RECOG',
-      'PREP',
-      'STREAM',
-      'RESUME',
-      'DRAIN',
+      'CheckingPermission',
+      'Recognizing',
+      'Preparing',
+      'Streaming',
+      'Reconnecting',
+      'Draining',
     ] as AskState[]) {
-      const cancel = ASK_TABLE[s].CANCEL;
-      expect(cancel.k === 'do' && cancel.next === 'CANC').toBe(true);
-      const press = ASK_TABLE[s].PRESS;
+      const cancel = ASK_TABLE[s].CancelRequested;
+      expect(cancel.k === 'do' && cancel.next === 'Cancelled').toBe(true);
+      const press = ASK_TABLE[s].Pressed;
       expect(
         press.k === 'do' && press.action === 'A2' && press.next === s,
       ).toBe(true);
@@ -169,16 +184,16 @@ describe('the shape of the table', () => {
 
   it('answers a failed or refused note app in every state that writes or reads the note', () => {
     for (const s of [
-      'PERM',
-      'RECOG',
-      'PREP',
-      'STREAM',
-      'RESUME',
-      'DRAIN',
+      'CheckingPermission',
+      'Recognizing',
+      'Preparing',
+      'Streaming',
+      'Reconnecting',
+      'Draining',
     ] as AskState[]) {
-      for (const e of ['REFUSED', 'SILENT'] as AskEvent[]) {
+      for (const e of ['Refused', 'NoAnswer'] as AskEvent[]) {
         const c = ASK_TABLE[s][e];
-        expect(c.k === 'do' && c.next === 'FAIL').toBe(true);
+        expect(c.k === 'do' && c.next === 'Failed').toBe(true);
       }
     }
   });

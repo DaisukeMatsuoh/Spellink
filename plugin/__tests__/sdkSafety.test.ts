@@ -482,20 +482,20 @@ describe('the page procedures follow their tables (docs/spec/page-turn.md)', () 
     const {runProcedure} = require('../src/procedure');
     const table = {
       A: {
-        OK: {k: 'never', note: 'x'},
-        FAIL: {k: 'do', action: 'X0', next: 'END'},
-        REF: {k: 'do', action: 'X0', next: 'END'},
-        SIL: {k: 'do', action: 'X0', next: 'END'},
-        NOP: {k: 'do', action: 'X0', next: 'END'},
-        ODD: {k: 'do', action: 'X0', next: 'END'},
+        Ok: {k: 'never', note: 'x'},
+        Failed: {k: 'do', action: 'X0', next: 'END'},
+        Refused: {k: 'do', action: 'X0', next: 'END'},
+        NoAnswer: {k: 'do', action: 'X0', next: 'END'},
+        NoteChanged: {k: 'do', action: 'X0', next: 'END'},
+        Unexpected: {k: 'do', action: 'X0', next: 'END'},
       },
       END: {
-        OK: {k: 'never', note: 'c'},
-        FAIL: {k: 'never', note: 'c'},
-        REF: {k: 'never', note: 'c'},
-        SIL: {k: 'never', note: 'c'},
-        NOP: {k: 'never', note: 'c'},
-        ODD: {k: 'never', note: 'c'},
+        Ok: {k: 'never', note: 'c'},
+        Failed: {k: 'never', note: 'c'},
+        Refused: {k: 'never', note: 'c'},
+        NoAnswer: {k: 'never', note: 'c'},
+        NoteChanged: {k: 'never', note: 'c'},
+        Unexpected: {k: 'never', note: 'c'},
       },
     };
     await expect(
@@ -504,10 +504,10 @@ describe('the page procedures follow their tables (docs/spec/page-turn.md)', () 
         table,
         start: 'A',
         ends: ['END'],
-        steps: {A: async () => 'OK'},
+        steps: {A: async () => 'Ok'},
         handlers: {X0: () => {}},
       }),
-    ).rejects.toThrow(/stuck at A after OK/);
+    ).rejects.toThrow(/stuck at A after Ok/);
   });
 });
 
@@ -560,7 +560,7 @@ describe('the line of requests to the note app (docs/spec/host-requests.md)', ()
     expect(kindOf('something.new')).toBe('mutate');
   });
 
-  it('IDLE: each kind starts at once', async () => {
+  it('Idle: each kind starts at once', async () => {
     expect(await native('getCurrentFilePath', async () => 'r')).toBe('r');
     expect(await native('saveCurrentNote', async () => 'm')).toBe('m');
     expect(await native('points.size', async () => 's', 'shared')).toBe('s');
@@ -593,7 +593,7 @@ describe('the line of requests to the note app (docs/spec/host-requests.md)', ()
     expect(await write).toBe('ok');
   });
 
-  it('READ and SHARED: a read waits for running reads of elements, and they wait for a read', async () => {
+  it('Reading and SharedReading: a read waits for running reads of elements, and they wait for a read', async () => {
     const log: string[] = [];
     const run = (name: string, ms: number, kind?: 'shared') =>
       native(
@@ -620,13 +620,13 @@ describe('the line of requests to the note app (docs/spec/host-requests.md)', ()
     ]);
   });
 
-  it('SHARED: a read of an element that never answers gives its place back too', async () => {
+  it('SharedReading: a read of an element that never answers gives its place back too', async () => {
     const stuck = native('points.size', never, 'shared');
     await expect(stuck).rejects.toBeInstanceOf(CallTimeoutError);
     expect(await native('saveCurrentNote', async () => 'saved')).toBe('saved');
   });
 
-  it('MUT-LOST: a mutation that never answers keeps its place — nothing else for the note is sent; a late answer starts the line again', async () => {
+  it('MutationLost: a mutation that never answers keeps its place — nothing else for the note is sent; a late answer starts the line again', async () => {
     const save = held('done');
     const lost = native('saveCurrentNote', save.start);
     await expect(lost).rejects.toBeInstanceOf(CallTimeoutError);

@@ -2,65 +2,65 @@
 
 対象: 回答が 1 ページに収まらないとき、直後に新しいページを挿入して表示を移す手順（**挿入**）と、ストロークを書く手順（**書き込み**）。
 一連の手順なので、縦軸は**手順**（これから行う手順）、横軸はその手順の**結果**。**この文書の表が、コードの表の元データ**（`npm run spec`。書式は ask-flow.md と同じ。処理 X0〜X4）。
-実行側は、手順ごとに SDK を呼んで結果を `OK / FAIL / REF / SIL / NOP / ODD` に分類し、表を引いて、次の手順か、中断か、完了かを決める。ノートアプリへの依頼は、**ノートを変えるもの・状態に依存するものは 1 本ずつ**、手元の要素を読むだけの独立した読み取りだけが並列（最大 8。ADR 0014）。
+実行側は、手順ごとに SDK を呼んで結果を `Ok / Failed / Refused / NoAnswer / NoteChanged / Unexpected` に分類し、表を引いて、次の手順か、中断か、完了かを決める。ノートアプリへの依頼は、**ノートを変えるもの・状態に依存するものは 1 本ずつ**、手元の要素を読むだけの独立した読み取りだけが並列（最大 8。ADR 0014）。
 
 ## 結果
 | 結果 | 意味 |
 |---|---|
-| OK | 成功、期待どおりの値 |
-| FAIL | `success: false`（呼び出しが通らない）または例外 |
-| REF | `success: true` だが `result: false`（ホストが断った） |
-| SIL | ホストが時間内に答えない |
-| NOP | 開いているノートが、質問したノートと違う |
-| ODD | 値が期待と違う（数値でない、ページ数が増えていない、名前がない など） |
+| Ok | 成功、期待どおりの値 |
+| Failed | `success: false`（呼び出しが通らない）または例外 |
+| Refused | `success: true` だが `result: false`（ホストが断った） |
+| NoAnswer | ホストが時間内に答えない |
+| NoteChanged | 開いているノートが、質問したノートと違う |
+| Unexpected | 値が期待と違う（数値でない、ページ数が増えていない、名前がない など） |
 
 ## 手順（挿入）
 | 手順 | 内容 |
 |---|---|
-| OPEN | 開いているのが質問したノートか確認（`getCurrentFilePath`） |
-| SAVE | 保存（`saveCurrentNote`）。保存前の編集は、ページ挿入でキャッシュが読み直されて失われる |
-| COUNT1 | 挿入前のページ数を読む（`getNoteTotalPageNum`） |
-| TEMPLATE | 元のページのテンプレートを調べる（`getNotePageTemplate`） |
-| INSERT | ページを挿入（`insertNotePage`） |
-| COUNT2 | 挿入後のページ数を読み、増えたか確かめる |
-| JUMP | そのページへ表示を移す（`jumpToPage`） |
-| DONE | 新しいページができて、表示も移った（終了状態） |
-| ABORT0 | 中断。ノートは変わっていない（終了状態） |
-| ABORT1 | 中断。ノートが一部変わっている可能性がある（新しい空のページが 1 枚増えているかもしれない）。巻き戻さず、理由を伝える（終了状態） |
+| CheckNote | 開いているのが質問したノートか確認（`getCurrentFilePath`） |
+| Save | 保存（`saveCurrentNote`）。保存前の編集は、ページ挿入でキャッシュが読み直されて失われる |
+| CountBefore | 挿入前のページ数を読む（`getNoteTotalPageNum`） |
+| GetTemplate | 元のページのテンプレートを調べる（`getNotePageTemplate`） |
+| InsertPage | ページを挿入（`insertNotePage`） |
+| CountAfter | 挿入後のページ数を読み、増えたか確かめる |
+| Jump | そのページへ表示を移す（`jumpToPage`） |
+| Done | 新しいページができて、表示も移った（終了状態） |
+| AbortClean | 中断。ノートは変わっていない（終了状態） |
+| AbortDirty | 中断。ノートが一部変わっている可能性がある（新しい空のページが 1 枚増えているかもしれない）。巻き戻さず、理由を伝える（終了状態） |
 
 ## 手順表（挿入）
 
-| 状態＼イベント | OK | FAIL | REF | SIL | NOP | ODD |
+| 状態＼イベント | Ok | Failed | Refused | NoAnswer | NoteChanged | Unexpected |
 |---|---|---|---|---|---|---|
-| **OPEN** | X2→SAVE | X0→ABORT0 | —a | X0→ABORT0 | X0→ABORT0 | X0→ABORT0 |
-| **SAVE** | X2→COUNT1 | X0→ABORT0 | X0→ABORT0 | X0→ABORT0 | X0→ABORT0 | —a |
-| **COUNT1** | X2→TEMPLATE | X0→ABORT0 | —a | X0→ABORT0 | X0→ABORT0 | X0→ABORT0 |
-| **TEMPLATE** | X2→INSERT | X3→INSERT | —a | X0→ABORT0 | —b | X3→INSERT |
-| **INSERT** | X2→COUNT2 | X0→ABORT0 | X0→ABORT0 | X1→ABORT1 | X0→ABORT0 | —a |
-| **COUNT2** | X2→JUMP | X1→ABORT1 | —a | X1→ABORT1 | X1→ABORT1 | X1→ABORT1 |
-| **JUMP** | X4→DONE | X1→ABORT1 | X3→DONE | X1→ABORT1 | X1→ABORT1 | —a |
-| **DONE** | —c | —c | —c | —c | —c | —c |
-| **ABORT0** | —c | —c | —c | —c | —c | —c |
-| **ABORT1** | —c | —c | —c | —c | —c | —c |
+| **CheckNote** | X2→Save | X0→AbortClean | —a | X0→AbortClean | X0→AbortClean | X0→AbortClean |
+| **Save** | X2→CountBefore | X0→AbortClean | X0→AbortClean | X0→AbortClean | X0→AbortClean | —a |
+| **CountBefore** | X2→GetTemplate | X0→AbortClean | —a | X0→AbortClean | X0→AbortClean | X0→AbortClean |
+| **GetTemplate** | X2→InsertPage | X3→InsertPage | —a | X0→AbortClean | —b | X3→InsertPage |
+| **InsertPage** | X2→CountAfter | X0→AbortClean | X0→AbortClean | X1→AbortDirty | X0→AbortClean | —a |
+| **CountAfter** | X2→Jump | X1→AbortDirty | —a | X1→AbortDirty | X1→AbortDirty | X1→AbortDirty |
+| **Jump** | X4→Done | X1→AbortDirty | X3→Done | X1→AbortDirty | X1→AbortDirty | —a |
+| **Done** | —c | —c | —c | —c | —c | —c |
+| **AbortClean** | —c | —c | —c | —c | —c | —c |
+| **AbortDirty** | —c | —c | —c | —c | —c | —c |
 
 ## 手順（書き込み）
 | 手順 | 内容 |
 |---|---|
-| OPEN | 開いているのが質問したノートか確認 |
-| WRITE | ストロークを書く（要素を作る → 点を入れる → 挿入 → 解放） |
-| WRITTEN | 書けた（終了状態） |
-| ABORT0 | 中断。何も書いていない（終了状態） |
-| ABORT1 | 中断。一部が書かれた可能性がある（終了状態） |
+| CheckNote | 開いているのが質問したノートか確認 |
+| WriteStrokes | ストロークを書く（要素を作る → 点を入れる → 挿入 → 解放） |
+| Written | 書けた（終了状態） |
+| AbortClean | 中断。何も書いていない（終了状態） |
+| AbortDirty | 中断。一部が書かれた可能性がある（終了状態） |
 
 ## 手順表（書き込み）
 
-| 状態＼イベント | OK | FAIL | REF | SIL | NOP | ODD |
+| 状態＼イベント | Ok | Failed | Refused | NoAnswer | NoteChanged | Unexpected |
 |---|---|---|---|---|---|---|
-| **OPEN** | X2→WRITE | X0→ABORT0 | —a | X0→ABORT0 | X0→ABORT0 | X0→ABORT0 |
-| **WRITE** | X4→WRITTEN | X1→ABORT1 | X1→ABORT1 | X1→ABORT1 | —b | X1→ABORT1 |
-| **WRITTEN** | —c | —c | —c | —c | —c | —c |
-| **ABORT0** | —c | —c | —c | —c | —c | —c |
-| **ABORT1** | —c | —c | —c | —c | —c | —c |
+| **CheckNote** | X2→WriteStrokes | X0→AbortClean | —a | X0→AbortClean | X0→AbortClean | X0→AbortClean |
+| **WriteStrokes** | X4→Written | X1→AbortDirty | X1→AbortDirty | X1→AbortDirty | —b | X1→AbortDirty |
+| **Written** | —c | —c | —c | —c | —c | —c |
+| **AbortClean** | —c | —c | —c | —c | —c | —c |
+| **AbortDirty** | —c | —c | —c | —c | —c | —c |
 
 ## 処理
 | 処理 | 内容 | 現状 | テスト |
@@ -78,12 +78,12 @@
 
 ## 補足
 - 手順の途中での取消は、手順の境目では検査しない。各手順は短く、完了してから止まる（回答の行の境目では検査する）。
-- 書き込みは、ページ番号を指定する。利用者が別のページを見ていても、書き込み先は変わらない（診断 8 で確認済み）。ノートそのものを別のものに替えると、OPEN の確認で止まる。
-- 時間切れでも、ホストの中では挿入が実行されているかもしれない（INSERT × SIL → ABORT1）。巻き戻さず、利用者に伝える。
-- 表示を動かすのは見た目だけの話で、書き込みには要らない（JUMP × REF → 記録して続ける）。
+- 書き込みは、ページ番号を指定する。利用者が別のページを見ていても、書き込み先は変わらない（診断 8 で確認済み）。ノートそのものを別のものに替えると、CheckNote の確認で止まる。
+- 時間切れでも、ホストの中では挿入が実行されているかもしれない（InsertPage × NoAnswer → AbortDirty）。巻き戻さず、利用者に伝える。
+- 表示を動かすのは見た目だけの話で、書き込みには要らない（Jump × Refused → 記録して続ける）。
 - **未対応（仕様の確認待ち）**: 回答の最中に、利用者が（回答の対象より前に）ページを挿入・削除すると、ページ番号がずれて別のページに書く。開始時のページ数を記録し、挿入のたびに想定と比べれば検出できる。
-- 実機の戻り値の確認: ブール値の `result` はトレースに記録される。`getNoteTotalPageNum` が数値以外を返す場合は ODD になり、複数ページの回答が止まる。
+- 実機の戻り値の確認: ブール値の `result` はトレースに記録される。`getNoteTotalPageNum` が数値以外を返す場合は Unexpected になり、複数ページの回答が止まる。
 
 ## 履歴
-- 2026-11-07: 表を機械が読む書式にした。挿入と書き込みを別の表にし、表示の移動（JUMP）を挿入の末尾の手順にした。結果の列から、利用者の操作（USR）と取消（CAN）を外した（USR はノートが変わる形で NOP に現れる。CAN は手順の途中では検査しない）。
+- 2026-11-07: 表を機械が読む書式にした。挿入と書き込みを別の表にし、表示の移動（Jump）を挿入の末尾の手順にした。結果の列から、利用者の操作（USR）と取消（CAN）を外した（USR はノートが変わる形で NoteChanged に現れる。CAN は手順の途中では検査しない）。
 

@@ -97,12 +97,27 @@ export function PairScreen() {
         ) : null}
         {state && state.plan.problems.length > 0 ? (
           <Text style={styles.small}>
-            {t('pairProblems', {n: state.plan.problems.length})}
+            {t('pairProblems', {
+              n: state.plan.problems.length,
+              ids: problemIds(state.plan.problems),
+            })}
           </Text>
         ) : null}
       </ScrollView>
     </View>
   );
+}
+
+/** The ids (16 hex digits, which start every problem and every folder name) of unusable records. */
+function problemIds(problems: string[]): string {
+  const ids = new Set<string>();
+  for (const p of problems) {
+    const m = /[0-9a-f]{16}/.exec(p);
+    if (m) {
+      ids.add(m[0]);
+    }
+  }
+  return [...ids].join(', ');
 }
 
 /** The QR code is the second way in; the digits come first and must be seen without scrolling. */

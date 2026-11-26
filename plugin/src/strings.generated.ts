@@ -91,7 +91,8 @@ export const STRINGS = {
     pairDenied: 'The bridge refused: {detail}',
     pairRefused:
       'The bridge no longer accepts this device. Ask for a new file with "spellink-bridge device reissue <name>".',
-    pairProblems: '{n} saved pairing item(s) could not be used.',
+    pairProblems:
+      '{n} old pairing record(s) can no longer be used. Your current pairing is not affected. To tidy up, open the Files app, go to MyStyle/Spellink-pairing, and delete the folders whose names contain: {ids}',
     pairScanQr:
       'On the computer, run "spellink-bridge device pair" and type the 8 digits below. (With a camera: "spellink-bridge device pair --web" reads the QR code.)',
     pairOrType:
@@ -195,7 +196,8 @@ export const STRINGS = {
     pairDenied: 'ブリッジに拒否されました: {detail}',
     pairRefused:
       'ブリッジがこの端末を受け付けなくなりました。「spellink-bridge device reissue <名前>」で新しいファイルを作ってください。',
-    pairProblems: '保存されたペアリングの情報のうち {n} 件は使えませんでした。',
+    pairProblems:
+      '使えなくなった古いペアリングの記録が {n} 件あります。今のペアリングには影響しません。整理するときは、「ファイル」アプリで MyStyle/Spellink-pairing を開き、名前に次の文字を含むフォルダを削除してください: {ids}',
     pairScanQr:
       'パソコンで「spellink-bridge device pair」を実行して、下の8桁の数字を入力してください。(カメラがあれば「spellink-bridge device pair --web」でQRコードも読めます。)',
     pairOrType:
@@ -300,7 +302,7 @@ export const STRINGS = {
     pairRefused:
       'El puente ya no acepta este dispositivo. Pide un archivo nuevo con "spellink-bridge device reissue <nombre>".',
     pairProblems:
-      'No se pudieron usar {n} elemento(s) de emparejamiento guardados.',
+      'Hay {n} registro(s) de emparejamiento antiguos que ya no se pueden usar. El emparejamiento actual no se ve afectado. Para limpiar, abre la app Archivos, ve a MyStyle/Spellink-pairing y borra las carpetas cuyo nombre contenga: {ids}',
     pairScanQr:
       'En el ordenador, ejecuta "spellink-bridge device pair" e introduce los 8 dígitos de abajo. (Con cámara: "spellink-bridge device pair --web" lee el código QR.)',
     pairOrType:
@@ -404,7 +406,8 @@ export const STRINGS = {
     pairDenied: 'Le pont a refusé : {detail}',
     pairRefused:
       'Le pont n’accepte plus cet appareil. Demandez un nouveau fichier avec « spellink-bridge device reissue <nom> ».',
-    pairProblems: '{n} élément(s) d’appairage enregistré(s) inutilisable(s).',
+    pairProblems:
+      '{n} ancien(s) enregistrement(s) d’appairage inutilisable(s). L’appairage actuel n’est pas affecté. Pour nettoyer, ouvrez l’app Fichiers, allez dans MyStyle/Spellink-pairing et supprimez les dossiers dont le nom contient : {ids}',
     pairScanQr:
       'Sur l’ordinateur, lancez « spellink-bridge device pair » et saisissez les 8 chiffres ci-dessous. (Avec une caméra : « spellink-bridge device pair --web » lit le code QR.)',
     pairOrType:

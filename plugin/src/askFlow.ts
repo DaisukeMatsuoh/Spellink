@@ -17,6 +17,7 @@ import {
   currentPen,
   ensurePermissions,
   insertPageAfter,
+  isOnPage,
   CallTimeoutError,
   NoteMovedError,
   lassoRect,
@@ -24,6 +25,7 @@ import {
   boxesOf,
   readPage,
   recognizeLasso,
+  releaseElements,
   writeStrokesAt,
   type NoteContext,
 } from './sdk';
@@ -168,6 +170,8 @@ export class AskFlow {
   private written = 0;
   private answerText = '';
   private pagesReady = 1;
+  /** Strokes written per page of the answer (index 0 is the question's page). */
+  private strokesOnPage: number[] = [];
 
   private nextSeq = 0;
   private askSent = false;
@@ -511,6 +515,8 @@ export class AskFlow {
         }
       }
       await this.converse();
+      await this.wave.stop(); // its strokes are not ours to count, and not to be read around
+      await this.verifyNewPages();
     } catch (e) {
       trace('ask.failed', {err: (e as Error).message});
       throw e;
@@ -757,6 +763,43 @@ export class AskFlow {
 
   // ------------------------------------------------------------------ writing the lines
 
+  /** Diagnostic: is the page we turned to still the one on screen? (never fails the answer) */
+  private async traceViewing(page: number): Promise<void> {
+    try {
+      const on = await isOnPage(this.note.filePath, this.note.page + page);
+      trace('ask.viewing', {d: {page: this.note.page + page, onPage: on}});
+    } catch (e) {
+      trace('ask.viewing.failed', {err: (e as Error).message});
+    }
+  }
+
+  /**
+   * Diagnostic, after the answer: every page we added should hold exactly the strokes we wrote
+   * on it. A page with fewer lost some after they were accepted (seen on a device: the first
+   * line of the page after a page turn). Only reads; a failure here is recorded, not shown.
+   */
+  private async verifyNewPages(): Promise<void> {
+    for (let page = 1; page < this.strokesOnPage.length; page++) {
+      const wrote = this.strokesOnPage[page] ?? 0;
+      if (wrote === 0 || this.stopWrites) {
+        continue;
+      }
+      try {
+        const elements = await readPage(
+          this.note.filePath,
+          this.note.page + page,
+        );
+        const found = elements.filter(e => e.type === 0).length;
+        releaseElements(elements);
+        trace('ask.verify', {
+          d: {page: this.note.page + page, wrote, found, lost: wrote - found},
+        });
+      } catch (e) {
+        trace('ask.verify.failed', {err: (e as Error).message});
+      }
+    }
+  }
+
   /** A15: queue one line; the first line past the bottom inserts the next page and turns to it. */
   private writeLine(m: LineFrame): void {
     const strokes = m.strokes ?? []; // a line may have no glyphs at all
@@ -779,12 +822,19 @@ export class AskFlow {
           if (this.stopWrites || this.terminal()) {
             return;
           }
+          const part = strokes.slice(i, i + STROKES_PER_STEP);
+          const first = (this.strokesOnPage[m.page] ?? 0) === 0;
           await writeStrokesAt(
             this.note.filePath,
             this.note.page + m.page,
-            strokes.slice(i, i + STROKES_PER_STEP),
+            part,
             this.pen,
           );
+          this.strokesOnPage[m.page] =
+            (this.strokesOnPage[m.page] ?? 0) + part.length;
+          if (first && m.page > 0) {
+            await this.traceViewing(m.page); // the first strokes of a page we turned to
+          }
         }
         this.written++;
         this.answerText += m.text;

@@ -1,4 +1,4 @@
-import {fakeNote} from '../__mocks__/sn-plugin-lib';
+import {fakeNote, PluginFileAPI} from '../__mocks__/sn-plugin-lib';
 import {t} from '../src/i18n';
 import {
   AskFlow,
@@ -157,6 +157,49 @@ describe('AskFlow', () => {
     expect(
       fakeNote.strokes(0).filter(e => e.uuid.startsWith('new-')),
     ).toHaveLength(2);
+  });
+
+  it('after a page turn it checks that the new page holds every stroke written to it, and says so', async () => {
+    mockScript = (send, id) => {
+      send(line(id, 0, 0, [stroke(), stroke()]));
+      send(line(id, 1, 1, [stroke(), stroke(), stroke()]));
+      send(done(id));
+    };
+    const last = await run(layout);
+    expect(last.failed).toBeFalsy();
+    expect(answerStrokes(1)).toHaveLength(3);
+    const events = dumpTrace();
+    expect(events.find(e => e.k === 'ask.viewing')).toBeDefined();
+    expect(events.find(e => e.k === 'ask.verify')?.d).toMatchObject({
+      wrote: 3,
+      found: 3,
+      lost: 0,
+    });
+  });
+
+  it('records the strokes that went missing after they were accepted', async () => {
+    mockScript = (send, id) => {
+      send(line(id, 0, 1, [stroke(), stroke(), stroke()]));
+      send(done(id));
+    };
+    // the saved page holds only one of the three strokes that were accepted
+    const real = PluginFileAPI.getElements;
+    const spy = jest
+      .spyOn(PluginFileAPI, 'getElements')
+      .mockImplementation(async (page: number) => {
+        const r = await real(page);
+        return page === 1 ? {...r, result: r.result.slice(0, 1)} : r;
+      });
+    try {
+      await run(layout);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(dumpTrace().find(e => e.k === 'ask.verify')?.d).toMatchObject({
+      wrote: 3,
+      found: 1,
+      lost: 2,
+    });
   });
 
   it('tells the bridge which note the question was written in, so it can continue the conversation', async () => {

@@ -1,17 +1,26 @@
 import {decodeBase64Url, encodeBase64Url, isSecret} from '../src/base64url';
-import {embeddedSetup, parsePairSetup} from '../src/pairConfig';
+import {
+  embeddedSetup,
+  MAX_NAME_CHARS,
+  MAX_URL_CHARS,
+  parsePairSetup,
+} from '../src/pairConfig';
 import {parsePairFrame} from '../src/pairFrames';
 import {planBridges} from '../src/pairPlan';
 import {
   encodeWhere,
-  entryName,
+  keyName,
   MAX_NAME_BYTES,
+  MAX_PIECE,
+  MAX_PIECES,
+  MAX_STORED_URLS,
   readEntries,
   readStore,
   saveToStore,
   STORE_DIR,
   type FileOps,
   type StoredBridge,
+  whereNames,
 } from '../src/pairStore';
 
 const secretOf = (n: number) => encodeBase64Url(new Uint8Array(32).fill(n));
@@ -156,7 +165,11 @@ describe('the frames of the pairing channel', () => {
     ],
     [
       'a grant with too many addresses',
-      {type: 'pairGrant', key: secretOf(3), endpoints: Array(5).fill(URL)},
+      {
+        type: 'pairGrant',
+        key: secretOf(3),
+        endpoints: Array(MAX_STORED_URLS + 1).fill(URL),
+      },
     ],
     [
       'a grant with a plain address',
@@ -233,9 +246,16 @@ describe('the store in directory names', () => {
   const key = secretOf(5);
   const b: StoredBridge = {id: ID, gen: 3, key, name: 'Nomad', urls: [URL]};
   const names = (x: StoredBridge = b) => [
-    entryName('k', x.id, x.gen, x.key),
-    entryName('e', x.id, x.gen, encodeWhere(x.name, x.urls)),
+    keyName(x.id, x.gen, x.key),
+    ...whereNames(x.id, x.gen, x.name, x.urls),
   ];
+  const piece = (gen: number, i: number, n: number, text: string) =>
+    `e-${ID}-${gen}-${i}-${n}-${text}`;
+  const whereText = (n: string[]) =>
+    n
+      .slice(1)
+      .map(e => e.split('-').slice(5).join('-'))
+      .join('');
 
   it('reads back what it names', () => {
     expect(readEntries(names())).toEqual({bridges: [b], problems: []});
@@ -260,48 +280,68 @@ describe('the store in directory names', () => {
   });
 
   it.each([
-    ['two keys', () => [...names(), entryName('k', ID, 3, secretOf(9))]],
+    ['two keys', () => [...names(), keyName(ID, 3, secretOf(9))]],
     [
-      'two address entries',
-      () => [...names(), entryName('e', ID, 3, encodeWhere('X', [URL]))],
+      'two sets of address pieces',
+      () => [...names(), ...whereNames(ID, 3, 'X', [URL])],
     ],
     ['a key without addresses', () => [names()[0]]],
-    ['addresses without a key', () => [names()[1]]],
-    ['a key that is not a secret', () => [`k-${ID}-3-abc`, names()[1]]],
+    ['addresses without a key', () => names().slice(1)],
+    [
+      'a key that is not a secret',
+      () => [`k-${ID}-3-abc`, ...names().slice(1)],
+    ],
+    ['a piece that is missing', () => [names()[0], piece(3, 1, 2, 'AAAA')]],
+    [
+      'a piece that is there twice',
+      () => [names()[0], piece(3, 0, 2, 'A'), piece(3, 0, 2, 'B')],
+    ],
+    [
+      'pieces that disagree on how many there are',
+      () => [names()[0], piece(3, 0, 2, 'A'), piece(3, 1, 3, 'B')],
+    ],
+    ['a piece number past the end', () => [names()[0], piece(3, 1, 1, 'A')]],
+    [
+      'more pieces than allowed',
+      () => [names()[0], piece(3, 0, MAX_PIECES + 1, 'A')],
+    ],
     [
       'addresses that are not base64url JSON',
-      () => [names()[0], `e-${ID}-3-AAAA`],
+      () => [names()[0], piece(3, 0, 1, 'AAAA')],
     ],
     [
       'addresses that are not base64url at all',
-      () => [names()[0], `e-${ID}-3-A`],
+      () => [names()[0], piece(3, 0, 1, 'A')],
     ],
     [
       'addresses that are not JSON',
       () => [
         names()[0],
-        `e-${ID}-3-${encodeBase64Url(new TextEncoder().encode('nope'))}`,
+        piece(3, 0, 1, encodeBase64Url(new TextEncoder().encode('nope'))),
       ],
     ],
     [
       'addresses of the wrong shape',
       () => [
         names()[0],
-        `e-${ID}-3-${encodeBase64Url(
-          new TextEncoder().encode('{"n":"x","u":["ws://x"]}'),
-        )}`,
+        piece(
+          3,
+          0,
+          1,
+          encodeBase64Url(new TextEncoder().encode('{"n":"x","u":["ws://x"]}')),
+        ),
       ],
     ],
     [
       'addresses that are null',
       () => [
         names()[0],
-        `e-${ID}-3-${encodeBase64Url(new TextEncoder().encode('null'))}`,
+        piece(3, 0, 1, encodeBase64Url(new TextEncoder().encode('null'))),
       ],
     ],
     [
       'a generation that is too large',
-      () => [`k-${ID}-9999999999-${key}`, names()[1]],
+      () => [`k-${ID}-9999999999-${key}`, ...names().slice(1)],
     ],
   ])('does not use a device with %s, and says so', (_n, make) => {
     const r = readEntries(make());
@@ -312,31 +352,89 @@ describe('the store in directory names', () => {
 
   it('does not fall back to an older generation when the newest is damaged', () => {
     const older = {...b, gen: 2};
-    const r = readEntries([...names(older), entryName('k', ID, 3, key)]);
+    const r = readEntries([...names(older), keyName(ID, 3, key)]);
     expect(r.bridges).toEqual([]);
   });
 
   it('refuses to name what does not fit', () => {
-    expect(() => entryName('k', 'bad', 1, key)).toThrow();
-    expect(() => entryName('k', ID, 0, key)).toThrow();
-    expect(() => entryName('k', ID, 1, 'has space')).toThrow();
-    expect(() => entryName('e', ID, 1, 'a'.repeat(MAX_NAME_BYTES))).toThrow();
+    expect(() => keyName('bad', 1, key)).toThrow();
+    expect(() => keyName(ID, 0, key)).toThrow();
+    expect(() => keyName(ID, 1, 'has space')).toThrow();
+    expect(() => whereNames('bad', 1, 'x', [URL])).toThrow();
+    expect(() => whereNames(ID, 0, 'x', [URL])).toThrow();
     expect(() => encodeWhere('', [URL])).toThrow();
     expect(() => encodeWhere('x', [])).toThrow();
-    expect(() => encodeWhere('x', Array(5).fill(URL))).toThrow();
+    expect(() =>
+      encodeWhere('x', Array(MAX_STORED_URLS + 1).fill(URL)),
+    ).toThrow();
     expect(() => encodeWhere('x', ['ws://x'])).toThrow();
   });
 
-  it('fits the usual case in a directory name', () => {
-    for (const n of names({
+  const relay = (host: string) =>
+    `wss://${host}.relay.spellink.uk/v1/relay/client?room=${'a'.repeat(32)}`;
+
+  it('keeps every name within 255 bytes, whatever the addresses', () => {
+    const many = {
       ...b,
       name: 'a'.repeat(30),
-      urls: ['wss://relay.spellink.uk/v1/relay/client?room=' + 'a'.repeat(32)],
-    })) {
-      expect(new TextEncoder().encode(n).length).toBeLessThanOrEqual(
+      urls: [
+        'wss://bridge.spellink.uk/v1?d=' + ID,
+        relay('jp'),
+        relay('us'),
+        relay('eu'),
+        relay('au'),
+        relay('br'),
+        relay('in'),
+        relay('za'),
+      ],
+    };
+    const n = names(many);
+    expect(n.length).toBeGreaterThan(2); // it needed more than one piece
+    for (const name of n) {
+      expect(new TextEncoder().encode(name).length).toBeLessThanOrEqual(
         MAX_NAME_BYTES,
       );
     }
+    expect(readEntries(n)).toEqual({bridges: [many], problems: []});
+  });
+
+  it('puts the case that failed on a device (two relays and the tunnel) in pieces and reads it back', () => {
+    const real = {
+      ...b,
+      name: 'rock-5b-plus',
+      urls: ['wss://bridge.spellink.uk/v1?d=' + ID, relay('jp'), relay('us')],
+    };
+    expect(encodeWhere(real.name, real.urls).length).toBeGreaterThan(MAX_PIECE);
+    expect(readEntries(names(real))).toEqual({bridges: [real], problems: []});
+  });
+
+  it('stores anything the validators accept: the most addresses, as long as allowed, with the longest name', () => {
+    const worst = {
+      ...b,
+      name: 'n'.repeat(MAX_NAME_CHARS),
+      urls: Array.from(
+        {length: MAX_STORED_URLS},
+        (_, i) => `wss://h${i}.example/` + 'a'.repeat(MAX_URL_CHARS - 20),
+      ),
+    };
+    const n = names(worst);
+    expect(n.length).toBeLessThanOrEqual(1 + MAX_PIECES);
+    expect(readEntries(n)).toEqual({bridges: [worst], problems: []});
+  });
+
+  it('reads the pieces in any order of the listing', () => {
+    const real = {...b, urls: [URL, relay('jp'), relay('us')]};
+    const n = names(real);
+    expect(readEntries([...n].reverse()).bridges).toEqual([real]);
+  });
+
+  it('cuts at MAX_PIECE characters and never beyond MAX_PIECES pieces', () => {
+    const text = whereText(names());
+    expect(text).toBe(encodeWhere(b.name, b.urls));
+    expect(() =>
+      whereNames(ID, 1, 'x'.repeat(64), Array(MAX_STORED_URLS).fill(URL)),
+    ).not.toThrow();
+    expect(MAX_PIECE * MAX_PIECES).toBeGreaterThan(6000);
   });
 
   // ---- a store on a fake folder ----
@@ -371,10 +469,10 @@ describe('the store in directory names', () => {
     const f = folder();
     expect(await readStore(f.ops)).toEqual({bridges: [], problems: []}); // no folder yet
     expect(await saveToStore(f.ops, b)).toBe(true);
-    expect(f.have).toHaveLength(2);
+    expect(f.have).toHaveLength(names().length);
     expect((await readStore(f.ops)).bridges).toEqual([b]);
     expect(await saveToStore(f.ops, b)).toBe(true); // already there: nothing is made twice
-    expect(f.have).toHaveLength(2);
+    expect(f.have).toHaveLength(names().length);
   });
 
   it('adds a newer generation next to the old one and never removes anything', async () => {
@@ -382,7 +480,7 @@ describe('the store in directory names', () => {
     await saveToStore(f.ops, b);
     const newer = {...b, gen: 4, key: secretOf(8)};
     expect(await saveToStore(f.ops, newer)).toBe(true);
-    expect(f.have).toHaveLength(4);
+    expect(f.have).toHaveLength(names().length + names(newer).length);
     expect((await readStore(f.ops)).bridges).toEqual([newer]);
   });
 

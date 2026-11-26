@@ -88,13 +88,11 @@ export function PairScreen() {
         ) : null}
         {view?.code ? (
           <View>
-            <Text style={styles.text}>{t('pairScanQr')}</Text>
-            {view.qr ? <QrView text={view.qr} size={560} /> : null}
             <Text style={bigDigits}>{groupCode(view.code)}</Text>
-            <Text style={styles.small}>{t('pairOrType')}</Text>
             <Text style={styles.small}>
               {t('pairSeconds', {n: view.remainingSec ?? 0})}
             </Text>
+            {view.qr ? <QrView text={view.qr} size={QR_SIZE} /> : null}
           </View>
         ) : null}
         {state && state.plan.problems.length > 0 ? (
@@ -106,6 +104,9 @@ export function PairScreen() {
     </View>
   );
 }
+
+/** The QR code is the second way in; the digits come first and must be seen without scrolling. */
+const QR_SIZE = 390;
 
 const bigDigits = {
   fontSize: 72,

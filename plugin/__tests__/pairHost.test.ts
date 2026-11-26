@@ -158,8 +158,8 @@ describe('loading what the device knows', () => {
     }));
   };
   const stored = [
-    store.entryName('k', ID, 1, secretOf(5)),
-    store.entryName('e', ID, 1, store.encodeWhere('Rock', [URL])),
+    store.keyName(ID, 1, secretOf(5)),
+    ...store.whereNames(ID, 1, 'Rock', [URL]),
   ];
 
   it('knows a paired bridge from the store alone, and says nothing about a missing package', async () => {

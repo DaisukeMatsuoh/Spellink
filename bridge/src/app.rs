@@ -204,7 +204,7 @@ pub fn load_font(store: &ConfigStore) -> Result<Arc<Font>, String> {
 pub fn new_provider(cfg: &Config) -> Result<Arc<dyn Provider>, String> {
     let (kind, model, executable) = cfg.provider_settings();
     match kind.as_str() {
-        "claude-code" => Ok(Arc::new(claudecode::Runner::new(&executable, &model)?.with_ai(cfg.ai_environment(), cfg.tool_rules()))),
+        "claude-code" => Ok(Arc::new(claudecode::Runner::new(&executable, &model)?.with_ai(cfg.ai_environment(), cfg.tool_rules(), cfg.ai_instructions()))),
         other => Err(format!("unknown provider {other:?}")), // Config::validate already refused it
     }
 }

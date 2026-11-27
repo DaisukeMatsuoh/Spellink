@@ -219,6 +219,16 @@ pub fn environment_note(lang: &str, now: &Now, tools: bool) -> String {
     s
 }
 
+/// The owner's standing instructions as a paragraph of the system prompt. They come from the
+/// owner's own config file (never from the device), so they are the owner's word.
+pub fn instructions_note(lang: &str, text: &str) -> String {
+    if lang == "en" {
+        format!("Standing instructions from the user (follow them unless they conflict with the rules above):\n{text}")
+    } else {
+        format!("利用者からの指示（上の決まりと食い違わない範囲で従ってください）:\n{text}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

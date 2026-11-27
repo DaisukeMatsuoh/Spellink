@@ -11,12 +11,14 @@
 ```json
 "ai": {
   "environment": true,
+  "instructions": "私は大輔です。予定は日本時間で答えて。",
   "tools": { "allow": ["Bash(date)"] }
 }
 ```
 | キー | 型 | 既定 | 意味 |
 |---|---|---|---|
 | `ai.environment` | 真偽 | true | システムプロンプトに、日時とタイムゾーン、OS の種類を入れる |
+| `ai.instructions` | 文字列 | なし | 利用者の常設の指示（呼び方・前提・口調など）。毎回のシステムプロンプトに、環境の情報の後ろへ足す。前後の空白は除く。2000 文字まで、改行とタブ以外の制御文字は不可（超えたら起動を拒否）。PC の `config.json` だけが元（T3）。テスト: `standing_instructions_are_…`、`the_owners_standing_instructions_are_added_after_the_environment` |
 | `ai.tools.allow` | 文字列の配列 | なし（道具は無効） | Claude Code の許可規則（`Bash(<コマンドの型>)`）。1 つ以上あるときだけ道具を有効にする |
 
 ## 不変条件

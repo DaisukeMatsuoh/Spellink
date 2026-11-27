@@ -111,6 +111,10 @@ pub struct Ai {
     pub environment: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools: Option<AiTools>,
+    /// The owner's own standing instructions to the AI (how to address them, what to assume, a
+    /// persona), added to every question's system prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -124,6 +128,8 @@ pub struct AiTools {
 
 /// The most rules, and the longest rule (characters), `ai.tools.allow` takes.
 const MAX_TOOL_RULES: usize = 32;
+/// The longest `ai.instructions` (characters): it is sent with every question.
+const MAX_INSTRUCTION_CHARS: usize = 2000;
 const MAX_TOOL_RULE_CHARS: usize = 256;
 
 /// Checks one rule of `ai.tools.allow` (cases S3-S5): the form `Bash(<pattern>)` with a pattern
@@ -299,6 +305,11 @@ impl Config {
         self.ai.as_ref().and_then(|a| a.environment) != Some(false)
     }
 
+    /// The owner's standing instructions, trimmed; empty when there are none.
+    pub fn ai_instructions(&self) -> String {
+        self.ai.as_ref().and_then(|a| a.instructions.as_deref()).unwrap_or("").trim().to_string()
+    }
+
     /// The tool rules to hand to the AI, each once (case S6), in the order written. Empty means
     /// tools stay off.
     pub fn tool_rules(&self) -> Vec<String> {
@@ -346,6 +357,14 @@ impl Config {
             }
             if !(0..=MAX_TTL_HOURS).contains(&p.ttl_hours) {
                 return Err(format!("{file}: pairing.ttlHours {} must be between 0 (default) and {MAX_TTL_HOURS}", p.ttl_hours));
+            }
+        }
+        if let Some(i) = self.ai.as_ref().and_then(|a| a.instructions.as_ref()) {
+            if i.chars().count() > MAX_INSTRUCTION_CHARS {
+                return Err(format!("{file}: ai.instructions has {} characters; at most {MAX_INSTRUCTION_CHARS}", i.chars().count()));
+            }
+            if i.chars().any(|c| c.is_control() && c != '\n' && c != '\t') {
+                return Err(format!("{file}: ai.instructions has a control character (only line breaks and tabs are allowed)"));
             }
         }
         if let Some(t) = self.ai.as_ref().and_then(|a| a.tools.as_ref()) {
@@ -939,5 +958,16 @@ mod tests {
         s.save(&c).unwrap();
         let got: Value = serde_json::from_slice(&std::fs::read(s.config_file()).unwrap()).unwrap();
         assert_eq!(got["ai"], json!({"environment": false, "tools": {"allow": ["Bash(date)"]}}));
+    }
+
+    #[test]
+    fn standing_instructions_are_trimmed_bounded_and_free_of_control_characters() {
+        assert_eq!(load_ai(r#"{"instructions":"  私は大輔です。\n簡潔に。 "}"#).unwrap().ai_instructions(), "私は大輔です。\n簡潔に。");
+        assert_eq!(load_ai("{}").unwrap().ai_instructions(), "");
+        let long = "あ".repeat(2001);
+        assert!(load_ai(&format!(r#"{{"instructions":"{long}"}}"#)).unwrap_err().contains("at most 2000"));
+        assert!(load_ai(&format!(r#"{{"instructions":"{}"}}"#, "あ".repeat(2000))).is_ok());
+        assert!(load_ai(r#"{"instructions":"a\u0007b"}"#).unwrap_err().contains("control character"));
+        assert!(load_ai(r#"{"instructions":5}"#).unwrap_err().contains("invalid type"));
     }
 }

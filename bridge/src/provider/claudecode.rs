@@ -151,6 +151,8 @@ pub struct Runner {
     environment: bool,
     /// Allowed tool rules (validated by the config); tools are on only when this is not empty.
     rules: Vec<String>,
+    /// The owner's standing instructions (trimmed; empty for none), added to the system prompt.
+    instructions: String,
 }
 
 impl Runner {
@@ -158,13 +160,14 @@ impl Runner {
     pub fn new(executable: &str, model: &str) -> Result<Runner, String> {
         let dir = std::env::temp_dir().join(format!("spellink-bridge-{}-{:08x}", std::process::id(), rand::random::<u32>()));
         crate::util::create_private_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        Ok(Runner { executable: executable.to_string(), model: model.to_string(), work_dir: dir, environment: false, rules: Vec::new() })
+        Ok(Runner { executable: executable.to_string(), model: model.to_string(), work_dir: dir, environment: false, rules: Vec::new(), instructions: String::new() })
     }
 
     /// Applies the config's `ai` section (ADR 0022).
-    pub fn with_ai(mut self, environment: bool, rules: Vec<String>) -> Runner {
+    pub fn with_ai(mut self, environment: bool, rules: Vec<String>, instructions: String) -> Runner {
         self.environment = environment;
         self.rules = rules;
+        self.instructions = instructions;
         self
     }
 
@@ -193,12 +196,14 @@ impl Runner {
     /// model never answers — the network to the AI is down, the service is overloaded — is told
     /// apart from one that is working, long before any text exists.
     async fn run(&self, req: Request, sink: Sink, cancel: CancellationToken) -> Result<String, AskError> {
-        let system = if self.environment {
+        let mut system = req.system.clone();
+        if self.environment {
             let now = super::local_now().await;
-            format!("{}\n{}", req.system, super::environment_note(&req.lang, &now, !self.rules.is_empty()))
-        } else {
-            req.system.clone()
-        };
+            system = format!("{system}\n{}", super::environment_note(&req.lang, &now, !self.rules.is_empty()));
+        }
+        if !self.instructions.is_empty() {
+            system = format!("{system}\n{}", super::instructions_note(&req.lang, &self.instructions));
+        }
         let mut command = tokio::process::Command::new(&self.executable);
         #[cfg(unix)]
         command.process_group(0); // its own group, so the commands it starts can be stopped with it (T6)
@@ -539,10 +544,10 @@ mod tests {
         let off = Runner::new("claude", "").unwrap();
         let a = args_of(&off);
         assert!(a.windows(2).any(|w| w == ["--tools", ""]) && !a.contains(&"--allowedTools".to_string()), "{a:?}");
-        let off = Runner::new("claude", "").unwrap().with_ai(true, vec![]);
+        let off = Runner::new("claude", "").unwrap().with_ai(true, vec![], String::new());
         assert!(!args_of(&off).contains(&"--allowedTools".to_string()), "an empty list keeps tools off");
         // T2: exactly what was given, in order
-        let on = Runner::new("claude", "").unwrap().with_ai(true, vec!["Bash(date)".into(), "Bash(ls:*)".into()]);
+        let on = Runner::new("claude", "").unwrap().with_ai(true, vec!["Bash(date)".into(), "Bash(ls:*)".into()], String::new());
         let a = args_of(&on);
         let i = a.iter().position(|x| x == "--tools").unwrap();
         assert_eq!(a[i..i + 5], ["--tools", "Bash", "--allowedTools", "Bash(date)", "Bash(ls:*)"], "{a:?}");
@@ -556,12 +561,12 @@ mod tests {
         let out = d.path().join("args.txt");
         let exe =
             script(&d.path().join("claude"), &format!("#!/bin/sh\ncat >/dev/null\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > {}\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false}}'\n", out.display()));
-        let r = Runner::new(&exe, "").unwrap().with_ai(true, vec![]);
+        let r = Runner::new(&exe, "").unwrap().with_ai(true, vec![], String::new());
         let request = Request { system: "sys".into(), question: "q".into(), lang: "ja".into(), ..Default::default() };
         ask_script(&r, request.clone(), Sink::silent(), CancellationToken::new()).await.unwrap();
         let got = std::fs::read_to_string(&out).unwrap();
         assert!(got.contains("現在の日時: 20") && got.contains("利用者自身のパソコン") && !got.contains("シェルコマンド"), "{got}");
-        let r = Runner::new(&exe, "").unwrap().with_ai(false, vec!["Bash(date)".into()]);
+        let r = Runner::new(&exe, "").unwrap().with_ai(false, vec!["Bash(date)".into()], String::new());
         ask_script(&r, request, Sink::silent(), CancellationToken::new()).await.unwrap();
         let got = std::fs::read_to_string(&out).unwrap();
         assert!(!got.contains("現在の日時") && got.contains("--allowedTools\nBash(date)"), "{got}");
@@ -644,5 +649,22 @@ mod tests {
         let pid = wait_pid(&pid_file).await;
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert!(gone(pid), "the command must not outlive the dropped answer");
+    }
+
+    #[tokio::test]
+    async fn the_owners_standing_instructions_are_added_after_the_environment() {
+        let d = tempfile::tempdir().unwrap();
+        let out = d.path().join("args.txt");
+        let exe =
+            script(&d.path().join("claude"), &format!("#!/bin/sh\ncat >/dev/null\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > {}\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false}}'\n", out.display()));
+        let r = Runner::new(&exe, "").unwrap().with_ai(true, vec![], "私は大輔。敬語は不要。".into());
+        let request = Request { system: "sys".into(), question: "q".into(), lang: "ja".into(), ..Default::default() };
+        ask_script(&r, request.clone(), Sink::silent(), CancellationToken::new()).await.unwrap();
+        let got = std::fs::read_to_string(&out).unwrap();
+        let (env, own) = (got.find("現在の日時").unwrap(), got.find("私は大輔。敬語は不要。").unwrap());
+        assert!(env < own && got.contains("利用者からの指示"), "{got}");
+        let r = Runner::new(&exe, "").unwrap().with_ai(false, vec![], String::new());
+        ask_script(&r, request, Sink::silent(), CancellationToken::new()).await.unwrap();
+        assert!(!std::fs::read_to_string(&out).unwrap().contains("利用者からの指示"));
     }
 }

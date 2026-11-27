@@ -18,6 +18,8 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 pub const MAX_ADMIN_BODY: usize = 4 << 10;
+/// The AI settings hold up to 2000 characters of instructions (6 KB in Japanese) and 32 rules.
+const MAX_AI_BODY: usize = 32 << 10;
 
 /// What the bridge's own command line needs: the ledger, a way to build a device's .snplg, and a
 /// bearer token.
@@ -30,6 +32,35 @@ pub struct AdminDeps {
     pub package: Arc<dyn Fn(PackageData) -> Result<Vec<u8>, String> + Send + Sync>,
     /// What the app page shows about the bridge itself (none: only the device counts).
     pub status: Option<Arc<dyn Fn() -> StatusInfo + Send + Sync>>,
+    /// Reading and changing the AI settings (ADR 0022); none: the app page has no such section.
+    pub ai: Option<AiAdmin>,
+}
+
+/// What the AI settings of the app page are (ADR 0022: the owner's own computer is the only place
+/// that changes them; this route is local and carries the admin token).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AiSettings {
+    pub environment: bool,
+    pub instructions: String,
+    pub allow: Vec<String>,
+}
+
+#[derive(Clone)]
+pub struct AiAdmin {
+    /// The saved settings, and whether they differ from what the running bridge uses.
+    pub get: Arc<dyn Fn() -> (AiSettings, bool) + Send + Sync>,
+    /// Checks and saves; an error is the reason (it reaches the owner as it is).
+    pub set: Arc<dyn Fn(AiSettings) -> Result<(), String> + Send + Sync>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AiJson {
+    #[serde(flatten)]
+    settings: AiSettings,
+    /// Saved, but the running bridge still uses the earlier ones: a restart makes them take effect.
+    restart_needed: bool,
 }
 
 /// What the bridge knows about itself that the ledger does not.
@@ -97,7 +128,11 @@ fn admin_error(e: Error) -> Response {
 }
 
 async fn read_json<T: for<'de> Deserialize<'de>>(req: Request) -> Result<T, Response> {
-    let bytes = axum::body::to_bytes(req.into_body(), MAX_ADMIN_BODY).await.map_err(|_| (StatusCode::BAD_REQUEST, "bad request\n").into_response())?;
+    read_json_max(req, MAX_ADMIN_BODY).await
+}
+
+async fn read_json_max<T: for<'de> Deserialize<'de>>(req: Request, max: usize) -> Result<T, Response> {
+    let bytes = axum::body::to_bytes(req.into_body(), max).await.map_err(|_| (StatusCode::BAD_REQUEST, "bad request\n").into_response())?;
     serde_json::from_slice(&bytes).map_err(|_| (StatusCode::BAD_REQUEST, "bad request\n").into_response())
 }
 
@@ -167,6 +202,32 @@ impl AdminDeps {
             .route("/admin/devices/{id}/revoke", post(|State(a): State<AdminDeps>, Path(id): Path<String>| async move { done(a.devices.revoke(&id)) }))
             .route("/admin/devices/{id}/reissue", post(|State(a): State<AdminDeps>, Path(id): Path<String>| async move { done(a.devices.reissue(&id)) }))
             .route("/admin/devices/{id}/forget", post(|State(a): State<AdminDeps>, Path(id): Path<String>| async move { done(a.devices.forget(&id)) }))
+            .route(
+                "/admin/ai",
+                get(|State(a): State<AdminDeps>| async move {
+                    match &a.ai {
+                        None => StatusCode::NOT_FOUND.into_response(),
+                        Some(ai) => {
+                            let (settings, restart_needed) = (ai.get)();
+                            Json(AiJson { settings, restart_needed }).into_response()
+                        }
+                    }
+                })
+                .put(|State(a): State<AdminDeps>, req: Request| async move {
+                    let Some(ai) = a.ai.clone() else { return StatusCode::NOT_FOUND.into_response() };
+                    let input: AiSettings = match read_json_max(req, MAX_AI_BODY).await {
+                        Ok(i) => i,
+                        Err(r) => return r,
+                    };
+                    match (ai.set)(input) {
+                        Ok(()) => {
+                            let (settings, restart_needed) = (ai.get)();
+                            Json(AiJson { settings, restart_needed }).into_response()
+                        }
+                        Err(why) => (StatusCode::BAD_REQUEST, format!("{why}\n")).into_response(),
+                    }
+                }),
+            )
             .route(
                 "/admin/devices/{id}/package",
                 get(|State(a): State<AdminDeps>, Path(id): Path<String>| async move {

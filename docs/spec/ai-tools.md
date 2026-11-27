@@ -21,6 +21,14 @@
 | `ai.instructions` | 文字列 | なし | 利用者の常設の指示（呼び方・前提・口調など）。毎回のシステムプロンプトに、環境の情報の後ろへ足す。前後の空白は除く。2000 文字まで、改行とタブ以外の制御文字は不可（超えたら起動を拒否）。PC の `config.json` だけが元（T3）。テスト: `standing_instructions_are_…`、`the_owners_standing_instructions_are_added_after_the_environment` |
 | `ai.tools.allow` | 文字列の配列 | なし（道具は無効） | Claude Code の許可規則（`Bash(<コマンドの型>)`）。1 つ以上あるときだけ道具を有効にする |
 
+## 設定の画面（Bridge App の `/app`）
+`/app` の「AI の設定」で、`environment`・`instructions`・`allow`（1 行に 1 規則）を編集して「保存」できる。元になる API は `GET`・`PUT /admin/ai`（ローカルのみ・管理トークン必須。T3: 端末や中継の道ではない）。
+- 保存は、設定ファイル全体の検証（S3〜S10 と `instructions` の上限）を通ったときだけ。拒否のときは理由がそのまま画面に出て、保存済みの設定は変わらない。
+- 保存しても、実行中のブリッジには効かない（S11）。保存済みの設定が、動いているものと違うあいだは「ブリッジを再起動してください」を出す（`restartNeeded`）。
+- 既定値は書かない（`environment` が true、指示と許可が空なら、`ai` の節ごと消える）。
+- 画面を読み込むときに 1 回だけ設定を読む（5 秒ごとの更新で、入力中の文字を上書きしない）。
+- テスト: `tests/pairing.rs` の `the_owner_reads_checks_and_saves_the_ai_settings` ほか 2 本。画面は、実際のブラウザ（Chromium）で、保存・拒否・端末の追加を通して確認した（2026-11-28）。画面の JS には、自動テストがまだない。
+
 ## 不変条件
 - T1: 道具は、`ai.tools.allow` が**空でないときだけ**有効になる。ほかの場合は、これまでどおり `--tools ""`。
 - T2: 許可リストにないコマンドは、実行されない。ブリッジは、リストを**作り変えない**（検証して、そのまま CLI に渡す）。

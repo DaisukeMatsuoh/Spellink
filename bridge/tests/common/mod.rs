@@ -251,7 +251,7 @@ pub fn new_ledger(dir: &std::path::Path, sessions: &Arc<Sessions>) -> (Registry,
 }
 
 pub fn default_admin(reg: &Registry) -> AdminDeps {
-    AdminDeps { devices: reg.clone(), token: ADMIN_TOKEN.into(), package: Arc::new(|d: PackageData| Ok(format!("package for {} gen {} B={}", d.name, d.generation, d.b).into_bytes())), status: None }
+    AdminDeps { devices: reg.clone(), token: ADMIN_TOKEN.into(), package: Arc::new(|d: PackageData| Ok(format!("package for {} gen {} B={}", d.name, d.generation, d.b).into_bytes())), status: None, ai: None }
 }
 
 impl PairEnv {

@@ -371,6 +371,69 @@ async fn admin_status_without_a_status_function_still_answers() {
     assert!(status == 200 && body.contains("\"addresses\":[]") && body.contains("\"total\":0"), "{status} {body}");
 }
 
+/// A real settings store in a temporary folder behind the app page's AI settings.
+fn ai_env() -> (tempfile::TempDir, spellink_bridge::config::Store, Arc<std::sync::Mutex<spellink_bridge::config::Config>>, spellink_bridge::server::admin::AiAdmin) {
+    use spellink_bridge::config::Store;
+    let d = tempfile::tempdir().unwrap();
+    let store = Store::new(d.path().join("spellink-bridge"));
+    let cfg = store.load().unwrap();
+    let running = Arc::new(cfg.clone());
+    let shared = Arc::new(std::sync::Mutex::new(cfg));
+    let admin = spellink_bridge::app::ai_admin(shared.clone(), store.clone(), &running);
+    (d, store, shared, admin)
+}
+
+#[tokio::test]
+async fn the_ai_settings_route_is_absent_without_the_settings_and_guarded_with_them() {
+    let e = PairEnv::new().await;
+    assert_eq!(e.admin("GET", "/admin/ai", None).await.0, 404);
+    assert_eq!(e.admin("PUT", "/admin/ai", Some(json!({"environment": true, "instructions": "", "allow": []}))).await.0, 404);
+    let (_d, _s, _c, ai) = ai_env();
+    let e = PairEnv::with(move |_, a| a.as_mut().unwrap().ai = Some(ai.clone())).await;
+    let (status, _) = common::http_request(&e.http, "GET", "/admin/ai", &[], None).await;
+    assert_eq!(status, 401, "no token, no settings");
+}
+
+#[tokio::test]
+async fn the_owner_reads_checks_and_saves_the_ai_settings() {
+    let (_d, store, _c, ai) = ai_env();
+    let e = PairEnv::with(move |_, a| a.as_mut().unwrap().ai = Some(ai.clone())).await;
+    let (status, body) = e.admin("GET", "/admin/ai", None).await;
+    let got: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!((status, &got), (200, &json!({"environment": true, "instructions": "", "allow": [], "restartNeeded": false})), "{body}");
+
+    // a good change is saved, and it is told that the running bridge still has the earlier ones
+    let long = "あ".repeat(2000); // 6000 bytes: more than an ordinary admin body
+    let want = json!({"environment": false, "instructions": long, "allow": ["Bash(date)"]});
+    let (status, body) = e.admin("PUT", "/admin/ai", Some(want.clone())).await;
+    let got: Value = serde_json::from_str(&body).unwrap_or_else(|_| panic!("{status} {body}"));
+    assert_eq!(status, 200, "{body}");
+    assert!(got["restartNeeded"] == true && got["environment"] == false && got["allow"] == json!(["Bash(date)"]), "{}", got["allow"]);
+    let on_disk: Value = serde_json::from_slice(&std::fs::read(store.config_file()).unwrap()).unwrap();
+    assert_eq!(on_disk["ai"], json!({"environment": false, "instructions": long, "tools": {"allow": ["Bash(date)"]}}));
+
+    // a refused change says why, and leaves the saved settings as they were
+    for (bad, why) in [
+        (json!({"environment": true, "instructions": "", "allow": ["Bash(*)"]}), "allow everything"),
+        (json!({"environment": true, "instructions": "", "allow": ["Read"]}), "only Bash"),
+        (json!({"environment": true, "instructions": "a\u{7}", "allow": []}), "control character"),
+        (json!({"environment": true, "instructions": "", "allow": [], "deny": []}), "bad request"),
+        (json!({"environment": "yes", "instructions": "", "allow": []}), "bad request"),
+    ] {
+        let (status, body) = e.admin("PUT", "/admin/ai", Some(bad.clone())).await;
+        assert!(status == 400 && body.contains(why), "{bad} -> {status} {body}");
+    }
+    let again: Value = serde_json::from_slice(&std::fs::read(store.config_file()).unwrap()).unwrap();
+    assert_eq!(again["ai"], on_disk["ai"], "a refused change must not be saved");
+
+    // putting the defaults back removes the section, and the bridge is no longer behind
+    let (status, body) = e.admin("PUT", "/admin/ai", Some(json!({"environment": true, "instructions": "", "allow": []}))).await;
+    let got: Value = serde_json::from_str(&body).unwrap();
+    assert!(status == 200 && got["restartNeeded"] == false, "{body}");
+    let last: Value = serde_json::from_slice(&std::fs::read(store.config_file()).unwrap()).unwrap();
+    assert!(last.get("ai").is_none(), "{last}");
+}
+
 #[test]
 fn the_sessions_table() {
     // add / remove / close with nothing registered are harmless; the real use is in the revoke test

@@ -305,6 +305,14 @@ impl Config {
         self.ai.as_ref().and_then(|a| a.environment) != Some(false)
     }
 
+    /// Replaces the `ai` section from the three settings the app page edits; a value that is the
+    /// default is not written, so an untouched file stays as short as it was.
+    pub fn set_ai(&mut self, environment: bool, instructions: &str, allow: &[String]) {
+        let a =
+            Ai { environment: (!environment).then_some(false), instructions: (!instructions.trim().is_empty()).then(|| instructions.to_string()), tools: (!allow.is_empty()).then(|| AiTools { allow: allow.to_vec() }) };
+        self.ai = (a != Ai::default()).then_some(a);
+    }
+
     /// The owner's standing instructions, trimmed; empty when there are none.
     pub fn ai_instructions(&self) -> String {
         self.ai.as_ref().and_then(|a| a.instructions.as_deref()).unwrap_or("").trim().to_string()

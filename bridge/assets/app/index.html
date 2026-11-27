@@ -20,6 +20,11 @@
   #message { min-height: 2.5rem; font-weight: 600; margin-top: 1rem; }
   #steps { margin-top: .5rem; }
   a { color: #0b57d0; }
+  input[type=checkbox] { width: auto; }
+  textarea { font: inherit; width: 100%; box-sizing: border-box; padding: .3rem; }
+  .field { margin: .8rem 0; }
+  .field label { font-weight: 600; display: block; }
+  .hint { color: #555; font-size: .9rem; margin: .1rem 0 .3rem; }
 </style>
 </head>
 <body>
@@ -30,6 +35,14 @@
 <h2 id="addTitle"></h2>
 <div><input id="addName" maxlength="64" autocomplete="off"> <button id="addButton" type="button"></button></div>
 <div id="steps"></div>
+<h2 id="aiTitle"></h2>
+<div id="aiBox" hidden>
+  <div class="field"><label><input id="aiEnvironment" type="checkbox"> <span id="aiEnvironmentLabel"></span></label><div class="hint" id="aiEnvironmentHint"></div></div>
+  <div class="field"><label for="aiInstructions" id="aiInstructionsLabel"></label><div class="hint" id="aiInstructionsHint"></div><textarea id="aiInstructions" rows="5" maxlength="2000"></textarea></div>
+  <div class="field"><label for="aiAllow" id="aiAllowLabel"></label><div class="hint" id="aiAllowHint"></div><textarea id="aiAllow" rows="3" spellcheck="false" autocomplete="off"></textarea></div>
+  <button id="aiSave" type="button"></button>
+  <div class="line info" id="aiRestart" hidden></div>
+</div>
 <p id="message" role="status" aria-live="polite"></p>
 <script src="/pair/pairlogic.js"></script>
 <script src="/app/app.js"></script>

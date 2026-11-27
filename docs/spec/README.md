@@ -12,6 +12,7 @@
 | [pairing.md](pairing.md) | ペアリング（ADR 0016）: ブリッジの端末の記録、プラグインのペアリングの流れ |
 | [lan-cert.md](lan-cert.md) | 家の中の直結（ADR 0017）: ブリッジの名前の登録と証明書の取得（2 つの状態遷移表） |
 | [bridge-app.md](bridge-app.md) | Spellink Bridge App（トレイ常駐アプリ）のプロセスの寿命。**寿命の表は確認済み（2026-11-24）**。実装はこれから（コードの表にする） |
+| [ai-tools.md](ai-tools.md) | AI への環境の情報と、設定で許可した道具（ADR 0022）。**実装済み（2026-11-28）**（run の表は変えない） |
 | [interfaces.md](interfaces.md) | モジュール間・関数間・プロセス間の受け渡し（インターフェース）台帳 |
 
 ## 状態遷移表の書き方

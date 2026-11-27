@@ -92,10 +92,53 @@ pub struct Config {
     /// Tunes how devices are added (ADR 0016). Zero fields use the defaults.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pairing: Option<Pairing>,
+    /// What the AI is told about its surroundings and which tools it may use (ADR 0022).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai: Option<Ai>,
     /// The keys of config.json this version does not know (written by a newer version, or by
     /// hand), kept so that saving never deletes them.
     #[serde(flatten)]
     pub unknown: Map<String, Value>,
+}
+
+/// `ai` in config.json (ADR 0022, docs/spec/ai-tools.md). An unknown key is refused, so a
+/// misspelt `deny` or `allow` cannot silently drop the owner's intent.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Ai {
+    /// Tell the AI the date, time zone and kind of OS. On unless `false`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<AiTools>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AiTools {
+    /// Claude Code permission rules, only `Bash(<command pattern>)`. Tools are on only when this
+    /// is not empty.
+    #[serde(default)]
+    pub allow: Vec<String>,
+}
+
+/// The most rules, and the longest rule (characters), `ai.tools.allow` takes.
+const MAX_TOOL_RULES: usize = 32;
+const MAX_TOOL_RULE_CHARS: usize = 256;
+
+/// Checks one rule of `ai.tools.allow` (cases S3-S5): the form `Bash(<pattern>)` with a pattern
+/// that is more than a wildcard. "Allow everything" is deliberately not expressible.
+fn check_tool_rule(rule: &str) -> Result<(), String> {
+    if rule.is_empty() || rule.trim() != rule || rule.chars().any(char::is_control) || rule.chars().count() > MAX_TOOL_RULE_CHARS {
+        return Err(format!("must be 1-{MAX_TOOL_RULE_CHARS} characters with no leading or trailing space and no control characters"));
+    }
+    let Some(inner) = rule.strip_prefix("Bash(").and_then(|r| r.strip_suffix(')')) else {
+        return Err("must have the form Bash(<command>): only Bash is supported in this version".into());
+    };
+    if inner.trim().chars().all(|c| c == '*' || c == ':') {
+        return Err("must name a command: \"allow everything\" is not supported".into());
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -251,6 +294,28 @@ impl Config {
         (pick(t.first_output_sec, DEFAULT_FIRST_OUTPUT_SEC), pick(t.gap_sec, DEFAULT_GAP_SEC), pick(t.total_sec, DEFAULT_TOTAL_SEC))
     }
 
+    /// Whether the AI is told the date, time zone and kind of OS: on unless turned off.
+    pub fn ai_environment(&self) -> bool {
+        self.ai.as_ref().and_then(|a| a.environment) != Some(false)
+    }
+
+    /// The tool rules to hand to the AI, each once (case S6), in the order written. Empty means
+    /// tools stay off.
+    pub fn tool_rules(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for r in self.ai.iter().filter_map(|a| a.tools.as_ref()).flat_map(|t| t.allow.iter()) {
+            if !out.contains(r) {
+                out.push(r.clone());
+            }
+        }
+        out
+    }
+
+    /// How many rules of `ai.tools.allow` repeat an earlier one, for the log.
+    pub fn duplicate_tool_rules(&self) -> usize {
+        self.ai.iter().filter_map(|a| a.tools.as_ref()).map(|t| t.allow.len()).sum::<usize>() - self.tool_rules().len()
+    }
+
     /// The size of conversation to send, or 0 when the memory is off.
     pub fn history_chars(&self) -> i64 {
         match self.history.as_ref().map_or(0, |h| h.context_chars) {
@@ -281,6 +346,17 @@ impl Config {
             }
             if !(0..=MAX_TTL_HOURS).contains(&p.ttl_hours) {
                 return Err(format!("{file}: pairing.ttlHours {} must be between 0 (default) and {MAX_TTL_HOURS}", p.ttl_hours));
+            }
+        }
+        if let Some(t) = self.ai.as_ref().and_then(|a| a.tools.as_ref()) {
+            if t.allow.len() > MAX_TOOL_RULES {
+                return Err(format!("{file}: ai.tools.allow has {} rules; at most {MAX_TOOL_RULES}", t.allow.len()));
+            }
+            if cfg!(windows) && !t.allow.is_empty() {
+                return Err(format!("{file}: ai.tools.allow is not supported on Windows in this version (Linux and macOS only)"));
+            }
+            for (i, r) in t.allow.iter().enumerate() {
+                check_tool_rule(r).map_err(|e| format!("{file}: ai.tools.allow[{i}] {r:?} {e}"))?;
             }
         }
         if let Some(h) = &self.history {
@@ -778,5 +854,90 @@ mod tests {
         s.save(&c).unwrap();
         let got: Value = serde_json::from_slice(&std::fs::read(s.config_file()).unwrap()).unwrap();
         assert!(got.get("showProgress").is_none() && got.get("model").is_none(), "{got}");
+    }
+
+    fn load_ai(ai: &str) -> Result<Config, String> {
+        let (_d, s) = store();
+        write_config(&s, &format!(r#"{{"token":"t","port":8765,"tiltDegrees":0,"ai":{ai}}}"#));
+        s.load()
+    }
+
+    #[test]
+    fn without_ai_the_environment_is_told_and_no_tool_is_allowed() {
+        // S1
+        let (_d, s) = store();
+        write_config(&s, r#"{"token":"t","port":8765,"tiltDegrees":0}"#);
+        let c = s.load().unwrap();
+        assert!(c.ai_environment() && c.tool_rules().is_empty());
+        // S2
+        let c = load_ai(r#"{"tools":{"allow":[]}}"#).unwrap();
+        assert!(c.tool_rules().is_empty());
+        assert!(!load_ai(r#"{"environment":false}"#).unwrap().ai_environment());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_rule_is_kept_exactly_as_written() {
+        // T2: the bridge validates and hands the rule on; it never rewrites it
+        let c = load_ai(r#"{"tools":{"allow":["Bash(date)","Bash(ls:*)"]}}"#).unwrap();
+        assert_eq!(c.tool_rules(), vec!["Bash(date)".to_string(), "Bash(ls:*)".to_string()]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_bad_rule_stops_the_start_and_says_which_one() {
+        let long = format!("Bash({})", "a".repeat(260));
+        let cases: Vec<(String, &str)> = vec![
+            (r#"{"tools":{"allow":[""]}}"#.into(), "allow[0]"),                              // S3: empty
+            (r#"{"tools":{"allow":[" Bash(date)"]}}"#.into(), "no leading"),                 // S3: space
+            (r#"{"tools":{"allow":["Bash(date)\n"]}}"#.into(), "control"),                   // S3
+            (format!(r#"{{"tools":{{"allow":["{long}"]}}}}"#), "characters"),                // S3: too long
+            (r#"{"tools":{"allow":[3]}}"#.into(), "invalid type"),                           // S3: not a string
+            (r#"{"tools":{"allow":["Read"]}}"#.into(), "only Bash"),                         // S4
+            (r#"{"tools":{"allow":["WebFetch(domain:example.com)"]}}"#.into(), "only Bash"), // S4
+            (r#"{"tools":{"allow":["Bash"]}}"#.into(), "only Bash"),                         // S5 (no pattern at all)
+            (r#"{"tools":{"allow":["Bash()"]}}"#.into(), "allow everything"),                // S5
+            (r#"{"tools":{"allow":["Bash(*)"]}}"#.into(), "allow everything"),               // S5
+            (r#"{"tools":{"allow":["Bash(:*)"]}}"#.into(), "allow everything"),              // S5
+            (r#"{"tools":{"allow":["*"]}}"#.into(), "only Bash"),                            // S5
+            (r#"{"environment":"yes"}"#.into(), "invalid type"),                             // S9
+            (r#"{"tools":{"deny":["Bash(rm:*)"]}}"#.into(), "unknown field"),                // S10
+            (r#"{"tool":{"allow":["Bash(date)"]}}"#.into(), "unknown field"),                // S10: a misspelt key
+        ];
+        for (ai, want) in cases.into_iter() {
+            let e = load_ai(&ai).unwrap_err();
+            assert!(e.contains("config.json") && e.contains(want), "{ai} -> {e}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn more_than_32_rules_are_refused_and_repeats_are_dropped() {
+        // S7
+        let many: Vec<String> = (0..33).map(|i| format!("\"Bash(echo {i})\"")).collect();
+        let e = load_ai(&format!(r#"{{"tools":{{"allow":[{}]}}}}"#, many.join(","))).unwrap_err();
+        assert!(e.contains("at most 32"), "{e}");
+        // S6
+        let c = load_ai(r#"{"tools":{"allow":["Bash(date)","Bash(date)","Bash(pwd)"]}}"#).unwrap();
+        assert_eq!(c.tool_rules(), vec!["Bash(date)".to_string(), "Bash(pwd)".to_string()]);
+        assert_eq!(c.duplicate_tool_rules(), 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn tools_are_refused_on_windows() {
+        // S8
+        assert!(load_ai(r#"{"tools":{"allow":["Bash(date)"]}}"#).unwrap_err().contains("Windows"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ai_survives_a_save() {
+        let c = load_ai(r#"{"environment":false,"tools":{"allow":["Bash(date)"]}}"#).unwrap();
+        let (_d, s) = store();
+        std::fs::create_dir_all(s.dir()).unwrap();
+        s.save(&c).unwrap();
+        let got: Value = serde_json::from_slice(&std::fs::read(s.config_file()).unwrap()).unwrap();
+        assert_eq!(got["ai"], json!({"environment": false, "tools": {"allow": ["Bash(date)"]}}));
     }
 }

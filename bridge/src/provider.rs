@@ -44,12 +44,14 @@ pub struct Sink {
     /// has begun (thinking counts, not only visible text). A provider that cannot tell may call it
     /// only with true, from `text`.
     pub activity: Arc<dyn Fn(bool) + Send + Sync>,
+    /// Reports a tool the AI used or was refused: one line for the owner's log (ADR 0022, T5).
+    pub tool: Arc<dyn Fn(&str) + Send + Sync>,
 }
 
 impl Sink {
     /// A sink that drops everything.
     pub fn silent() -> Sink {
-        Sink { text: Arc::new(|_| {}), activity: Arc::new(|_| {}) }
+        Sink { text: Arc::new(|_| {}), activity: Arc::new(|_| {}), tool: Arc::new(|_| {}) }
     }
 }
 
@@ -131,9 +133,127 @@ pub fn system_prompt(lang: &str, budget: i64) -> String {
     .join("\n")
 }
 
+/// Where and when the question is asked (ADR 0022, T4): the only things about the computer the AI is told.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Now {
+    /// ISO 8601 with the offset, e.g. 2026-11-28T10:00:00+09:00.
+    pub iso: String,
+    /// The time zone's name as the computer says it ("JST"; "UTC" when it cannot say).
+    pub zone: String,
+    /// "linux", "macos" or "windows".
+    pub os: &'static str,
+}
+
+/// Reads `date '+%Y-%m-%dT%H:%M:%S %z %Z'` (another process's output is not trusted: the shape is
+/// checked, anything else is `None`).
+fn parse_date(out: &str) -> Option<(String, String)> {
+    let mut p = out.split_whitespace();
+    let (t, off, zone) = (p.next()?, p.next()?, p.next()?);
+    let b = t.as_bytes();
+    let shape = b.len() == 19
+        && b.iter().enumerate().all(|(i, c)| match i {
+            4 | 7 => *c == b'-',
+            10 => *c == b'T',
+            13 | 16 => *c == b':',
+            _ => c.is_ascii_digit(),
+        });
+    let o = off.as_bytes();
+    let off_ok = o.len() == 5 && (o[0] == b'+' || o[0] == b'-') && o[1..].iter().all(u8::is_ascii_digit);
+    let zone_ok = (1..=8).contains(&zone.len()) && zone.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '_'));
+    (shape && off_ok && zone_ok && p.next().is_none()).then(|| (format!("{t}{}:{}", &off[..3], &off[3..]), zone.to_string()))
+}
+
+/// UTC from the clock, for a computer whose `date` cannot be asked.
+fn utc_now() -> String {
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as i64;
+    let (days, rem) = (secs.div_euclid(86400), secs.rem_euclid(86400));
+    // days since 1970-01-01 -> civil date (Howard Hinnant's algorithm)
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}+00:00", rem / 3600, rem % 3600 / 60, rem % 60)
+}
+
+/// The local time, from the system's own `date` (the offset and the zone's name are the
+/// computer's); UTC when that cannot be had.
+pub async fn local_now() -> Now {
+    let os = if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(windows) {
+        "windows"
+    } else {
+        "linux"
+    };
+    let asked = tokio::time::timeout(std::time::Duration::from_secs(2), tokio::process::Command::new("date").arg("+%Y-%m-%dT%H:%M:%S %z %Z").stdin(std::process::Stdio::null()).kill_on_drop(true).output()).await;
+    let parsed = match asked {
+        Ok(Ok(o)) if o.status.success() => parse_date(&String::from_utf8_lossy(&o.stdout)),
+        _ => None,
+    };
+    match parsed {
+        Some((iso, zone)) => Now { iso, zone, os },
+        None => Now { iso: utc_now(), zone: "UTC".into(), os },
+    }
+}
+
+/// The paragraph appended to the system prompt: the date, the zone and the kind of OS; and, when
+/// tools are allowed, that they exist and should be mentioned when used. Nothing else about the
+/// computer (no host or user name, path, address or setting) is ever put here.
+pub fn environment_note(lang: &str, now: &Now, tools: bool) -> String {
+    if lang == "en" {
+        let mut s = format!("Current date and time: {} ({}). You run on the user's own computer ({}).", now.iso, now.zone, now.os);
+        if tools {
+            s.push_str(" You may use only the shell commands you have been allowed. When you use one, say so briefly in your answer.");
+        }
+        return s;
+    }
+    let mut s = format!("現在の日時: {}（{}）。あなたは利用者自身のパソコン（{}）で動いています。", now.iso, now.zone, now.os);
+    if tools {
+        s.push_str("許可されたシェルコマンドだけを使えます。使ったときは、答えの中でそれを一言添えてください。");
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn date_output_is_checked_before_it_is_believed() {
+        assert_eq!(parse_date("2026-11-28T10:00:00 +0900 JST\n"), Some(("2026-11-28T10:00:00+09:00".into(), "JST".into())));
+        assert_eq!(parse_date("2026-11-28T10:00:00 -0330 -0330"), Some(("2026-11-28T10:00:00-03:30".into(), "-0330".into())));
+        for bad in ["", "garbage", "2026-11-28 10:00:00 +0900 JST", "2026-11-28T10:00:00 +09 JST", "2026-11-28T10:00:00 +0900 J S T", "2026-11-28T10:00:00 +0900 JST extra", "2026-11-28T10:00:00 +0900 {{x}}"] {
+            assert_eq!(parse_date(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn the_clock_fallback_is_a_valid_utc_time() {
+        let (iso, _) = parse_date(&format!("{} +0000 UTC", &utc_now()[..19])).expect("shape");
+        assert!(iso.ends_with("+00:00"));
+    }
+
+    #[tokio::test]
+    async fn the_environment_note_holds_the_date_zone_and_os_and_nothing_else() {
+        let now = local_now().await;
+        assert!(parse_date(&format!("{} +0000 {}", &now.iso[..19], now.zone)).is_some(), "{now:?}");
+        let fixed = Now { iso: "2026-11-28T10:00:00+09:00".into(), zone: "JST".into(), os: "linux" };
+        let ja = environment_note("ja", &fixed, false);
+        assert!(ja.contains("2026-11-28T10:00:00+09:00") && ja.contains("JST") && ja.contains("linux") && !ja.contains("シェル"), "{ja}");
+        let en = environment_note("en", &fixed, true);
+        assert!(en.contains("2026-11-28T10:00:00+09:00") && en.contains("say so briefly"), "{en}");
+        // T4: nothing about this computer other than the three facts
+        for text in [&ja, &en] {
+            for private in [std::env::var("HOME").unwrap_or_default(), std::env::var("USER").unwrap_or_default()].iter().filter(|p| p.len() > 3) {
+                assert!(!text.contains(private.as_str()), "{text}");
+            }
+        }
+    }
 
     #[test]
     fn the_system_prompt_carries_the_length_budget() {

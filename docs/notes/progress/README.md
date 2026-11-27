@@ -2,7 +2,7 @@
 
 新しいセッションのエージェントは、**まずこのファイル**を読む。次に `CLAUDE.md`（規約）。リリースまでの全体は `release-plan.md`。経緯が要るときだけ `history.md`。別のエージェントに作業を渡すときは `handoff.md`。
 
-最終更新: 2026-11-26（VPS 2 台が動き始めた。それ以前: 2026-11-24 表の状態名の改名、Bridge App の確認、名前の確定、寄付は Ko-fi。それ以前: 2026-11-22 レビューの修正、運営の形〔ADR 0020〕、計測〔ADR 0021〕、直結の週の枠、診断の追加。実機のペアリングは 2026-11-23 にユーザーが試す）
+最終更新: 2026-11-28（ADR 0022 をブリッジに実装。それ以前: 2026-11-26 VPS 2 台が動き始めた。それ以前: 2026-11-24 表の状態名の改名、Bridge App の確認、名前の確定、寄付は Ko-fi。それ以前: 2026-11-22 レビューの修正、運営の形〔ADR 0020〕、計測〔ADR 0021〕、直結の週の枠、診断の追加。実機のペアリングは 2026-11-23 にユーザーが試す）
 
 ## このファイルの管理ルール
 - ここには「**いまの状態・次にやること・未決事項・手順**」だけを書く。経緯や実機での試行錯誤は `log/<年-月>.md` に**追記**する（追記専用。過去の記述は直さず、誤りは新しい項目で訂正）。`history.md` は、まとめ直した読み物。
@@ -50,6 +50,7 @@ Supernote のノートで、手書きをラッソで囲む → AI（現状は Cl
 
 ## 次にやること（優先順）
 0. **[U→A] 公開の手順**: `docs/guides/github-operations.md`。**2026-11-23 に済み**: 初回の push（`main`・`stg`）、CI 緑（bridge: fmt・clippy・テスト・audit・deny、plugin: 型・lint・851 件・パッケージ）、イメージ `ghcr.io/daisukematsuoh/spellink-edge:0.1.0`・`latest`（タグ `edge-v0.1.0`、認証なしで取れる）、セキュリティ設定（全部オン）。Actions の許可は「GitHub のもの＋`docker/*`・`Swatinem/rust-cache`・`dtolnay/rust-toolchain`」だけ。残り: `main` の保護（必須チェックに bridge・plugin の test）、Dependabot の PR 10 本の仕分け（React Native の大きな更新は SDK に合わせる）、`release.yml` は未実行。push は、これからも指示があるときだけ。Dependabot は有効にしてよい（`.github/dependabot.yml` を用意した）。診断は、利用者向け（確認・送る）と、五回タップで開く開発者向けに分けた。実機の調査が済んだら、開発者向けの画面の実験は消す。
+**[A] AI への環境の情報と許可リスト（ADR 0022・`docs/spec/ai-tools.md`）— ブリッジに実装済み（2026-11-28）**: 設定 `ai.environment`・`ai.tools.allow`（検証、引数の組み立て、日時・OS のシステムプロンプト、プロセスグループごとの停止、道具の記録はログのみ）。Rust 292＋統合テスト緑、clippy 緑。実際の `claude` で確認済み。**残り: [U] 端末から「今は?」と聞いて答えるか（`config.json` に `"ai":{"tools":{"allow":["Bash(date)"]}}` を書いて再起動）。履歴への道具の記録は見送り。**
 **[U]** = ユーザー、**[A]** = エージェント。担当の分け方は `handoff.md`（古い部分がある。この文書が優先）。
 1. **[U] 実機でペアリングを試す（2026-11-23 の予定）。** 新しいバイナリを `bridge/scripts/build-with-plugin.sh` で作って入れ、`device reissue nomad-test`・`device package nomad-test`、手順は `docs/guides/install-guide.md`。診断の「3. Network」「12. SDK names」「12b. Network channels」の結果を共有。結果を見て、表の気になったセルを直す。
 2. **[U→A] VPS（日本 Kagoya・米国 Scaleway Chicago）— 2026-11-26 に両方が動いた。** 外からの確認（[A]）: `https://jp.relay.spellink.uk`・`https://us.relay.spellink.uk` の `/health` が `{"ok":true,"bridges":0}`、`/v1/stats` が `{"v":1,…}`、証明書は Let's Encrypt の**本番**（staging ではない）、`https://names.spellink.uk:8443/health` が `{"ok":true,"records":3}`、`us.relay` の `_acme-challenge` CNAME も引ける。**未確認（VPS の中身。[U] が確かめる）**: 米国の ID が日本の `INFRA_IDS` にあるか、再起動後に自動で上がるか、`unattended-upgrades`・chrony・`ufw`（米国は 22・443 のみ）、バックアップ（identity）、外から `53/udp`（日本。**DNS を横取りしない回線から**）。手元の操作マニュアルは `docs/private/vps-runbook.md`（git 管理外）。

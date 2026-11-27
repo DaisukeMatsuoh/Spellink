@@ -204,7 +204,7 @@ pub fn load_font(store: &ConfigStore) -> Result<Arc<Font>, String> {
 pub fn new_provider(cfg: &Config) -> Result<Arc<dyn Provider>, String> {
     let (kind, model, executable) = cfg.provider_settings();
     match kind.as_str() {
-        "claude-code" => Ok(Arc::new(claudecode::Runner::new(&executable, &model)?)),
+        "claude-code" => Ok(Arc::new(claudecode::Runner::new(&executable, &model)?.with_ai(cfg.ai_environment(), cfg.tool_rules()))),
         other => Err(format!("unknown provider {other:?}")), // Config::validate already refused it
     }
 }
@@ -306,6 +306,12 @@ pub async fn serve() -> Result<(), String> {
     }
     let router = http::router(deps.clone(), Some(admin), Some(pages));
 
+    if cfg.duplicate_tool_rules() > 0 {
+        log(&format!("ai.tools.allow: {} repeated rule(s) were dropped", cfg.duplicate_tool_rules()));
+    }
+    if !cfg.tool_rules().is_empty() {
+        log(&format!("ai tools are on: {} rule(s) allowed", cfg.tool_rules().len()));
+    }
     for bad in cfg.bad_relays() {
         log(&format!("relayUrl/relayUrls: {bad:?} is not used (it must be only wss://host[:port])"));
     }

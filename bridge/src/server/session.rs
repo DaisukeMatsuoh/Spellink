@@ -572,7 +572,18 @@ impl Session {
         let result = self
             .deps
             .provider
-            .ask(Request { system: provider::system_prompt(lang, budget), earlier, question: q.to_string(), lang: lang.to_string() }, Sink { text: Arc::new(on_text), activity: Arc::new(on_activity) }, r.cancel.clone())
+            .ask(
+                Request { system: provider::system_prompt(lang, budget), earlier, question: q.to_string(), lang: lang.to_string() },
+                Sink {
+                    text: Arc::new(on_text),
+                    activity: Arc::new(on_activity),
+                    tool: Arc::new({
+                        let (log, id) = (self.deps.log.clone(), id.to_string());
+                        move |l: &str| log(&format!("ask {id} {l}"))
+                    }),
+                },
+                r.cancel.clone(),
+            )
             .await;
         timers.stop_all();
 

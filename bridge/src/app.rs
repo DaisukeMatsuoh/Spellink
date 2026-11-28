@@ -9,7 +9,7 @@ use crate::history;
 use crate::protocol::{self, Settings};
 use crate::provider::{Provider, claudecode};
 use crate::relay::room_id;
-use crate::server::admin::{AdminDeps, ProviderInfo, StatusInfo};
+use crate::server::admin::{AdminDeps, AiAdmin, AiSettings, ProviderInfo, StatusInfo};
 use crate::server::run::Runs;
 use crate::server::session::{Session, Sessions};
 use crate::server::transport::Transport;
@@ -143,6 +143,34 @@ pub fn status_func(cfg: Arc<Config>, ai_name: String) -> Arc<dyn Fn() -> StatusI
     })
 }
 
+/// The AI settings of the app page: reads them from the saved configuration and saves a change
+/// only after the whole configuration still passes its checks (ADR 0022, S3-S10).
+pub fn ai_admin(shared: Arc<Mutex<Config>>, store: ConfigStore, running: &Arc<Config>) -> AiAdmin {
+    let (running_env, running_text, running_rules) = (running.ai_environment(), running.ai_instructions(), running.tool_rules());
+    let (shared_get, shared_set, store_set) = (shared.clone(), shared, store);
+    AiAdmin {
+        get: Arc::new(move || {
+            let c = shared_get.lock().unwrap();
+            let settings = AiSettings {
+                environment: c.ai_environment(),
+                instructions: c.ai.as_ref().and_then(|a| a.instructions.clone()).unwrap_or_default(),
+                allow: c.ai.as_ref().and_then(|a| a.tools.as_ref()).map(|t| t.allow.clone()).unwrap_or_default(),
+            };
+            let restart = c.ai_environment() != running_env || c.ai_instructions() != running_text || c.tool_rules() != running_rules;
+            (settings, restart)
+        }),
+        set: Arc::new(move |s: AiSettings| {
+            let mut c = shared_set.lock().unwrap();
+            let mut next = c.clone();
+            next.set_ai(s.environment, &s.instructions, &s.allow);
+            next.validate(&store_set.config_file().display().to_string())?;
+            store_set.save(&next)?;
+            *c = next;
+            Ok(())
+        }),
+    }
+}
+
 /// For the log: the addresses a new device would be told.
 pub fn describe_urls(cfg: &Config) -> String {
     let u = device_urls(cfg, "<id>", "");
@@ -204,7 +232,7 @@ pub fn load_font(store: &ConfigStore) -> Result<Arc<Font>, String> {
 pub fn new_provider(cfg: &Config) -> Result<Arc<dyn Provider>, String> {
     let (kind, model, executable) = cfg.provider_settings();
     match kind.as_str() {
-        "claude-code" => Ok(Arc::new(claudecode::Runner::new(&executable, &model)?)),
+        "claude-code" => Ok(Arc::new(claudecode::Runner::new(&executable, &model)?.with_ai(cfg.ai_environment(), cfg.tool_rules(), cfg.ai_instructions()))),
         other => Err(format!("unknown provider {other:?}")), // Config::validate already refused it
     }
 }
@@ -299,13 +327,20 @@ pub async fn serve() -> Result<(), String> {
     if let Some(rooms) = &rooms {
         sync_rooms(rooms, &registry, &deps_cell);
     }
-    let admin = AdminDeps { devices: registry, token: admin_token, package: package_builder(cfg_arc.clone()), status: Some(status_func(cfg_arc.clone(), ai.name())) };
+    let admin =
+        AdminDeps { devices: registry, token: admin_token, package: package_builder(cfg_arc.clone()), status: Some(status_func(cfg_arc.clone(), ai.name())), ai: Some(ai_admin(shared.clone(), store.clone(), &cfg_arc)) };
     let (pages, problems) = ui::pages();
     for p in problems {
         log(&p);
     }
     let router = http::router(deps.clone(), Some(admin), Some(pages));
 
+    if cfg.duplicate_tool_rules() > 0 {
+        log(&format!("ai.tools.allow: {} repeated rule(s) were dropped", cfg.duplicate_tool_rules()));
+    }
+    if !cfg.tool_rules().is_empty() {
+        log(&format!("ai tools are on: {} rule(s) allowed", cfg.tool_rules().len()));
+    }
     for bad in cfg.bad_relays() {
         log(&format!("relayUrl/relayUrls: {bad:?} is not used (it must be only wss://host[:port])"));
     }

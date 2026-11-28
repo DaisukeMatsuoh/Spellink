@@ -12,8 +12,11 @@ import type {Settings} from '../protocol';
 import {forgetThisNote} from '../forget';
 import {closeView, ensurePermissions} from '../sdk';
 import {show} from '../session';
-import {Button, styles} from './common';
+import {Button, Section, styles, Switch} from './common';
 import {Slider} from './Slider';
+
+type Toggle =
+  'lineTilt' | 'thinkingAnimation' | 'busyNotice' | 'avoidOverwriting';
 
 function describeAngle(deg: number | undefined): string {
   if (!deg) {
@@ -66,9 +69,7 @@ export function SettingsScreen() {
     [conn, settings],
   );
   const toggle = useCallback(
-    (
-      key: 'lineTilt' | 'thinkingAnimation' | 'busyNotice' | 'avoidOverwriting',
-    ) => {
+    (key: Toggle) => {
       if (settings) {
         change({[key]: !settings[key]});
       }
@@ -81,111 +82,126 @@ export function SettingsScreen() {
     ? t(older === 'plugin' ? 'versionPluginOlder' : 'versionBridgeOlder')
     : '';
 
+  const on = (key: Toggle) => () => toggle(key);
   return (
     <View style={styles.screen}>
-      <Text style={styles.title}>{t('settingsTitle')}</Text>
-      {/* Close and diagnostics sit at the top: the page is longer than the screen. */}
-      <View style={styles.row}>
-        <Button label={t('pairButton')} onPress={() => show('pair')} />
-        <Button label={t('diagButton')} onPress={() => show('diagnostics')} />
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>{t('settingsTitle')}</Text>
+        {/* Close stays at the top: the page is longer than the screen. */}
         <Button label={t('close')} onPress={() => void closeView()} />
       </View>
       <ScrollView style={styles.fill}>
-        <Text style={styles.text}>{status}</Text>
-        {bridgeVersion ? (
-          <Text style={styles.small}>
-            {t('versionLine', {plugin: PLUGIN_VERSION, bridge: bridgeVersion})}
-          </Text>
-        ) : null}
-        {versionNote ? <Text style={styles.text}>{versionNote}</Text> : null}
-        {destination ? (
-          <Text style={styles.small}>
-            {t('destination', {name: destination})}
-          </Text>
-        ) : null}
-        <View style={styles.row}>
-          <Button
+        <Section title={t('sectionConnection')}>
+          <Text style={styles.statusLine}>{status}</Text>
+          {versionNote ? <Text style={styles.text}>{versionNote}</Text> : null}
+          {destination ? (
+            <Text style={styles.help}>
+              {t('destination', {name: destination})}
+            </Text>
+          ) : null}
+          {bridgeVersion ? (
+            <Text style={styles.help}>
+              {t('versionLine', {
+                plugin: PLUGIN_VERSION,
+                bridge: bridgeVersion,
+              })}
+            </Text>
+          ) : null}
+          <View style={styles.row}>
+            <Button label={t('pairButton')} onPress={() => show('pair')} />
+          </View>
+        </Section>
+
+        <Section title={t('sectionWriting')}>
+          <Switch
+            label={t('lineTilt')}
+            help={t('lineTiltHelp', {
+              angle: describeAngle(settings?.tiltDegrees),
+            })}
+            value={!!settings?.lineTilt}
             disabled={!settings}
-            label={`${t('lineTilt')}: ${settings?.lineTilt ? 'ON' : 'OFF'}`}
-            onPress={() => toggle('lineTilt')}
+            onChange={on('lineTilt')}
           />
-        </View>
-        <Text style={styles.small}>
-          {t('lineTiltHelp', {angle: describeAngle(settings?.tiltDegrees)})}
-        </Text>
-        <View style={styles.row}>
-          <Button
+          <Slider
+            label={t('fullWidthSpacing')}
+            value={settings?.fullWidthSpacing ?? 100}
+            min={100}
+            max={140}
+            step={5}
             disabled={!settings}
-            label={`${t('thinkingAnimation')}: ${
-              settings?.thinkingAnimation ? 'ON' : 'OFF'
-            }`}
-            onPress={() => toggle('thinkingAnimation')}
+            onCommit={v => change({fullWidthSpacing: v})}
           />
-        </View>
-        <Text style={styles.small}>{t('thinkingAnimationHelp')}</Text>
-        <View style={styles.row}>
-          <Button
+          <Slider
+            label={t('halfWidthSpacing')}
+            value={settings?.halfWidthSpacing ?? 110}
+            min={100}
+            max={160}
+            step={5}
             disabled={!settings}
-            label={`${t('avoidOverwritingLabel')}: ${
-              settings?.avoidOverwriting ? 'ON' : 'OFF'
-            }`}
-            onPress={() => toggle('avoidOverwriting')}
+            onCommit={v => change({halfWidthSpacing: v})}
           />
-        </View>
-        <Text style={styles.small}>{t('avoidOverwritingHelp')}</Text>
-        <View style={styles.row}>
-          <Button
+          <Text style={styles.help}>{t('spacingHelp')}</Text>
+        </Section>
+
+        <Section title={t('sectionBehavior')}>
+          <Switch
+            label={t('thinkingAnimation')}
+            help={t('thinkingAnimationHelp')}
+            value={!!settings?.thinkingAnimation}
             disabled={!settings}
-            label={`${t('busyNoticeLabel')}: ${
-              settings?.busyNotice ? 'ON' : 'OFF'
-            }`}
-            onPress={() => toggle('busyNotice')}
+            onChange={on('thinkingAnimation')}
           />
-        </View>
-        <Text style={styles.small}>{t('busyNoticeHelp')}</Text>
-        <Slider
-          label={t('fullWidthSpacing')}
-          value={settings?.fullWidthSpacing ?? 100}
-          min={100}
-          max={140}
-          step={5}
-          disabled={!settings}
-          onCommit={v => change({fullWidthSpacing: v})}
-        />
-        <Slider
-          label={t('halfWidthSpacing')}
-          value={settings?.halfWidthSpacing ?? 110}
-          min={100}
-          max={160}
-          step={5}
-          disabled={!settings}
-          onCommit={v => change({halfWidthSpacing: v})}
-        />
-        <Text style={styles.small}>{t('spacingHelp')}</Text>
-        <View style={styles.row}>
-          <Button
-            disabled={!conn}
-            label={t('forgetThisNote')}
-            onPress={() => {
-              if (conn) {
-                void forgetThisNote(conn).then(r => {
-                  if (r === 'noNote') {
-                    setStatus(t('noNoteOpen'));
-                  }
-                });
-              }
-            }}
+          <Switch
+            label={t('avoidOverwritingLabel')}
+            help={t('avoidOverwritingHelp')}
+            value={!!settings?.avoidOverwriting}
+            disabled={!settings}
+            onChange={on('avoidOverwriting')}
           />
-        </View>
-        <Text style={styles.small}>{t('forgetThisNoteHelp')}</Text>
-        <View style={styles.row}>
-          <Button
-            disabled={!conn}
-            label={t('forgetHistory')}
-            onPress={() => conn?.send({type: 'clearHistory'})}
+          <Switch
+            label={t('busyNoticeLabel')}
+            help={t('busyNoticeHelp')}
+            value={!!settings?.busyNotice}
+            disabled={!settings}
+            onChange={on('busyNotice')}
           />
-        </View>
-        <Text style={styles.small}>{t('forgetHistoryHelp')}</Text>
+        </Section>
+
+        <Section title={t('sectionData')}>
+          <View style={styles.row}>
+            <Button
+              disabled={!conn}
+              label={t('forgetThisNote')}
+              onPress={() => {
+                if (conn) {
+                  void forgetThisNote(conn).then(r => {
+                    if (r === 'noNote') {
+                      setStatus(t('noNoteOpen'));
+                    }
+                  });
+                }
+              }}
+            />
+          </View>
+          <Text style={styles.help}>{t('forgetThisNoteHelp')}</Text>
+          <View style={styles.row}>
+            <Button
+              disabled={!conn}
+              label={t('forgetHistory')}
+              onPress={() => conn?.send({type: 'clearHistory'})}
+            />
+          </View>
+          <Text style={styles.help}>{t('forgetHistoryHelp')}</Text>
+        </Section>
+
+        <Section title={t('sectionSupport')}>
+          <View style={styles.row}>
+            <Button
+              label={t('diagButton')}
+              onPress={() => show('diagnostics')}
+            />
+          </View>
+        </Section>
       </ScrollView>
     </View>
   );

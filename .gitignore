@@ -46,3 +46,6 @@ coverage/
 
 # Operator's private runbooks (commands with real hosts/paths; never committed)
 docs/private/
+
+# Setup files and packages made for a device (they hold a pairing secret)
+*.snplg

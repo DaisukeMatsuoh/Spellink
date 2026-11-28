@@ -3,58 +3,65 @@
 import type {Table} from './stm';
 
 export const WRITE_STATES = [
-  'OPEN',
-  'WRITE',
-  'WRITTEN',
-  'ABORT0',
-  'ABORT1',
+  'CheckNote',
+  'WriteStrokes',
+  'Written',
+  'AbortClean',
+  'AbortDirty',
 ] as const;
 export type WriteState = (typeof WRITE_STATES)[number];
-export const WRITE_EVENTS = ['OK', 'FAIL', 'REF', 'SIL', 'NOP', 'ODD'] as const;
+export const WRITE_EVENTS = [
+  'Ok',
+  'Failed',
+  'Refused',
+  'NoAnswer',
+  'NoteChanged',
+  'Unexpected',
+] as const;
 export type WriteEvent = (typeof WRITE_EVENTS)[number];
 export const WRITE_ACTIONS = ['X0', 'X1', 'X2', 'X3', 'X4'] as const;
 export type WriteAction = (typeof WRITE_ACTIONS)[number];
 
 // Typed as a full Record: a missing state or event does not compile.
 export const WRITE_TABLE: Table<WriteState, WriteEvent, WriteAction> = {
-  OPEN: {
-    OK: {k: 'do', action: 'X2', next: 'WRITE'},
-    FAIL: {k: 'do', action: 'X0', next: 'ABORT0'},
-    REF: {k: 'never', note: 'a'},
-    SIL: {k: 'do', action: 'X0', next: 'ABORT0'},
-    NOP: {k: 'do', action: 'X0', next: 'ABORT0'},
-    ODD: {k: 'do', action: 'X0', next: 'ABORT0'},
+  CheckNote: {
+    Ok: {k: 'do', action: 'X2', next: 'WriteStrokes'},
+    Failed: {k: 'do', action: 'X0', next: 'AbortClean'},
+    Refused: {k: 'never', note: 'a'},
+    NoAnswer: {k: 'do', action: 'X0', next: 'AbortClean'},
+    NoteChanged: {k: 'do', action: 'X0', next: 'AbortClean'},
+    Unexpected: {k: 'do', action: 'X0', next: 'AbortClean'},
   },
-  WRITE: {
-    OK: {k: 'do', action: 'X4', next: 'WRITTEN'},
-    FAIL: {k: 'do', action: 'X1', next: 'ABORT1'},
-    REF: {k: 'do', action: 'X1', next: 'ABORT1'},
-    SIL: {k: 'do', action: 'X1', next: 'ABORT1'},
-    NOP: {k: 'never', note: 'b'},
-    ODD: {k: 'do', action: 'X1', next: 'ABORT1'},
+  WriteStrokes: {
+    Ok: {k: 'do', action: 'X4', next: 'Written'},
+    Failed: {k: 'do', action: 'X1', next: 'AbortDirty'},
+    Refused: {k: 'do', action: 'X1', next: 'AbortDirty'},
+    NoAnswer: {k: 'do', action: 'X1', next: 'AbortDirty'},
+    NoteChanged: {k: 'never', note: 'b'},
+    Unexpected: {k: 'do', action: 'X1', next: 'AbortDirty'},
   },
-  WRITTEN: {
-    OK: {k: 'never', note: 'c'},
-    FAIL: {k: 'never', note: 'c'},
-    REF: {k: 'never', note: 'c'},
-    SIL: {k: 'never', note: 'c'},
-    NOP: {k: 'never', note: 'c'},
-    ODD: {k: 'never', note: 'c'},
+  Written: {
+    Ok: {k: 'never', note: 'c'},
+    Failed: {k: 'never', note: 'c'},
+    Refused: {k: 'never', note: 'c'},
+    NoAnswer: {k: 'never', note: 'c'},
+    NoteChanged: {k: 'never', note: 'c'},
+    Unexpected: {k: 'never', note: 'c'},
   },
-  ABORT0: {
-    OK: {k: 'never', note: 'c'},
-    FAIL: {k: 'never', note: 'c'},
-    REF: {k: 'never', note: 'c'},
-    SIL: {k: 'never', note: 'c'},
-    NOP: {k: 'never', note: 'c'},
-    ODD: {k: 'never', note: 'c'},
+  AbortClean: {
+    Ok: {k: 'never', note: 'c'},
+    Failed: {k: 'never', note: 'c'},
+    Refused: {k: 'never', note: 'c'},
+    NoAnswer: {k: 'never', note: 'c'},
+    NoteChanged: {k: 'never', note: 'c'},
+    Unexpected: {k: 'never', note: 'c'},
   },
-  ABORT1: {
-    OK: {k: 'never', note: 'c'},
-    FAIL: {k: 'never', note: 'c'},
-    REF: {k: 'never', note: 'c'},
-    SIL: {k: 'never', note: 'c'},
-    NOP: {k: 'never', note: 'c'},
-    ODD: {k: 'never', note: 'c'},
+  AbortDirty: {
+    Ok: {k: 'never', note: 'c'},
+    Failed: {k: 'never', note: 'c'},
+    Refused: {k: 'never', note: 'c'},
+    NoAnswer: {k: 'never', note: 'c'},
+    NoteChanged: {k: 'never', note: 'c'},
+    Unexpected: {k: 'never', note: 'c'},
   },
 };

@@ -1,8 +1,9 @@
-import {fakeNote} from '../__mocks__/sn-plugin-lib';
+import {fakeNote, PluginFileAPI} from '../__mocks__/sn-plugin-lib';
 import {t} from '../src/i18n';
 import {
   AskFlow,
   rememberSettings,
+  forgetSettings,
   setQuietMsForTests,
   type AskState,
 } from '../src/askFlow';
@@ -157,6 +158,49 @@ describe('AskFlow', () => {
     expect(
       fakeNote.strokes(0).filter(e => e.uuid.startsWith('new-')),
     ).toHaveLength(2);
+  });
+
+  it('after a page turn it checks that the new page holds every stroke written to it, and says so', async () => {
+    mockScript = (send, id) => {
+      send(line(id, 0, 0, [stroke(), stroke()]));
+      send(line(id, 1, 1, [stroke(), stroke(), stroke()]));
+      send(done(id));
+    };
+    const last = await run(layout);
+    expect(last.failed).toBeFalsy();
+    expect(answerStrokes(1)).toHaveLength(3);
+    const events = dumpTrace();
+    expect(events.find(e => e.k === 'ask.viewing')).toBeDefined();
+    expect(events.find(e => e.k === 'ask.verify')?.d).toMatchObject({
+      wrote: 3,
+      found: 3,
+      lost: 0,
+    });
+  });
+
+  it('records the strokes that went missing after they were accepted', async () => {
+    mockScript = (send, id) => {
+      send(line(id, 0, 1, [stroke(), stroke(), stroke()]));
+      send(done(id));
+    };
+    // the saved page holds only one of the three strokes that were accepted
+    const real = PluginFileAPI.getElements;
+    const spy = jest
+      .spyOn(PluginFileAPI, 'getElements')
+      .mockImplementation(async (page: number) => {
+        const r = await real(page);
+        return page === 1 ? {...r, result: r.result.slice(0, 1)} : r;
+      });
+    try {
+      await run(layout);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(dumpTrace().find(e => e.k === 'ask.verify')?.d).toMatchObject({
+      wrote: 3,
+      found: 1,
+      lost: 2,
+    });
   });
 
   it('tells the bridge which note the question was written in, so it can continue the conversation', async () => {
@@ -613,6 +657,33 @@ describe('thinking animation setting', () => {
     flow.cancel();
     await running.catch(() => {});
     expect(waves).toBe(0);
+  });
+});
+
+describe('thinking animation on the first question since the plugin started', () => {
+  beforeEach(() => fakeNote.reset());
+
+  const firstQuestion = async (animation: boolean) => {
+    forgetSettings(); // as after a restart or a reinstall: no bridge has answered yet
+    mockBridgeSettings = {...mockBridgeSettings, thinkingAnimation: animation};
+    mockScript = () => {}; // the bridge never answers: we look at the page while it "thinks"
+    const flow = new AskFlow(() => {});
+    const running = flow.runWithQuestion('q', layout, ctx);
+    await pause(1500);
+    const waves = waveStrokes(0).length;
+    flow.cancel();
+    await running.catch(() => {});
+    return {waves, left: waveStrokes(0).length};
+  };
+
+  it('draws the wave once the bridge says the user wants it, and leaves none behind', async () => {
+    const r = await firstQuestion(true);
+    expect(r.waves).toBeGreaterThanOrEqual(1);
+    expect(r.left).toBe(0);
+  });
+
+  it('draws nothing when the bridge says the user turned it off', async () => {
+    expect((await firstQuestion(false)).waves).toBe(0);
   });
 });
 

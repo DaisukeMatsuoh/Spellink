@@ -129,6 +129,11 @@ describe('the other frames', () => {
       'frame',
     );
     expect(reason({type: 'historyCleared', notes: 'many'})).toMatch(/count/);
+    expect(reason({type: 'probeAck', id: 'p', bytes: -1})).toMatch(/size/);
+    expect(reason({type: 'probeAck', bytes: 5})).toMatch(/id/);
+    expect(parseFrame({type: 'probeAck', id: 'p', bytes: 5}, 2).kind).toBe(
+      'frame',
+    );
   });
 });
 

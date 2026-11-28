@@ -6,7 +6,8 @@ import {Stm, type Handlers, type Table} from './stm';
 import {trace} from './trace';
 
 /** What a step reports (see the "結果" table of the spec). */
-export type Outcome = 'OK' | 'FAIL' | 'REF' | 'SIL' | 'NOP' | 'ODD';
+export type Outcome =
+  'Ok' | 'Failed' | 'Refused' | 'NoAnswer' | 'NoteChanged' | 'Unexpected';
 
 export async function runProcedure<S extends string, A extends string>(opts: {
   name: string;

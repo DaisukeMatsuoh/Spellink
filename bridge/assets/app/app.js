@@ -30,6 +30,11 @@
     }
   }
 
+  /** The allowed commands as typed: one rule per line, blank lines left out. */
+  function rulesOf(text) {
+    return String(text).split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return x; });
+  }
+
   function start(env) {
     var doc = env.document;
     var L = env.logic;
@@ -75,7 +80,7 @@
       line(box, s.provider.found ? 'ok' : 'bad',
         s.provider.found ? t('providerOk', {name: s.provider.name, path: s.provider.path}) : t('providerMissing', {name: s.provider.name}));
       line(box, s.relay ? 'ok' : 'info', t(s.relay ? 'relayOn' : 'relayOff'));
-      if (!s.addresses.length) line(box, 'bad', t('noAddress'));
+      if (!s.relay && !s.addresses.length) line(box, 'bad', t('noAddress')); // the relay's address is made per device, so it is not in addresses
     }
 
     function stateText(d) {
@@ -185,6 +190,36 @@
       }, function (e) { say('unreachable', {why: e && e.message ? e.message : 'network'}); });
     }
 
+    function showAi(a) {
+      $('aiEnvironment').checked = a.environment;
+      $('aiInstructions').value = a.instructions;
+      $('aiAllow').value = a.allow.join('\n');
+      $('aiRestart').hidden = !a.restartNeeded;
+    }
+
+    /** Reads the AI settings once (not on every poll: it would overwrite what is being typed). */
+    function loadAi() {
+      return api('GET', '/admin/ai').then(function (res) {
+        if (res.status === 404) return; // this bridge has no such settings: the section stays hidden
+        if (!res.ok) return whyOf(res).then(function (why) { say('failed', {why: why}); });
+        return res.json().then(function (a) {
+          showAi(a);
+          $('aiBox').hidden = false;
+        });
+      }, function (e) { say('unreachable', {why: e && e.message ? e.message : 'network'}); });
+    }
+
+    function saveAi() {
+      var body = {environment: $('aiEnvironment').checked, instructions: $('aiInstructions').value, allow: rulesOf($('aiAllow').value)};
+      return api('PUT', '/admin/ai', body).then(function (res) {
+        if (!res.ok) return whyOf(res).then(function (why) { say('failed', {why: why}); });
+        return res.json().then(function (a) {
+          showAi(a);
+          say(a.restartNeeded ? 'aiSavedRestart' : 'aiSaved');
+        });
+      }, function (e) { say('unreachable', {why: e && e.message ? e.message : 'network'}); });
+    }
+
     /** Reads the status and the devices and draws them. */
     function load() {
       return Promise.all([api('GET', '/admin/status'), api('GET', '/admin/devices')]).then(function (rs) {
@@ -217,15 +252,18 @@
       $('addTitle').textContent = strings.addTitle;
       $('addButton').textContent = strings.addButton;
       $('addName').setAttribute('placeholder', strings.addPlaceholder);
+      ['aiTitle', 'aiEnvironmentLabel', 'aiEnvironmentHint', 'aiInstructionsLabel', 'aiInstructionsHint', 'aiAllowLabel', 'aiAllowHint', 'aiRestart'].forEach(function (k) { $(k).textContent = strings[k]; });
+      $('aiSave').textContent = strings.aiSave;
       token = env.location.hash.replace(/^#/, '');
       if (!token) {
         say('noToken');
         return;
       }
       $('addButton').onclick = add;
-      return load().then(poll);
+      $('aiSave').onclick = saveAi;
+      return load().then(loadAi).then(poll);
     });
   }
 
-  return {start: start, fileName: fileName, actionsFor: actionsFor};
+  return {start: start, fileName: fileName, actionsFor: actionsFor, rulesOf: rulesOf};
 });

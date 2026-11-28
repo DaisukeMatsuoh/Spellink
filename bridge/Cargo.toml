@@ -35,6 +35,9 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"
 hyper-util = { version = "0.1", features = ["tokio", "server-auto", "http1", "http2"] }
 rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem"] }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [profile.release]
 opt-level = 3
 lto = true

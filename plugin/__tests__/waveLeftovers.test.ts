@@ -95,7 +95,7 @@ describe('a failure while drawing removes what was drawn, right away', () => {
     const drops = fresh();
     await drawOne(drops);
     fakeNote.refuse.add('insertPageElements'); // the next piece cannot be drawn
-    await drawOne(drops); // FAIL while DRAWING → clear once → STOPPED
+    await drawOne(drops); // Failed while Drawing → clear once → Stopped
     expect(waveCount()).toBe(0);
     expect(leftoversOn(FILE, 0)).toHaveLength(0);
     expect(dumpTrace().some(e => e.k === 'wave.giveUp')).toBe(true);
@@ -110,7 +110,7 @@ describe('a failure while drawing removes what was drawn, right away', () => {
       require('../__mocks__/sn-plugin-lib').PluginCommAPI,
       'deletePageElements',
     );
-    await drawOne(drops); // FAIL → clear (refused) → FAIL while CLEARING → LEFTOVER
+    await drawOne(drops); // Failed → clear (refused) → Failed while Clearing → LeftOver
     expect(deletes).toHaveBeenCalledTimes(1);
     expect(leftoversOn(FILE, 0)).toHaveLength(1);
     deletes.mockRestore();
@@ -119,7 +119,7 @@ describe('a failure while drawing removes what was drawn, right away', () => {
   it('nothing drawn yet: a failure leaves nothing to clear and nothing to remember', async () => {
     const drops = fresh();
     fakeNote.refuse.add('insertPageElements');
-    await drawOne(drops); // the first piece fails: FAIL_CLEAN
+    await drawOne(drops); // the first piece fails: FailedClean
     expect(waveCount()).toBe(0);
     expect(leftoversOn(FILE, 0)).toHaveLength(0);
     await drops.stop(); // already stopped: nothing more happens

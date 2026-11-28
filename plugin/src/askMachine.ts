@@ -13,10 +13,14 @@ export type {AskAction, AskEvent, AskState} from './askTable.generated';
 /** One function for every action in the table; a missing one does not compile. */
 export type Handlers = StmHandlers<AskAction>;
 
-export const TERMINAL: readonly AskState[] = ['OK', 'FAIL', 'CANC'];
+export const TERMINAL: readonly AskState[] = [
+  'Completed',
+  'Failed',
+  'Cancelled',
+];
 
 export class AskMachine extends Stm<AskState, AskEvent, AskAction> {
-  constructor(handlers: Handlers, log: Log, start: AskState = 'IDLE') {
+  constructor(handlers: Handlers, log: Log, start: AskState = 'Idle') {
     super(ASK_TABLE, handlers, log, TERMINAL, start, 'ask');
   }
 }

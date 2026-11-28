@@ -1,5 +1,7 @@
 # Spellink
 
+**English** · [日本語](README.ja.md)
+
 Ask an AI about your handwriting on a Supernote, and get the answer written back onto the page **as handwriting**.
 
 1. Write a question in a note.
@@ -30,13 +32,18 @@ Supernote (plugin)  ── wss ──▶  spellink-bridge  (your Mac / Linux / W
   ([guide](docs/guides/cloudflare-tunnel-setup.md)). Everything is end-to-end encrypted, so the relay sees only ciphertext.
 - `docs/` — decisions (ADRs), the specification (state transition tables), guides and progress notes.
 
+## Use it
+
+Start with the **[user manual](docs/manual/en/README.md)** ([日本語](docs/manual/ja/README.md)): install the bridge, put the plugin on your
+Supernote, pair, and ask. About 30 minutes for a first-time user.
+
 ## Requirements
 
 - A Supernote Nomad (tested) or Manta.
 - A computer that stays on, with [Claude Code](https://code.claude.com) installed and signed in (your own subscription; no API key).
 - A way for the device to reach it over `wss://` (see above; the relay is the standard way once it is open).
 
-## Try it
+## Build it yourself
 
 ```bash
 cd bridge
@@ -50,7 +57,7 @@ cargo build --release --locked             # Rust (rustup.rs); target/release/sp
 The bridge that makes setup files has the plugin built into it: build it with `bridge/scripts/build-with-plugin.sh`
 (a plain `cargo build` has no plugin inside). The plugin carries no address or token of its own; the device gets them by pairing.
 
-Step by step for a user: [docs/guides/install-guide.md](docs/guides/install-guide.md) (Japanese). Device test notes: [docs/notes/device-test-guide.md](docs/notes/device-test-guide.md) (Japanese).
+Step by step for a user: the [manual](docs/manual/en/README.md). Device test notes: [docs/notes/device-test-guide.md](docs/notes/device-test-guide.md) (Japanese).
 What a user needs to do and know: [docs/guides/bridge-and-relay-for-users.md](docs/guides/bridge-and-relay-for-users.md) (Japanese).
 
 ## Security and privacy
@@ -81,16 +88,3 @@ Not affiliated with Anthropic or Ratta. Claude is a trademark of Anthropic; Supe
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
-
----
-
-## 日本語
-
-Supernote のノートで、手書きの質問をラッソで囲んで「AIに聞く」を押すと、**回答が手書きの筆跡として**ページに書かれます。同じノートに続きを書くと、会話が続きます。
-
-- **状態: 初期のアルファ版。** Supernote Nomad と、Linux のパソコンのブリッジで、端末から回答までは動きます。実機での確認が続いています。他の人が使える形には、まだなっていません。
-- **仕組み**: 端末のプラグインが、手書きを端末内で文字にして、**あなたのパソコンで動くブリッジ**に送ります。ブリッジが AI（現状は、公式の Claude Code。あなた自身の契約でログイン済みのもの）に聞き、回答を筆跡に変えて返します。AI の認証情報は、ブリッジも運営も見ません。
-- **必要なもの**: Supernote、起動したままのパソコン、ログイン済みの Claude Code（有料の契約か API の課金が要ります）、端末から `wss://` で届く道（Spellink の中継〔準備中〕、家の直結、または自分のトンネル）。
-- **試す**: 利用者向けの手順は `docs/guides/install-guide.md`。ブリッジが作る設置用ファイルを端末に入れ、端末の QR と 8 桁でペアリングします。`spellink-bridge check` で、端末と同じ道で疎通を確認できます。
-- **安全とプライバシー**: 端末とブリッジの間は、端末とブリッジだけが持つ鍵で暗号化されます。**ペアリングのトークンは、ブリッジの鍵です。人に見せないでください。** AI には、認識した文字と、同じノートの前の会話だけを送ります（画像は送りません）。会話の記憶は、あなたのパソコンにだけ、暗号化せずに保存されます。
-- 詳しくは `docs/`（日本語）。進捗は `docs/notes/progress/README.md`。

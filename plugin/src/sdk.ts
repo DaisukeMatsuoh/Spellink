@@ -39,18 +39,18 @@ export class UnexpectedError extends SdkError {}
 /** Which outcome of the spec's "結果" table an error is. */
 export function classify(e: unknown): Outcome {
   if (e instanceof NoteMovedError) {
-    return 'NOP';
+    return 'NoteChanged';
   }
   if (e instanceof CallTimeoutError) {
-    return 'SIL';
+    return 'NoAnswer';
   }
   if (e instanceof RefusedError) {
-    return 'REF';
+    return 'Refused';
   }
   if (e instanceof UnexpectedError) {
-    return 'ODD';
+    return 'Unexpected';
   }
-  return 'FAIL';
+  return 'Failed';
 }
 
 type ApiResponse<T> = {
@@ -721,7 +721,7 @@ const BLANK_TEMPLATE = 'style_blank';
  * Inserts a new page at `page` (later pages move down) using the same template as `likePage`,
  * and turns the view to it. The steps and what each outcome means are the "挿入" table of
  * docs/spec/page-turn.md (src/insertTable.generated.ts): the steps below only do the work and
- * report OK / FAIL / REF / SIL / NOP / ODD; the table decides whether to go on, to fall back
+ * report Ok / Failed / Refused / NoAnswer / NoteChanged / Unexpected; the table decides whether to go on, to fall back
  * (blank template, a view that would not turn) or to stop — and whether the note may have been
  * changed when it stops. On a stop the error that caused it is thrown.
  */
@@ -736,7 +736,7 @@ export async function insertPageAfter(
   const step = (work: () => Promise<void>) => async (): Promise<Outcome> => {
     try {
       await work();
-      return 'OK';
+      return 'Ok';
     } catch (e) {
       failure = e;
       return classify(e);
@@ -745,17 +745,17 @@ export async function insertPageAfter(
   const end = await runProcedure({
     name: 'insert',
     table: INSERT_TABLE,
-    start: 'OPEN',
-    ends: ['DONE', 'ABORT0', 'ABORT1'],
+    start: 'CheckNote',
+    ends: ['Done', 'AbortClean', 'AbortDirty'],
     steps: {
       // saving acts on whatever note is open: it must be ours
-      OPEN: step(() => ensureOpen(filePath)),
+      CheckNote: step(() => ensureOpen(filePath)),
       // a save that was refused stops everything: never insert with unsaved edits
-      SAVE: step(() => saveNote()),
-      COUNT1: step(async () => {
+      Save: step(() => saveNote()),
+      CountBefore: step(async () => {
         before = await totalPages(filePath);
       }),
-      TEMPLATE: step(async () => {
+      GetTemplate: step(async () => {
         const t = await call<{name: string; md5: string}>(
           'getNotePageTemplate',
           () => PluginFileAPI.getNotePageTemplate(filePath, likePage),
@@ -766,13 +766,13 @@ export async function insertPageAfter(
         }
         template = t.name;
       }),
-      INSERT: step(() =>
+      InsertPage: step(() =>
         callChecked('insertNotePage', () =>
           PluginFileAPI.insertNotePage({notePath: filePath, page, template}),
         ),
       ),
       // "Inserted" is only believed once the note really has one more page.
-      COUNT2: step(async () => {
+      CountAfter: step(async () => {
         const after = await totalPages(filePath);
         if (after <= before) {
           trace('insertNotePage.notGrown', {d: {before, after}});
@@ -783,7 +783,7 @@ export async function insertPageAfter(
           );
         }
       }),
-      JUMP: step(() => jumpToPageIn(filePath, page)),
+      Jump: step(() => jumpToPageIn(filePath, page)),
     },
     handlers: {
       X0: () => {},
@@ -796,7 +796,7 @@ export async function insertPageAfter(
       X4: () => {},
     },
   });
-  if (end !== 'DONE') {
+  if (end !== 'Done') {
     throw failure ?? new Error(`inserting a page ended at ${end}`);
   }
 }
@@ -881,7 +881,7 @@ export async function writeStrokesAt(
   const step = (work: () => Promise<void>) => async (): Promise<Outcome> => {
     try {
       await work();
-      return 'OK';
+      return 'Ok';
     } catch (e) {
       failure = e;
       return classify(e);
@@ -892,12 +892,25 @@ export async function writeStrokesAt(
   const end = await runProcedure({
     name: 'write',
     table: WRITE_TABLE,
-    start: 'OPEN',
-    ends: ['WRITTEN', 'ABORT0', 'ABORT1'],
+    start: 'CheckNote',
+    ends: ['Written', 'AbortClean', 'AbortDirty'],
     steps: {
-      OPEN: step(() => ensureOpen(filePath)),
-      WRITE: step(async () => {
-        await writeStrokes(strokes, page, pen, undefined, userData);
+      CheckNote: step(() => ensureOpen(filePath)),
+      WriteStrokes: step(async () => {
+        // Where an answer write's time goes (creating the strokes, filling their points,
+        // inserting): recorded for every one, so the report of a real question shows it. The
+        // thinking wave's strokes carry a marker and are left out (they would fill the recorder).
+        const timing: WriteTiming = {create: 0, fill: 0, insert: 0};
+        await writeStrokes(strokes, page, pen, timing, userData);
+        if (!userData) {
+          trace('write.timing', {
+            d: {
+              strokes: strokes.length,
+              points: strokes.reduce((n, s) => n + s.p.length / 2, 0),
+              ...timing,
+            },
+          });
+        }
       }),
     },
     handlers: {
@@ -908,7 +921,7 @@ export async function writeStrokesAt(
       X4: () => {},
     },
   });
-  if (end !== 'WRITTEN') {
+  if (end !== 'Written') {
     throw failure ?? new Error(`writing ended at ${end}`);
   }
 }

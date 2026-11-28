@@ -91,6 +91,11 @@ export function parseFrame(raw: unknown, maxPage: number): Parsed {
         kind: 'frame',
         frame: {type: 'settings', settings: parseSettings(raw.settings)},
       };
+    case 'probeAck':
+      if (!isStr(raw.id, MAX_FRAME_ID_CHARS) || !isInt(raw.bytes, 0, 1e9)) {
+        return bad('probeAck without an id or a size');
+      }
+      return {kind: 'frame', frame: raw as unknown as BridgeMessage};
     case 'historyCleared':
       if (!isInt(raw.notes, 0, 1e9)) {
         return bad('historyCleared without a count');

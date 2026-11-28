@@ -30,7 +30,7 @@ flowchart LR
       B --> C
     end
   end
-  subgraph Ops["運営の VPS (日本: Kagoya、米国: OVHcloud。固定 IP)"]
+  subgraph Ops["運営の VPS (日本: Kagoya、米国: Scaleway。固定 IP)"]
     R["中継 (relay)<br/>443"]
     N["名前サービス (names)<br/>DNS 53 / API 8443"]
   end

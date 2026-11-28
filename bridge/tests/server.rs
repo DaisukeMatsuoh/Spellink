@@ -890,3 +890,20 @@ async fn small_frames_are_not_held_back_by_nagle() {
     // opening waits 40 ms or more, so none would be quick
     assert!(times[0] < Duration::from_millis(25), "the fastest of 7 sessions opened in {:?}: small frames are being held back", times[0]);
 }
+
+#[tokio::test]
+async fn a_probe_is_answered_with_the_size_it_carried_and_stores_nothing() {
+    let url = start(ai(|_, _, _, _| async { Ok(String::new()) })).await;
+    let data = json!({"strokes": [[1, 2, 3], [4, 5, 6]]});
+    let want = data.to_string().len();
+    let got = converse(&url, vec![hello(), json!({"type": "probe", "id": "p1", "data": data})], |m| m["type"] == "probeAck").await;
+    assert_eq!(got[1]["id"], "p1", "{got:?}");
+    assert_eq!(got[1]["bytes"], want, "{got:?}");
+}
+
+#[tokio::test]
+async fn a_probe_without_an_id_is_refused() {
+    let url = start(ai(|_, _, _, _| async { Ok(String::new()) })).await;
+    let got = converse(&url, vec![hello(), json!({"type": "probe", "data": {}})], |m| m["type"] == "error").await;
+    assert_eq!(got[1]["code"], "bad_request", "{got:?}");
+}

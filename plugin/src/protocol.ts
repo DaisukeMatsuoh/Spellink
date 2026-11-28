@@ -62,6 +62,8 @@ export type ClientMessage =
   /** After a dropped connection: send the answer's frames from number `next` on. */
   | {type: 'resume'; id: string; next: number}
   | {type: 'report'; data: unknown}
+  /** A speed measurement (diagnostics): the bridge answers `probeAck` and stores nothing. */
+  | {type: 'probe'; id: string; data: unknown}
   | {type: 'setSettings'; settings: Settings}
   | {type: 'clearHistory'}
   /** Forget the conversation of the note with this key only. */
@@ -77,6 +79,7 @@ export type BridgeMessage =
     }
   | {type: 'settings'; settings: Settings}
   | {type: 'historyCleared'; notes: number}
+  | {type: 'probeAck'; id: string; bytes: number}
   | {type: 'status'; id: string; stage: 'thinking' | 'writing' | 'alive'}
   | {
       type: 'line';

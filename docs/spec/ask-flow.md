@@ -5,107 +5,107 @@
 **この文書の表が、コードの表の元データ。** `npm run spec` が、この表から `plugin/src/askTable.generated.ts` を作る（全マスが埋まっていないと、生成が失敗する）。表を直す → `npm run spec` → ハンドラ（処理）を足す、の順。テスト（`askMachine.test`）が、文書とコードの表が一致していること、全マスが定義されていること、遷移先が実在することを確かめる。
 
 ## 書式（機械が読む。守ること）
-- マス: `—<注>`（起こりえない）、`×<注>`（起きるが無視する）、`×A10`（無視するが、処理 A10 で記録する）、`A4→FAIL`（処理して、遷移）、`A2`（処理して、その状態のまま）、`A9→RESUME [more] / A4→FAIL [spent]`（再接続の回数が残っているかで分かれる）。
+- マス: `—<注>`（起こりえない）、`×<注>`（起きるが無視する）、`×A10`（無視するが、処理 A10 で記録する）、`A4→Failed`（処理して、遷移）、`A2`（処理して、その状態のまま）、`A9→Reconnecting [more] / A4→Failed [spent]`（再接続の回数が残っているかで分かれる）。
 - 状態名・イベント名・処理 ID は、下の定義の表にあるものだけ。
 - 注は小文字 1 文字（下の「注」）。
 
 ## 状態
 | 状態 | 意味 |
 |---|---|
-| IDLE | 質問なし。ここから、ボタンの押下で PERM へ |
-| PERM | 権限の確認中 |
-| RECOG | ノートの場所・ラッソの範囲を読み、端末内の文字認識中 |
-| PREP | ペン・波線・（設定が on なら）ページの読み取り・ブリッジへの接続・（必要なら）新しいページへの移動 |
-| STREAM | `ask` を送り、`line` を受けて書いている |
-| RESUME | 完了前に接続が切れ、再接続を試している（試行回数 n は 0〜3。画面に「再接続中 (n/3)」） |
-| DRAIN | `done` を受け取った。書き込みの列に残った行を書き切るところ |
-| OK | 完了（終了状態） |
-| FAIL | 失敗。理由を利用者に伝える（終了状態） |
-| CANC | 利用者が取り消した（終了状態） |
+| Idle | 質問なし。ここから、ボタンの押下で CheckingPermission へ |
+| CheckingPermission | 権限の確認中 |
+| Recognizing | ノートの場所・ラッソの範囲を読み、端末内の文字認識中 |
+| Preparing | ペン・波線・（設定が on なら）ページの読み取り・ブリッジへの接続・（必要なら）新しいページへの移動 |
+| Streaming | `ask` を送り、`line` を受けて書いている |
+| Reconnecting | 完了前に接続が切れ、再接続を試している（試行回数 n は 0〜3。画面に「再接続中 (n/3)」） |
+| Draining | `done` を受け取った。書き込みの列に残った行を書き切るところ |
+| Completed | 完了（終了状態） |
+| Failed | 失敗。理由を利用者に伝える（終了状態） |
+| Cancelled | 利用者が取り消した（終了状態） |
 
 ## イベント
 | イベント | 意味 |
 |---|---|
-| PRESS | 処理中に、ラッソの「AIに聞く」をもう一度選んだ（連打、または回答中の再操作）。新しい質問の開始は、新しい `AskFlow` が IDLE から受ける |
-| CANCEL | 進捗パネルの取消・閉じる |
-| GRANTED | 必要な権限がすべて許可された |
-| DENIED | 権限が拒否された |
-| RECOGNIZED | ラッソの範囲から、質問の文字が得られた |
-| NOTEXT | 認識結果が空または null（楽譜・絵など） |
-| REFUSED | SDK の呼び出しが失敗、または `result: false`（拒否）で、続けられない |
-| SILENT | ノートアプリが時間内に答えない |
-| MOVED | いま開いているノートが、質問したノートと違う |
-| SOFTFAIL | なくても答えられる読み取り（空き領域の判定）の失敗 |
-| ASKED | ブリッジに接続でき、`ask` を送った |
-| NOBRIDGE | どのブリッジにも接続できない（最初の接続） |
-| LINE | 正常な `line` フレーム |
-| STATUS | `status` フレーム（考え中・書き始め・生存通知） |
-| BAD | 検査に通らないフレーム（値が不正、ページが範囲外、必須項目なし） |
-| DONE | `done` フレーム |
-| ERR | 回答を終わらせる `error` フレーム（AI の失敗・時間切れを含む） |
-| CLOSE | 接続が切れた（`done` の前）、または `ask` の送信に失敗した |
-| RESUMED | 再接続できて、`resume`（または、未送信だった `ask`）を送った |
-| RESUME_NG | 再接続の 1 回が失敗した、またはブリッジがその回答を覚えていない（`unknown_ask`） |
-| QUIET | 接続は開いているが、ブリッジからの通信（フレームも生存通知も）が一定時間まったく来ない = 接続が死んでいる |
-| DRAINED | `done` のあと、書き込みの列が空になった |
-| LATE | 終わったあとに届く、遅れた切断やフレーム |
-| LIFE | プラグインのホストのライフサイクル通知（停止・再開・破棄） |
-| SCREEN | 設定画面・診断画面を開いた |
+| Pressed | 処理中に、ラッソの「AIに聞く」をもう一度選んだ（連打、または回答中の再操作）。新しい質問の開始は、新しい `AskFlow` が Idle から受ける |
+| CancelRequested | 進捗パネルの取消・閉じる |
+| Granted | 必要な権限がすべて許可された |
+| Denied | 権限が拒否された |
+| Recognized | ラッソの範囲から、質問の文字が得られた |
+| NoText | 認識結果が空または null（楽譜・絵など） |
+| Refused | SDK の呼び出しが失敗、または `result: false`（拒否）で、続けられない |
+| NoAnswer | ノートアプリが時間内に答えない |
+| NoteChanged | いま開いているノートが、質問したノートと違う |
+| SoftFailed | なくても答えられる読み取り（空き領域の判定）の失敗 |
+| Asked | ブリッジに接続でき、`ask` を送った |
+| NoBridge | どのブリッジにも接続できない（最初の接続） |
+| Line | 正常な `line` フレーム |
+| Status | `status` フレーム（考え中・書き始め・生存通知） |
+| BadFrame | 検査に通らないフレーム（値が不正、ページが範囲外、必須項目なし） |
+| DoneFrame | `done` フレーム |
+| ErrorFrame | 回答を終わらせる `error` フレーム（AI の失敗・時間切れを含む） |
+| Closed | 接続が切れた（`done` の前）、または `ask` の送信に失敗した |
+| Resumed | 再接続できて、`resume`（または、未送信だった `ask`）を送った |
+| ResumeFailed | 再接続の 1 回が失敗した、またはブリッジがその回答を覚えていない（`unknown_ask`） |
+| Quiet | 接続は開いているが、ブリッジからの通信（フレームも生存通知も）が一定時間まったく来ない = 接続が死んでいる |
+| Drained | `done` のあと、書き込みの列が空になった |
+| Late | 終わったあとに届く、遅れた切断やフレーム |
+| Lifecycle | プラグインのホストのライフサイクル通知（停止・再開・破棄） |
+| ScreenOpened | 設定画面・診断画面を開いた |
 
 ## 状態遷移表
 行が状態、列がイベント。
 
-| 状態＼イベント | PRESS | CANCEL | GRANTED | DENIED | RECOGNIZED | NOTEXT | REFUSED |
+| 状態＼イベント | Pressed | CancelRequested | Granted | Denied | Recognized | NoText | Refused |
 |---|---|---|---|---|---|---|---|
-| **IDLE** | A1→PERM | ×a | —b | —b | —b | —b | —b |
-| **PERM** | A2 | A3→CANC | A16→RECOG | A4→FAIL | —d | —d | A4→FAIL |
-| **RECOG** | A2 | A3→CANC | —d | —d | A16→PREP | A5→FAIL | A4→FAIL |
-| **PREP** | A2 | A3→CANC | —d | —d | —d | —d | A4→FAIL |
-| **STREAM** | A2 | A3→CANC | —d | —d | —d | —d | A12→FAIL |
-| **RESUME** | A2 | A3→CANC | —d | —d | —d | —d | A12→FAIL |
-| **DRAIN** | A2 | A3→CANC | —d | —d | —d | —d | A12→FAIL |
-| **OK** | ×q | ×a | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
-| **FAIL** | ×q | ×a | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
-| **CANC** | ×q | ×a | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
+| **Idle** | A1→CheckingPermission | ×a | —b | —b | —b | —b | —b |
+| **CheckingPermission** | A2 | A3→Cancelled | A16→Recognizing | A4→Failed | —d | —d | A4→Failed |
+| **Recognizing** | A2 | A3→Cancelled | —d | —d | A16→Preparing | A5→Failed | A4→Failed |
+| **Preparing** | A2 | A3→Cancelled | —d | —d | —d | —d | A4→Failed |
+| **Streaming** | A2 | A3→Cancelled | —d | —d | —d | —d | A12→Failed |
+| **Reconnecting** | A2 | A3→Cancelled | —d | —d | —d | —d | A12→Failed |
+| **Draining** | A2 | A3→Cancelled | —d | —d | —d | —d | A12→Failed |
+| **Completed** | ×q | ×a | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
+| **Failed** | ×q | ×a | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
+| **Cancelled** | ×q | ×a | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
 
-| 状態＼イベント | SILENT | MOVED | SOFTFAIL | ASKED | NOBRIDGE | LINE | STATUS |
+| 状態＼イベント | NoAnswer | NoteChanged | SoftFailed | Asked | NoBridge | Line | Status |
 |---|---|---|---|---|---|---|---|
-| **IDLE** | —b | —b | —b | —b | —b | —b | —b |
-| **PERM** | A4→FAIL | —d | —d | —d | —d | —e | —e |
-| **RECOG** | A4→FAIL | ×f | —d | —d | —d | —e | —e |
-| **PREP** | A4→FAIL | A12→FAIL | A6 | A16→STREAM | A4→FAIL | —e | —e |
-| **STREAM** | A12→FAIL | A12→FAIL | —d | —d | —d | A15 | A18 |
-| **RESUME** | A12→FAIL | A12→FAIL | —d | —d | —d | —i | —i |
-| **DRAIN** | A12→FAIL | A12→FAIL | —d | —d | —d | ×A10 | ×A10 |
-| **OK** | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
-| **FAIL** | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
-| **CANC** | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
+| **Idle** | —b | —b | —b | —b | —b | —b | —b |
+| **CheckingPermission** | A4→Failed | —d | —d | —d | —d | —e | —e |
+| **Recognizing** | A4→Failed | ×f | —d | —d | —d | —e | —e |
+| **Preparing** | A4→Failed | A12→Failed | A6 | A16→Streaming | A4→Failed | —e | —e |
+| **Streaming** | A12→Failed | A12→Failed | —d | —d | —d | A15 | A18 |
+| **Reconnecting** | A12→Failed | A12→Failed | —d | —d | —d | —i | —i |
+| **Draining** | A12→Failed | A12→Failed | —d | —d | —d | ×A10 | ×A10 |
+| **Completed** | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
+| **Failed** | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
+| **Cancelled** | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 | ×A10 |
 
-| 状態＼イベント | BAD | DONE | ERR | CLOSE | RESUMED | RESUME_NG | QUIET |
+| 状態＼イベント | BadFrame | DoneFrame | ErrorFrame | Closed | Resumed | ResumeFailed | Quiet |
 |---|---|---|---|---|---|---|---|
-| **IDLE** | —b | —b | —b | —b | —b | —b | —b |
-| **PERM** | —e | —e | —e | —e | —k | —k | —e |
-| **RECOG** | —e | —e | —e | —e | —k | —k | —e |
-| **PREP** | —e | —e | —e | A9b→RESUME | —k | —k | —e |
-| **STREAM** | A7→FAIL | A8→DRAIN | A4→FAIL | A9→RESUME | —k | —k | A9→RESUME |
-| **RESUME** | —i | —i | —i | —i | A16→STREAM | A9→RESUME [more] / A4→FAIL [spent] | —i |
-| **DRAIN** | ×A10 | ×A11 | ×A10 | ×A10 | —k | —k | —l |
-| **OK** | ×A10 | ×A11 | ×A10 | ×A10 | ×A10 | ×A10 | —l |
-| **FAIL** | ×A10 | ×A11 | ×A10 | ×A10 | ×A10 | ×A10 | —l |
-| **CANC** | ×A10 | ×A11 | ×A10 | ×A10 | ×A10 | ×A10 | —l |
+| **Idle** | —b | —b | —b | —b | —b | —b | —b |
+| **CheckingPermission** | —e | —e | —e | —e | —k | —k | —e |
+| **Recognizing** | —e | —e | —e | —e | —k | —k | —e |
+| **Preparing** | —e | —e | —e | A9b→Reconnecting | —k | —k | —e |
+| **Streaming** | A7→Failed | A8→Draining | A4→Failed | A9→Reconnecting | —k | —k | A9→Reconnecting |
+| **Reconnecting** | —i | —i | —i | —i | A16→Streaming | A9→Reconnecting [more] / A4→Failed [spent] | —i |
+| **Draining** | ×A10 | ×A11 | ×A10 | ×A10 | —k | —k | —l |
+| **Completed** | ×A10 | ×A11 | ×A10 | ×A10 | ×A10 | ×A10 | —l |
+| **Failed** | ×A10 | ×A11 | ×A10 | ×A10 | ×A10 | ×A10 | —l |
+| **Cancelled** | ×A10 | ×A11 | ×A10 | ×A10 | ×A10 | ×A10 | —l |
 
-| 状態＼イベント | DRAINED | LATE | LIFE | SCREEN |
+| 状態＼イベント | Drained | Late | Lifecycle | ScreenOpened |
 |---|---|---|---|---|
-| **IDLE** | —b | ×A10 | A13 | ×m |
-| **PERM** | —r | ×A10 | A13 | ×m |
-| **RECOG** | —r | ×A10 | A13 | ×m |
-| **PREP** | —r | ×A10 | A13 | ×m |
-| **STREAM** | —r | ×A10 | A13 | ×m |
-| **RESUME** | —r | ×A10 | A13 | ×m |
-| **DRAIN** | A17→OK | ×A10 | A13 | ×m |
-| **OK** | ×A10 | ×A10 | A13 | ×m |
-| **FAIL** | ×A10 | ×A10 | A13 | ×m |
-| **CANC** | ×A10 | ×A10 | A13 | ×m |
+| **Idle** | —b | ×A10 | A13 | ×m |
+| **CheckingPermission** | —r | ×A10 | A13 | ×m |
+| **Recognizing** | —r | ×A10 | A13 | ×m |
+| **Preparing** | —r | ×A10 | A13 | ×m |
+| **Streaming** | —r | ×A10 | A13 | ×m |
+| **Reconnecting** | —r | ×A10 | A13 | ×m |
+| **Draining** | A17→Completed | ×A10 | A13 | ×m |
+| **Completed** | ×A10 | ×A10 | A13 | ×m |
+| **Failed** | ×A10 | ×A10 | A13 | ×m |
+| **Cancelled** | ×A10 | ×A10 | A13 | ×m |
 
 ## 処理（Action）
 | 処理 | 内容 | 現状 | テスト |
@@ -117,8 +117,8 @@
 | A5 | 認識結果なし: 「文字として読み取れない内容です」を伝える | ✅ | `askController` |
 | A6 | 空き領域の判定の失敗は、記録して続行（空き領域なしで書く） | ✅ | `sdkSafety` |
 | A7 | 異常なフレーム: ブリッジへ `cancel` を送り、失敗にする（理由つき） | ✅ | `frames.test`、`askMachine` |
-| A8 | `done` を受けた: 無音の監視を止め、書き込みの列が空になったら `DRAINED` を出す | ✅ | `askFlow` |
-| A9 | **再接続**: 最大 3 回（連続）。各回は接続の確立を最大 5 秒待つ。画面に「再接続中 (n/3)」。成功は `RESUMED`、失敗は `RESUME_NG`。続きのフレームを受けたら回数を 0 に戻す | ✅ | `askFlow`（reconnecting） |
+| A8 | `done` を受けた: 無音の監視を止め、書き込みの列が空になったら `Drained` を出す | ✅ | `askFlow` |
+| A9 | **再接続**: 最大 3 回（連続）。各回は接続の確立を最大 5 秒待つ。画面に「再接続中 (n/3)」。成功は `Resumed`、失敗は `ResumeFailed`。続きのフレームを受けたら回数を 0 に戻す | ✅ | `askFlow`（reconnecting） |
 | A9b | `ask` を送る前に切れた場合の再接続: 接続からやり直し、`ask` を送る（A9 と同じ回数） | ✅ | `askFlow`（reconnecting） |
 | A10 | 無視して記録（終わったもの・遅れた通知） | ✅ | `askMachine` |
 | A11 | 重複したフレームを捨てる（記録） | ✅ | `askFlow` |
@@ -135,23 +135,23 @@
 - d: その状態では、そのイベントを生む処理が動いていない。
 - e: 接続がまだない、または `ask` をまだ送っていないので、フレームは来ない。
 - f: 認識の間にノートが変わっても、読み取りだけなので害はない。以降の書き込み前に `ensureOpen` が検出する（A12）。
-- i: 再接続中は、受け取る接続がない。接続できたら `RESUMED` で STREAM に戻り、フレームはそこで受ける。
-- k: 再接続は RESUME の間だけ。
+- i: 再接続中は、受け取る接続がない。接続できたら `Resumed` で Streaming に戻り、フレームはそこで受ける。
+- k: 再接続は Reconnecting の間だけ。
 - l: 終了後・完了後の無音の判定は意味がない（タイマーは止めてある）。
-- m: 設定・診断を開く操作は、回答に影響しない。回答は続き、画面は要求どおり開く。パネルの取消ボタンだけが取消（CANCEL）。
-- q: 質問ごとに新しい `AskFlow` を作る。終わったものは相手にしない（新しい質問は新しい `AskFlow` が IDLE から始める）。
-- r: `DRAINED` は `done` を受けた後（DRAIN）だけ。
+- m: 設定・診断を開く操作は、回答に影響しない。回答は続き、画面は要求どおり開く。パネルの取消ボタンだけが取消（CancelRequested）。
+- q: 質問ごとに新しい `AskFlow` を作る。終わったものは相手にしない（新しい質問は新しい `AskFlow` が Idle から始める）。
+- r: `Drained` は `done` を受けた後（Draining）だけ。
 
 ## 補足（表に載せない共通の決まり）
 - **どのフレームを受けても**（`status` の生存通知を含む）、無音の監視を延ばし、再接続の回数を 0 に戻す（受信の入口の共通処理）。
 - `seq` が処理済み以下のフレームは、再送の重複なので、入口で捨てる（A11 の記録）。
-- 入口が 2 つある: ラッソのボタン（IDLE から）と、診断画面の「質問を直接送る」（権限と認識を飛ばして PREP から。`runWithQuestion`）。
-- **別のノートに移ったとき（MOVED）は、いまのまま止める**（決定 2026-11-07）。回答を保留してブリッジに残し、戻ったときに続きを書く案は、将来の候補。
+- 入口が 2 つある: ラッソのボタン（Idle から）と、診断画面の「質問を直接送る」（権限と認識を飛ばして Preparing から。`runWithQuestion`）。
+- **別のノートに移ったとき（NoteChanged）は、いまのまま止める**（決定 2026-11-07）。回答を保留してブリッジに残し、戻ったときに続きを書く案は、将来の候補。
 - 時間切れ: SDK 呼び出しは通常 15 秒、保存・読み取り・ページ挿入・認識は 60 秒、権限ダイアログの待ちは 5 分（`sdk.ts`）。再接続の確立は 5 秒（`connectFirst`）。無音の判定は 15 秒（ブリッジが約 5 秒おきに生存通知を送る）。
 - AI の無応答の時間切れは、ブリッジが持つ（bridge-run.md の R13）。
 - 不明な型のフレームは、記録して読み飛ばす（`frames.ts`）。
 
 ## 履歴
-- 2026-11-07: 進行のイベント（GRANTED / RECOGNIZED / ASKED / RESUMED / DRAINED）と STATUS・SOFTFAIL・RESUME_NG を、表に加えた。以前の表は、異常のイベントだけで、正常に進む遷移がなかった。終了状態での、遅れた結果のイベント（REFUSED / SILENT / MOVED など）は「起こりえない」ではなく「無視」に直した（取消のあとにも、実行中の処理は結果を返す）。
+- 2026-11-07: 進行のイベント（Granted / Recognized / Asked / Resumed / Drained）と Status・SoftFailed・ResumeFailed を、表に加えた。以前の表は、異常のイベントだけで、正常に進む遷移がなかった。終了状態での、遅れた結果のイベント（Refused / NoAnswer / NoteChanged など）は「起こりえない」ではなく「無視」に直した（取消のあとにも、実行中の処理は結果を返す）。
 - 再接続を最大 3 回・成功で 0 に戻す。二重押下は反応を返す（設定で通知を切り替え）。無音は接続の死活（端末）と AI の無応答（ブリッジ）に分けた。
 

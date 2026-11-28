@@ -80,7 +80,7 @@
       line(box, s.provider.found ? 'ok' : 'bad',
         s.provider.found ? t('providerOk', {name: s.provider.name, path: s.provider.path}) : t('providerMissing', {name: s.provider.name}));
       line(box, s.relay ? 'ok' : 'info', t(s.relay ? 'relayOn' : 'relayOff'));
-      if (!s.addresses.length) line(box, 'bad', t('noAddress'));
+      if (!s.relay && !s.addresses.length) line(box, 'bad', t('noAddress')); // the relay's address is made per device, so it is not in addresses
     }
 
     function stateText(d) {

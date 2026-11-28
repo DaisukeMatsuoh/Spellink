@@ -106,6 +106,11 @@ export const STRINGS = {
     diagSend: 'Send',
     diagDone: "Done. Press Send to keep this in the bridge's log.",
     back: 'Back',
+    sectionConnection: 'Connection',
+    sectionWriting: 'Writing',
+    sectionBehavior: 'Behavior',
+    sectionData: 'Data',
+    sectionSupport: 'Support',
   },
   ja: {
     askButton: 'AIに聞く',
@@ -211,6 +216,11 @@ export const STRINGS = {
     diagSend: '送る',
     diagDone: '終わりました。「送る」を押すと、ブリッジの記録に残ります。',
     back: '戻る',
+    sectionConnection: 'つながり',
+    sectionWriting: '書き方',
+    sectionBehavior: '動作',
+    sectionData: 'データ',
+    sectionSupport: 'サポート',
   },
   es: {
     askButton: 'Preguntar a la IA',
@@ -316,6 +326,11 @@ export const STRINGS = {
     diagSend: 'Enviar',
     diagDone: 'Listo. Pulsa Enviar para guardarlo en el registro del puente.',
     back: 'Atrás',
+    sectionConnection: 'Conexión',
+    sectionWriting: 'Escritura',
+    sectionBehavior: 'Comportamiento',
+    sectionData: 'Datos',
+    sectionSupport: 'Soporte',
   },
   fr: {
     askButton: 'Demander à l’IA',
@@ -422,5 +437,10 @@ export const STRINGS = {
     diagDone:
       'Terminé. Appuyez sur Envoyer pour le garder dans le journal du pont.',
     back: 'Retour',
+    sectionConnection: 'Connexion',
+    sectionWriting: 'Écriture',
+    sectionBehavior: 'Comportement',
+    sectionData: 'Données',
+    sectionSupport: 'Assistance',
   },
 } as const;

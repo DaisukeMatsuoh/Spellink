@@ -80,3 +80,8 @@ diagCheck	Check	確認	Comprobar	Vérifier
 diagSend	Send	送る	Enviar	Envoyer
 diagDone	Done. Press Send to keep this in the bridge's log.	終わりました。「送る」を押すと、ブリッジの記録に残ります。	Listo. Pulsa Enviar para guardarlo en el registro del puente.	Terminé. Appuyez sur Envoyer pour le garder dans le journal du pont.
 back	Back	戻る	Atrás	Retour
+sectionConnection	Connection	つながり	Conexión	Connexion
+sectionWriting	Writing	書き方	Escritura	Écriture
+sectionBehavior	Behavior	動作	Comportamiento	Comportement
+sectionData	Data	データ	Datos	Données
+sectionSupport	Support	サポート	Soporte	Assistance

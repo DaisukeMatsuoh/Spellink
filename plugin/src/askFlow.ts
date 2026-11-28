@@ -41,19 +41,28 @@ export function describeFailure(e: unknown): string {
   return t('error', {message: (e as Error).message});
 }
 
-/** The settings last read from a bridge; the wave needs them before the first connection. */
-let lastSettings: Settings = {
+const DEFAULT_SETTINGS: Settings = {
   showProgress: false,
   lineTilt: true,
   thinkingAnimation: false,
   avoidOverwriting: false,
   busyNotice: true,
 };
+/**
+ * The settings last read from a bridge; the wave needs them before the first connection. `null`
+ * until a bridge has answered in this run of the plugin (after a restart or a reinstall): the
+ * defaults stand in for them, but they are not what the user chose.
+ */
+let lastSettings: Settings | null = null;
 export function rememberSettings(s: Settings): void {
   lastSettings = s;
 }
+/** For tests: as after a restart of the plugin. */
+export function forgetSettings(): void {
+  lastSettings = null;
+}
 export function knownSettings(): Settings {
-  return lastSettings;
+  return lastSettings ?? DEFAULT_SETTINGS;
 }
 
 export interface AskState {
@@ -460,6 +469,7 @@ export class AskFlow {
       await sweepLeftovers(this.note.filePath, this.note.page, stale);
       this.checkpoint();
     }
+    const waveWasUnknown = !lastSettings;
     this.wave = this.startWave();
     const scan = snapshot
       ? boxesOf(snapshot, SCAN_BUDGET_MS).catch(e =>
@@ -486,6 +496,10 @@ export class AskFlow {
         this.earlyClose = reason; // the question has not been sent yet: converse() starts over
       };
       rememberSettings(this.conn.settings);
+      if (waveWasUnknown) {
+        // Nothing has been sent yet, so the wave still belongs where the first line will come.
+        this.wave = this.startWave();
+      }
       // Everything from here on is also reported to the bridge, so a failure on the device can
       // be read afterwards on the computer.
       const connection = this.conn;
@@ -560,7 +574,10 @@ export class AskFlow {
   /** A wavy line drawn where the answer will appear until its first line arrives. */
   private startWave(): {stop: () => Promise<void>} {
     // The settings come from the bridge, which we are not connected to yet: use the ones seen last.
-    if (this.terminal() || !knownSettings().thinkingAnimation) {
+    // None seen yet (the first question since the plugin started): whether to draw is not ours to
+    // guess, since a wave the user turned off would be drawn and erased for nothing. It starts
+    // once the bridge has said (see ask()).
+    if (this.terminal() || !lastSettings || !lastSettings.thinkingAnimation) {
       return {stop: async () => {}};
     }
     const drops = new InkDrops(

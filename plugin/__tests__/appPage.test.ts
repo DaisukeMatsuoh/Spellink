@@ -73,6 +73,7 @@ function browser(
     hash?: string;
     devices?: Dev[];
     status?: object;
+    ai?: object; // the AI settings the bridge has; none: a bridge without them (404)
     confirm?: boolean;
     replies?: Record<string, Reply[]>; // by "METHOD path"; consumed in order, then the default
     languages?: string[];
@@ -146,6 +147,9 @@ function browser(
       if (path === '/admin/status') {
         return respond({json: o.status ?? status()});
       }
+      if (path === '/admin/ai' && method === 'GET') {
+        return o.ai ? respond({json: o.ai}) : respond({status: 404});
+      }
       if (path === '/admin/devices' && method === 'GET') {
         return respond({json: o.devices ?? []});
       }
@@ -210,7 +214,11 @@ describe('what the page shows', () => {
       'line ok',
     ]);
     expect(lines[0].textContent).toMatch(/^bridgeLine /);
-    expect(b.calls.map(c => c.auth)).toEqual(['Bearer tok', 'Bearer tok']); // the token goes in a header, nowhere else
+    expect(b.calls.map(c => c.auth)).toEqual([
+      'Bearer tok',
+      'Bearer tok',
+      'Bearer tok',
+    ]); // the token goes in a header, nowhere else
     expect(b.env.document.title).toMatch(/^title /);
   });
 
@@ -231,6 +239,73 @@ describe('what the page shows', () => {
     ]);
     expect(b.el('status').children[1].textContent).toMatch(/^providerMissing /);
     expect(b.el('status').children[3].textContent).toMatch(/^noAddress /);
+  });
+
+  it('does not warn about a missing address when the relay is on (its address is made per device)', async () => {
+    const b = browser({status: status({addresses: []})});
+    await b.started();
+    expect(b.el('status').children.map(l => l.className)).toEqual([
+      'line info',
+      'line ok',
+      'line ok',
+    ]);
+  });
+
+  describe('the AI settings', () => {
+    const ai = {
+      environment: true,
+      instructions: 'I am Dai.',
+      allow: ['Bash(date)'],
+      restartNeeded: false,
+    };
+
+    it('stay hidden on a bridge without them, and show what the bridge has on one with them', async () => {
+      const without = browser();
+      await without.started();
+      expect(without.el('aiBox').hidden).not.toBe(false);
+      const b = browser({ai});
+      await b.started();
+      expect(b.el('aiBox').hidden).toBe(false);
+      expect(b.el('aiEnvironment').checked).toBe(true);
+      expect(b.el('aiInstructions').value).toBe('I am Dai.');
+      expect(b.el('aiAllow').value).toBe('Bash(date)');
+    });
+
+    it('save one rule per line, and say a restart is needed when the bridge says so', async () => {
+      const b = browser({
+        ai,
+        replies: {
+          'PUT /admin/ai': [{json: {...ai, restartNeeded: true}}],
+        },
+      });
+      await b.started();
+      b.el('aiInstructions').value = 'Be brief.';
+      b.el('aiAllow').value = ' Bash(date) \n\nBash(ls)\n';
+      await b.el('aiSave').onclick!();
+      await b.flush();
+      const put = b.calls.find(c => c.method === 'PUT');
+      expect(put?.body).toEqual({
+        environment: true,
+        instructions: 'Be brief.',
+        allow: ['Bash(date)', 'Bash(ls)'],
+      });
+      expect(b.says()).toBe('aiSavedRestart');
+    });
+
+    it('show the reason when the bridge refuses, and keep what was typed', async () => {
+      const b = browser({
+        ai,
+        replies: {
+          'PUT /admin/ai': [{status: 400, text: 'ai.tools.allow: refused'}],
+        },
+      });
+      await b.started();
+      b.el('aiAllow').value = 'Bash(*)';
+      await b.el('aiSave').onclick!();
+      await b.flush();
+      expect(b.says()).toBe('failed');
+      expect(b.el('aiAllow').value).toBe('Bash(*)');
+    });
   });
 
   it('says there are no devices when there are none', async () => {

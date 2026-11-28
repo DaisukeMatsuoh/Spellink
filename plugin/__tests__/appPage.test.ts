@@ -19,6 +19,8 @@ class Element {
   className = '';
   textContent = '';
   value = '';
+  hidden?: boolean;
+  checked = false;
   onclick: (() => void) | null = null;
   constructor(readonly tag = 'div') {}
   appendChild(c: Element) {

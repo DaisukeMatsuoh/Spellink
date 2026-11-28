@@ -28,6 +28,8 @@ fn is_zero(n: &i64) -> bool {
 ///   - "setSettings": settings — change user settings stored on the bridge
 ///   - "clearHistory": forget the conversations of every note
 ///   - "forgetNote": note — forget the conversation of that note only
+///   - "probe": id, data — a speed measurement: the bridge stores nothing and answers `probeAck`
+///     with the size of `data` as it arrived, so the plugin can time a payload of a known size
 ///   - "pairRequest": id (the device's id), gen, code (eight digits shown on the device) — only
 ///     on the pairing channel (a session opened with B); the owner confirms the code at the bridge
 ///   - "pairAck": id, gen — the device has stored K (pairing channel)
@@ -166,6 +168,15 @@ pub struct LineFrame {
     pub seq: i64,
     #[serde(flatten)]
     pub line: InkLine,
+}
+
+/// The answer to a "probe": its id and the size, in bytes, of the data it carried.
+#[derive(Debug, Serialize)]
+pub struct ProbeAck {
+    #[serde(rename = "type")]
+    pub kind: &'static str, // "probeAck"
+    pub id: String,
+    pub bytes: usize,
 }
 
 #[derive(Debug, Serialize)]

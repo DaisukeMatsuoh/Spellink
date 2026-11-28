@@ -897,7 +897,20 @@ export async function writeStrokesAt(
     steps: {
       CheckNote: step(() => ensureOpen(filePath)),
       WriteStrokes: step(async () => {
-        await writeStrokes(strokes, page, pen, undefined, userData);
+        // Where an answer write's time goes (creating the strokes, filling their points,
+        // inserting): recorded for every one, so the report of a real question shows it. The
+        // thinking wave's strokes carry a marker and are left out (they would fill the recorder).
+        const timing: WriteTiming = {create: 0, fill: 0, insert: 0};
+        await writeStrokes(strokes, page, pen, timing, userData);
+        if (!userData) {
+          trace('write.timing', {
+            d: {
+              strokes: strokes.length,
+              points: strokes.reduce((n, s) => n + s.p.length / 2, 0),
+              ...timing,
+            },
+          });
+        }
       }),
     },
     handlers: {

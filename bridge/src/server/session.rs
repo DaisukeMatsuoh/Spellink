@@ -7,7 +7,7 @@ use super::{Deps, LogFn};
 use crate::devices::registry::{Conn, DENY_UNKNOWN_DEVICE};
 use crate::history::Turn;
 use crate::layout::{Composer, Layout, capacity};
-use crate::protocol::{self, ClientMessage, ErrorFrame, HistoryCleared, PairDenied, PairGrant, SettingsReply, Status, Welcome};
+use crate::protocol::{self, ClientMessage, ErrorFrame, HistoryCleared, PairDenied, PairGrant, ProbeAck, SettingsReply, Status, Welcome};
 use crate::provider::{self, AskError, Request, Sink};
 use crate::securechan::{self, Channel};
 use futures_util::StreamExt;
@@ -369,6 +369,15 @@ impl Session {
                     self.send(&HistoryCleared { kind: "historyCleared", notes: n });
                 }
                 "report" => (self.deps.report)(&self.peer, m.data.as_ref()),
+                "probe" => {
+                    // A speed measurement (docs/spec/interfaces.md): nothing is stored or run.
+                    if m.id.is_empty() || m.id.chars().count() > 64 {
+                        self.fail("bad_request", "probe needs an id");
+                        return;
+                    }
+                    let bytes = m.data.as_ref().map_or(0, |d| d.to_string().len());
+                    self.send(&ProbeAck { kind: "probeAck", id: m.id, bytes });
+                }
                 "setSettings" => {
                     let Some(settings) = m.settings else {
                         self.fail("bad_request", "settings missing");
